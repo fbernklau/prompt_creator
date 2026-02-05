@@ -1,0 +1,34 @@
+services:
+  prompt-creator:
+    build: .
+    container_name: prompt-creator
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgresql://prompt:prompt@postgres:5432/prompt_creator
+      - AUTH_REQUIRED=true
+      - OIDC_REQUIRED_GROUP=teacher
+    ports:
+      - "8080:8080"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: prompt-creator-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=prompt_creator
+      - POSTGRES_USER=prompt
+      - POSTGRES_PASSWORD=prompt
+    volumes:
+      - prompt_creator_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prompt -d prompt_creator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  prompt_creator_pgdata:

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KI Promptgenerator Schule</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>KI‑Promptgenerator für den Schulalltag</h1>
+        <p>Didaktisch geführter Meta‑Prompt mit Provider-/Modellverwaltung</p>
+      </div>
+      <span class="badge">de-AT</span>
+    </header>
+
+    <main class="layout">
+      <section class="card" aria-labelledby="provider-title">
+        <div class="card-header">
+          <h2 id="provider-title">Provider & Modelle</h2>
+          <small>Mehrere Provider anlegen und wechseln</small>
+        </div>
+
+        <div class="user-chip" id="current-user">Benutzer: lade…</div>
+
+        <div class="vault-box">
+          <label>Vault-Passphrase (nur lokal, nie an Server gesendet)
+            <input id="vault-passphrase" type="password" placeholder="mindestens 8 Zeichen" />
+          </label>
+          <div class="actions">
+            <button id="unlock-vault" type="button">Vault entsperren</button>
+            <button id="lock-vault" type="button" class="secondary">Vault sperren</button>
+          </div>
+          <small id="vault-status" class="vault-status"></small>
+        </div>
+
+        <form id="provider-form" class="grid-2">
+          <label>Anzeigename<input id="provider-name" required placeholder="z. B. OpenAI Schule" /></label>
+          <label>Provider
+            <select id="provider-kind" required>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="mistral">Mistral</option>
+              <option value="google">Google</option>
+              <option value="custom">Custom API</option>
+            </select>
+          </label>
+          <label>Modell<input id="provider-model" required placeholder="z. B. gpt-4o-mini" /></label>
+          <label>API-Key<input id="provider-key" type="password" placeholder="sk-..." /></label>
+          <label class="span-2">API Base URL (optional)<input id="provider-base" placeholder="https://api.example.com/v1" /></label>
+          <div class="actions span-2">
+            <button type="submit">Provider speichern</button>
+            <button id="provider-reset" type="button" class="secondary">Formular leeren</button>
+          </div>
+        </form>
+
+        <div class="provider-list-wrap">
+          <label>Aktiver Provider<select id="active-provider"></select></label>
+          <ul id="provider-list" class="provider-list" aria-live="polite"></ul>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="prompt-title">
+        <div class="card-header">
+          <h2 id="prompt-title">Prompt-Assistent</h2>
+          <small>Vorgegebene Kategorien für schnelle Entlastung</small>
+        </div>
+
+        <form id="prompt-form" class="grid-2">
+          <label>Schulstufe / Klasse<input id="schulstufe" required placeholder="z. B. 9. Schulstufe" /></label>
+          <label>Fach / Lernbereich<input id="fach" required placeholder="z. B. Digitale Grundbildung" /></label>
+
+          <label>Handlungsfeld<select id="handlungsfeld" required></select></label>
+          <label>Unterkategorie<select id="unterkategorie" required></select></label>
+
+          <fieldset class="span-2 dyn-fieldset">
+            <legend>Template-spezifische Parameter</legend>
+            <small id="validation-hint"></small>
+            <div id="dynamic-fields" class="grid-2"></div>
+          </fieldset>
+
+          <label class="span-2">Ziel der Aufgabe<textarea id="ziel" rows="2" required placeholder="Was soll am Ende konkret vorliegen?"></textarea></label>
+          <label>Zeitrahmen<input id="zeitrahmen" placeholder="z. B. 1 UE, 2 Wochen" /></label>
+          <label>Niveau / Heterogenität<input id="niveau" placeholder="z. B. stark heterogen" /></label>
+          <label>Rahmenbedingungen<input id="rahmen" placeholder="DaZ, Teamteaching, Geräte, ..." /></label>
+          <label>Ergebnisformat<input id="ergebnisformat" placeholder="Tabelle, Checkliste, Rubrik, ..." /></label>
+          <label>Tonalität / Sprachlevel<input id="ton" placeholder="klar, einfach, professionell" /></label>
+
+          <label class="checkbox span-2"><input id="rueckfragen" type="checkbox" /><span>Klärende Rückfragen vor Prompt-Erstellung aktivieren</span></label>
+
+          <div class="actions span-2">
+            <button type="submit">Prompt generieren</button>
+            <button type="button" id="copy-prompt" class="secondary">Prompt kopieren</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="result-title">
+        <div class="card-header">
+          <h2 id="result-title">Ergebnis</h2>
+          <small>Copy-Paste-fähig für dein ausgewähltes Modell</small>
+        </div>
+        <div class="result-meta" id="result-meta"></div>
+        <textarea id="result" rows="18" readonly placeholder="Hier erscheint der generierte Prompt..."></textarea>
+        <div class="actions top-space">
+          <button id="export-txt" type="button" class="secondary">Export .txt</button>
+          <button id="export-md" type="button" class="secondary">Export .md</button>
+        </div>
+
+        <div class="history">
+          <h3>Prompt-Verlauf</h3>
+          <ul id="history-list"></ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">Sicherheitsmodus: API-Keys werden nur verschlüsselt im Browser gespeichert.</footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
