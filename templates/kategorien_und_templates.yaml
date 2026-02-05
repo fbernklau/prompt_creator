@@ -1,0 +1,135 @@
+version: 1
+sprache: de-AT
+zielgruppe:
+  - Lehrkräfte Sekundarstufe I/II
+  - Polytechnische Schule
+
+handlungsfelder:
+  - name: Jahresplanung
+    unterkategorien:
+      - Semesterplanung
+      - Kompetenzraster
+      - Themenverteilung
+      - Prüfungs- und Leistungsfenster
+    pflichtangaben:
+      - schulstufe
+      - fach
+      - zeitraum
+      - kompetenzziele
+    template: |
+      Erstelle eine kompetenzorientierte Jahres-/Semesterplanung für {fach} in {schulstufe}.
+      Zeitraum: {zeitraum}. Berücksichtige: {kompetenzziele}.
+      Gib aus: Themenabfolge, Meilensteine, Leistungsnachweise, Reservetermine.
+
+  - name: Unterrichtsvorbereitung
+    unterkategorien:
+      - Stundendesign
+      - Arbeitsaufträge
+      - Materialerstellung
+      - Einstiegs- und Abschlussphasen
+    pflichtangaben:
+      - lernziel
+      - dauer
+      - heterogenitaet
+      - material
+    template: |
+      Plane eine Unterrichtseinheit zum Ziel {lernziel}.
+      Dauer: {dauer}. Lerngruppe: {heterogenitaet}. Verfügbares Material: {material}.
+      Ausgabe als Ablaufplan mit Zeit, Methode, Sozialform, Differenzierung und Sicherung.
+
+  - name: Individualisierung & Differenzierung
+    unterkategorien:
+      - Niveaustufen
+      - Fördermaßnahmen
+      - Lernpfade
+      - Wahlaufgaben
+    pflichtangaben:
+      - thema
+      - niveaustufen
+      - foerderbedarf
+    template: |
+      Erstelle differenzierte Aufgaben zum Thema {thema} für die Niveaustufen {niveaustufen}.
+      Berücksichtige folgenden Förderbedarf: {foerderbedarf}.
+      Gib aus: Basis-, Aufbau- und Transferaufgaben inkl. Erwartungshorizont.
+
+  - name: Barrierefreiheit & Inklusion
+    unterkategorien:
+      - Leichte Sprache
+      - DaZ-Unterstützung
+      - Visuelle Strukturierung
+      - Nachteilsausgleich
+    pflichtangaben:
+      - ausgangsmaterial
+      - bedarfe
+      - zielniveau
+    template: |
+      Überarbeite {ausgangsmaterial} barrierearm für {bedarfe} auf Zielniveau {zielniveau}.
+      Gib aus: angepasste Version, Begründung der Anpassungen, Hinweise zur Umsetzung.
+
+  - name: Elternkontakte & Kommunikation
+    unterkategorien:
+      - Elternbrief
+      - Gesprächsleitfaden
+      - Rückmeldung zu Lernstand
+      - Konfliktsensible Kommunikation
+    pflichtangaben:
+      - anlass
+      - ton
+      - ziel
+    template: |
+      Formuliere eine Kommunikation für folgenden Anlass: {anlass}.
+      Tonalität: {ton}. Ziel: {ziel}.
+      Erstelle eine wertschätzende, klare und datenschutzsensible Vorlage.
+
+  - name: Leistungsbeurteilung & Feedback
+    unterkategorien:
+      - Beurteilungsraster
+      - Rubrics
+      - Feedbacktexte
+      - Selbst- und Peer-Assessment
+    pflichtangaben:
+      - kompetenzen
+      - kriterienset
+      - format
+    template: |
+      Erstelle ein Beurteilungsinstrument für {kompetenzen}.
+      Kriterien: {kriterienset}. Format: {format}.
+      Liefere transparente Leistungsstufen und kurze Feedbackbausteine.
+
+  - name: Administration
+    unterkategorien:
+      - Anwesenheitsdokumentation
+      - Listen & Übersichten
+      - Protokolle
+      - Fristenmanagement
+    pflichtangaben:
+      - aufgabe
+      - turnus
+      - ausgabeformat
+    template: |
+      Erstelle eine administrative Vorlage für {aufgabe}.
+      Turnus: {turnus}. Ausgabeformat: {ausgabeformat}.
+      Fokus: Übersichtlichkeit, Zeitersparnis, schnelle Aktualisierbarkeit.
+
+  - name: Organisation
+    unterkategorien:
+      - Exkursionen
+      - Projektplanung
+      - Checklisten
+      - Ressourcenplanung
+    pflichtangaben:
+      - vorhaben
+      - zeitrahmen
+      - risiken
+    template: |
+      Plane {vorhaben} im Zeitraum {zeitrahmen}.
+      Berücksichtige Risiken/Abhängigkeiten: {risiken}.
+      Gib aus: Schrittfolge, Verantwortlichkeiten, Checkliste, Plan B.
+
+optionen:
+  klaerende_rueckfragen_checkbox:
+    feldname: "Rueckfragen vor Prompt-Erstellung"
+    werte: ["Ja", "Nein"]
+    verhalten:
+      Ja: "Stelle 3-7 gezielte Rückfragen, bevor der finale Prompt erstellt wird."
+      Nein: "Arbeite mit expliziten Annahmen und erstelle direkt den finalen Prompt."
