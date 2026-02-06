@@ -1,12 +1,13 @@
 FROM node:20-bookworm-slim
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends node-express node-pg \
-  && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
-COPY . /app
 
+COPY package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+COPY . .
+
+ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
 

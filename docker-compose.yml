@@ -1,34 +1,65 @@
 services:
   prompt-creator:
+    # Build the app image from this repository.
     build: .
     container_name: prompt-creator
     restart: unless-stopped
+    # App starts only after PostgreSQL healthcheck is green.
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      # Internal app port (Traefik forwards to this port).
       - PORT=8080
-      - DATABASE_URL=postgresql://prompt:prompt@postgres:5432/prompt_creator
-      - AUTH_REQUIRED=true
-      - OIDC_REQUIRED_GROUP=teacher
-    ports:
-      - "8080:8080"
+      # Enforce authentication and teacher-group access.
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
+      - OIDC_REQUIRED_GROUP=${OIDC_REQUIRED_GROUP:-teacher}
+      # Database URL built from .env values.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-prompt}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-prompt_creator}
+    networks:
+      # Internal = app<->db, proxy = app<->traefik.
+      - internal
+      - proxy
+    labels:
+      # Expose this container to Traefik and route by hostname.
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-proxy}"
+      - "traefik.http.routers.prompt-creator.rule=Host(`${PROMPTS_HOST:-prompts.berncloud.eu}`)"
+      - "traefik.http.routers.prompt-creator.entrypoints=websecure"
+      - "traefik.http.routers.prompt-creator.tls.certresolver=myresolver"
+      # ForwardAuth middleware published by Authentik outpost.
+      - "traefik.http.routers.prompt-creator.middlewares=${TRAEFIK_AUTH_MIDDLEWARE:-authentik@docker}"
+      # Container-side port Traefik should use.
+      - "traefik.http.services.prompt-creator.loadbalancer.server.port=8080"
 
   postgres:
     image: postgres:16-alpine
     container_name: prompt-creator-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=prompt_creator
-      - POSTGRES_USER=prompt
-      - POSTGRES_PASSWORD=prompt
+      # DB name/user/password are read from .env.
+      - POSTGRES_DB=${POSTGRES_DB:-prompt_creator}
+      - POSTGRES_USER=${POSTGRES_USER:-prompt}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
+      # Persistent database storage.
       - prompt_creator_pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prompt -d prompt_creator"]
+      # Compose waits for this to pass before starting prompt-creator.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prompt} -d ${POSTGRES_DB:-prompt_creator}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
   prompt_creator_pgdata:
+
+networks:
+  # Private network used only by this stack.
+  internal:
+  proxy:
+    # Must match the external network used by your Traefik stack.
+    external: true
+    name: ${TRAEFIK_DOCKER_NETWORK:-proxy}
