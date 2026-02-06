@@ -1,0 +1,9 @@
+# Local environment secrets
+.env
+
+# Optional local env variants
+.env.local
+.env.*.local
+
+# Keep example env file in git
+!.env.example
