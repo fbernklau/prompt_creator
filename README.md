@@ -77,7 +77,7 @@ POSTGRES_DB=prompt_creator
 POSTGRES_USER=prompt
 POSTGRES_PASSWORD=<strong-random-password>
 AUTH_REQUIRED=true
-OIDC_REQUIRED_GROUP=teacher
+OIDC_REQUIRED_GROUP=teachers
 TRAEFIK_DOCKER_NETWORK=proxy
 TRAEFIK_AUTH_MIDDLEWARE=authentik@docker
 ```
@@ -128,7 +128,7 @@ Use Authentik Proxy Provider + Traefik Outpost.
 
 In Authentik Admin:
 - `Directory -> Groups -> Create`
-- Name: `teacher`
+- Name: `teachers`
 - Add allowed users to this group.
 
 ## 2) Create application + provider
@@ -145,7 +145,7 @@ In Authentik Admin:
 - Name: `Prompt Creator`
 - Slug: `prompt-creator`
 - Provider: `prompt-creator-proxy`
-- Group/Policy assignment: allow `teacher` group
+- Group/Policy assignment: allow `teachers` group
 
 ## 3) Outpost integration with Traefik
 
@@ -208,19 +208,19 @@ No custom mapping needed in app code anymore. The app accepts:
 ## 5) Group enforcement in app
 
 Env var:
-- `OIDC_REQUIRED_GROUP=teacher`
+- `OIDC_REQUIRED_GROUP=teachers`
 
 Behavior:
 - no authenticated user header -> `401`
-- authenticated user not in `teacher` -> `403`
-- authenticated user in `teacher` -> access granted
+- authenticated user not in `teachers` -> `403`
+- authenticated user in `teachers` -> access granted
 
 ## End-to-end test checklist
 
 1. Open `https://prompts.berncloud.eu`
 2. You should be redirected to Authentik login if not authenticated.
-3. Login with user in `teacher` group -> app loads.
-4. Login with user not in `teacher` group -> app API returns `403`.
+3. Login with user in `teachers` group -> app loads.
+4. Login with user not in `teachers` group -> app API returns `403`.
 5. Save provider and refresh page -> data persists (PostgreSQL).
 
 ## First deployment order (recommended)
@@ -228,7 +228,7 @@ Behavior:
 1. Traefik running on network `proxy` with working ACME resolver `myresolver`.
 2. Authentik server reachable at `https://auth.berncloud.eu`.
 3. Authentik outpost deployed and visible as middleware in Traefik dashboard.
-4. `teacher` group exists and at least one test user belongs to it.
+4. `teachers` group exists and at least one test user belongs to it.
 5. Prompt-creator stack started with `.env` values.
 6. DNS `prompts.berncloud.eu` points to VPS and TLS certificate is issued.
 
@@ -258,7 +258,7 @@ docker compose up -d
 - Verify `TRAEFIK_AUTH_MIDDLEWARE`.
 
 4. `403 User is not in required group`
-- User not in Authentik `teacher` group.
+- User not in Authentik `teachers` group.
 - Or group header format mismatch in outpost/policy.
 
 5. TLS/certificate issues

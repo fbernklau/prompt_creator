@@ -3,119 +3,322 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KI Promptgenerator Schule</title>
+    <title>EduPrompt-AT</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>KI‑Promptgenerator für den Schulalltag</h1>
-        <p>Didaktisch geführter Meta‑Prompt mit Provider-/Modellverwaltung</p>
+      <div class="brand">
+        <div class="brand-mark">EP</div>
+        <div class="brand-name">EduPrompt-AT</div>
       </div>
-      <span class="badge">de-AT</span>
+      <div class="topbar-actions">
+        <button id="btn-new-task" type="button" class="text-btn">Neue Aufgabe</button>
+        <button id="btn-library" type="button" class="text-btn">Bibliothek</button>
+        <button id="btn-history" type="button" class="text-btn">Verlauf</button>
+        <button id="btn-provider" type="button" class="text-btn">API-Provider</button>
+        <button id="btn-options" type="button" class="text-btn">Optionen</button>
+        <span class="user-chip" id="current-user">Benutzer: lade...</span>
+      </div>
     </header>
 
-    <main class="layout">
-      <section class="card" aria-labelledby="provider-title">
-        <div class="card-header">
-          <h2 id="provider-title">Provider & Modelle</h2>
-          <small>Mehrere Provider anlegen und wechseln</small>
+    <main class="main-shell">
+      <section id="screen-home" class="screen">
+        <h1>Wie kann ich dir heute helfen?</h1>
+        <p class="subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
+        <div id="category-grid" class="card-grid"></div>
+      </section>
+
+      <section id="screen-subcategory" class="screen is-hidden">
+        <button id="btn-back-home-from-subcat" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+        <h2 id="selected-category-title"></h2>
+        <p id="selected-category-desc" class="subline"></p>
+        <div id="subcategory-list" class="list-cards"></div>
+      </section>
+
+      <section id="screen-form" class="screen is-hidden">
+        <div class="step-nav">
+          <button id="btn-back-subcat" type="button" class="link-btn">&larr; Andere Unterkategorie w&auml;hlen</button>
+          <button id="btn-back-home-from-form" type="button" class="link-btn">Zur &Uuml;bersicht</button>
         </div>
 
-        <div class="user-chip" id="current-user">Benutzer: lade…</div>
+        <div class="form-header">
+          <h2 id="form-category-title"></h2>
+          <p id="form-subcategory-title" class="subline"></p>
+        </div>
 
-        <div class="vault-box">
-          <label>Vault-Passphrase (nur lokal, nie an Server gesendet)
+        <form id="prompt-form" class="stack-form">
+          <div class="panel panel-soft">
+            <h3>Basisdaten</h3>
+            <div class="grid-2">
+              <label>Fach
+                <input id="fach" required placeholder="z. B. Digitale Grundbildung" />
+              </label>
+              <label>Schulstufe
+                <input id="schulstufe" required placeholder="z. B. 9. Schulstufe" />
+              </label>
+              <label class="span-2">Unterkategorie
+                <select id="unterkategorie-select"></select>
+              </label>
+              <label class="span-2">Ziel der Aufgabe
+                <textarea id="ziel" rows="3" required placeholder="Was soll konkret vorliegen?"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Template-spezifische Parameter</h3>
+            <small id="validation-hint" class="hint"></small>
+            <div id="dynamic-fields" class="grid-2"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title-row">
+              <h3>Erweiterte Optionen</h3>
+              <button id="toggle-advanced" type="button" class="text-btn small">Ein-/Ausblenden</button>
+            </div>
+
+            <div id="advanced-fields" class="grid-2">
+              <label>Zeitraum
+                <select id="zeitrahmen-select"></select>
+              </label>
+              <label>Zeitraum (custom)
+                <input id="zeitrahmen-custom" placeholder="Eigener Zeitraum" />
+              </label>
+
+              <label>Niveau
+                <select id="niveau-select"></select>
+              </label>
+              <label>Niveau (custom)
+                <input id="niveau-custom" placeholder="Eigenes Niveau" />
+              </label>
+
+              <label>Rahmen
+                <select id="rahmen-select"></select>
+              </label>
+              <label>Rahmen (custom)
+                <input id="rahmen-custom" placeholder="Eigener Rahmen" />
+              </label>
+
+              <label>Ergebnisformat
+                <select id="ergebnisformat-select"></select>
+              </label>
+              <label>Ergebnisformat (custom)
+                <input id="ergebnisformat-custom" placeholder="Eigenes Format" />
+              </label>
+
+              <label>Tonalitaet / Sprache
+                <select id="ton-select"></select>
+              </label>
+              <label>Tonalitaet (custom)
+                <input id="ton-custom" placeholder="Eigener Stil" />
+              </label>
+            </div>
+
+            <label class="checkbox top-space">
+              <input id="rueckfragen" type="checkbox" checked />
+              <span>Kl&auml;rende R&uuml;ckfragen aktivieren</span>
+            </label>
+          </div>
+
+          <button type="submit" class="cta">Prompt generieren</button>
+        </form>
+      </section>
+
+      <section id="screen-result" class="screen is-hidden">
+        <div class="result-banner">Dein KI-Prompt ist bereit!</div>
+
+        <div class="panel top-space">
+          <div class="result-toolbar">
+            <label class="checkbox">
+              <input id="copy-include-metadata" type="checkbox" />
+              <span>Include Metadata</span>
+            </label>
+            <div class="inline-actions">
+              <button id="copy-prompt" type="button" class="secondary">Kopieren</button>
+              <button id="export-txt" type="button" class="secondary">Export .txt</button>
+              <button id="export-md" type="button" class="secondary">Export .md</button>
+            </div>
+          </div>
+          <div id="result-meta" class="hint"></div>
+          <textarea id="result" rows="16" readonly></textarea>
+        </div>
+
+        <div class="panel top-space">
+          <h3>In Bibliothek speichern</h3>
+          <div class="grid-2">
+            <label class="span-2">Titel
+              <input id="library-title" placeholder="z. B. Stoffverteilungsplan 9. Schulstufe" />
+            </label>
+            <label>Bewertung
+              <select id="library-rating">
+                <option value="">Keine</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+            </label>
+            <label class="checkbox">
+              <input id="library-public" type="checkbox" />
+              <span>In &ouml;ffentliche Bibliothek aufnehmen</span>
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="save-library" type="button">Save to library</button>
+            <small id="save-library-status" class="hint"></small>
+          </div>
+        </div>
+
+        <div class="inline-actions top-space">
+          <button id="btn-adjust" type="button" class="secondary">Anpassungen vornehmen</button>
+          <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+        </div>
+      </section>
+
+      <section id="screen-library" class="screen is-hidden">
+        <div class="step-nav">
+          <button id="btn-back-home-from-library" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+        </div>
+        <h2>Bibliothek</h2>
+        <p class="subline">Eigene Prompts verwalten und &ouml;ffentliche Prompts durchsuchen.</p>
+
+        <div class="panel">
+          <div class="inline-actions">
+            <button id="lib-tab-own" type="button" class="secondary is-active">Meine Bibliothek</button>
+            <button id="lib-tab-public" type="button" class="secondary">Public Library</button>
+          </div>
+          <div class="grid-3 top-space">
+            <label>Kategorie
+              <select id="lib-filter-category"></select>
+            </label>
+            <label>Unterkategorie
+              <select id="lib-filter-subcategory"></select>
+            </label>
+            <label>Suche
+              <input id="lib-filter-search" placeholder="Titel oder Inhalt" />
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="lib-refresh" type="button">Aktualisieren</button>
+          </div>
+        </div>
+
+        <div id="library-list" class="library-list top-space"></div>
+      </section>
+    </main>
+
+    <aside id="provider-drawer" class="drawer is-hidden">
+      <div class="drawer-head">
+        <h2>API-Provider</h2>
+        <button id="close-provider-drawer" type="button" class="text-btn">Schliessen</button>
+      </div>
+      <div class="drawer-body">
+        <div class="panel">
+          <label>Vault-Passphrase
             <input id="vault-passphrase" type="password" placeholder="mindestens 8 Zeichen" />
           </label>
-          <div class="actions">
+          <div class="inline-actions top-space">
             <button id="unlock-vault" type="button">Vault entsperren</button>
             <button id="lock-vault" type="button" class="secondary">Vault sperren</button>
           </div>
-          <small id="vault-status" class="vault-status"></small>
+          <small id="vault-status" class="hint"></small>
         </div>
 
-        <form id="provider-form" class="grid-2">
-          <label>Anzeigename<input id="provider-name" required placeholder="z. B. OpenAI Schule" /></label>
-          <label>Provider
-            <select id="provider-kind" required>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="mistral">Mistral</option>
-              <option value="google">Google</option>
-              <option value="custom">Custom API</option>
-            </select>
-          </label>
-          <label>Modell<input id="provider-model" required placeholder="z. B. gpt-4o-mini" /></label>
-          <label>API-Key<input id="provider-key" type="password" placeholder="sk-..." /></label>
-          <label class="span-2">API Base URL (optional)<input id="provider-base" placeholder="https://api.example.com/v1" /></label>
-          <div class="actions span-2">
+        <form id="provider-form" class="panel top-space">
+          <div class="grid-2">
+            <label>Anzeigename
+              <input id="provider-name" required placeholder="z. B. OpenAI Schule" />
+            </label>
+            <label>Provider
+              <select id="provider-kind" required>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="mistral">Mistral</option>
+                <option value="google">Google</option>
+                <option value="custom">Custom API</option>
+              </select>
+            </label>
+            <label>Modell
+              <input id="provider-model" required placeholder="z. B. gpt-4o-mini" />
+            </label>
+            <label>API-Key
+              <input id="provider-key" type="password" placeholder="sk-..." />
+            </label>
+            <label class="span-2">API Base URL (optional)
+              <input id="provider-base" placeholder="https://api.example.com/v1" />
+            </label>
+          </div>
+          <div class="inline-actions top-space">
             <button type="submit">Provider speichern</button>
             <button id="provider-reset" type="button" class="secondary">Formular leeren</button>
           </div>
         </form>
 
-        <div class="provider-list-wrap">
-          <label>Aktiver Provider<select id="active-provider"></select></label>
-          <ul id="provider-list" class="provider-list" aria-live="polite"></ul>
+        <div class="panel top-space">
+          <label>Aktiver Provider
+            <select id="active-provider"></select>
+          </label>
+          <ul id="provider-list" class="provider-list top-space"></ul>
         </div>
-      </section>
+      </div>
+    </aside>
 
-      <section class="card" aria-labelledby="prompt-title">
-        <div class="card-header">
-          <h2 id="prompt-title">Prompt-Assistent</h2>
-          <small>Vorgegebene Kategorien für schnelle Entlastung</small>
-        </div>
+    <aside id="history-drawer" class="drawer is-hidden">
+      <div class="drawer-head">
+        <h2>Prompt-Verlauf</h2>
+        <button id="close-history-drawer" type="button" class="text-btn">Schliessen</button>
+      </div>
+      <div class="drawer-body">
+        <ul id="history-list" class="history-list"></ul>
+      </div>
+    </aside>
 
-        <form id="prompt-form" class="grid-2">
-          <label>Schulstufe / Klasse<input id="schulstufe" required placeholder="z. B. 9. Schulstufe" /></label>
-          <label>Fach / Lernbereich<input id="fach" required placeholder="z. B. Digitale Grundbildung" /></label>
-
-          <label>Handlungsfeld<select id="handlungsfeld" required></select></label>
-          <label>Unterkategorie<select id="unterkategorie" required></select></label>
-
-          <fieldset class="span-2 dyn-fieldset">
-            <legend>Template-spezifische Parameter</legend>
-            <small id="validation-hint"></small>
-            <div id="dynamic-fields" class="grid-2"></div>
-          </fieldset>
-
-          <label class="span-2">Ziel der Aufgabe<textarea id="ziel" rows="2" required placeholder="Was soll am Ende konkret vorliegen?"></textarea></label>
-          <label>Zeitrahmen<input id="zeitrahmen" placeholder="z. B. 1 UE, 2 Wochen" /></label>
-          <label>Niveau / Heterogenität<input id="niveau" placeholder="z. B. stark heterogen" /></label>
-          <label>Rahmenbedingungen<input id="rahmen" placeholder="DaZ, Teamteaching, Geräte, ..." /></label>
-          <label>Ergebnisformat<input id="ergebnisformat" placeholder="Tabelle, Checkliste, Rubrik, ..." /></label>
-          <label>Tonalität / Sprachlevel<input id="ton" placeholder="klar, einfach, professionell" /></label>
-
-          <label class="checkbox span-2"><input id="rueckfragen" type="checkbox" /><span>Klärende Rückfragen vor Prompt-Erstellung aktivieren</span></label>
-
-          <div class="actions span-2">
-            <button type="submit">Prompt generieren</button>
-            <button type="button" id="copy-prompt" class="secondary">Prompt kopieren</button>
-          </div>
-        </form>
-      </section>
-
-      <section class="card" aria-labelledby="result-title">
-        <div class="card-header">
-          <h2 id="result-title">Ergebnis</h2>
-          <small>Copy-Paste-fähig für dein ausgewähltes Modell</small>
-        </div>
-        <div class="result-meta" id="result-meta"></div>
-        <textarea id="result" rows="18" readonly placeholder="Hier erscheint der generierte Prompt..."></textarea>
-        <div class="actions top-space">
-          <button id="export-txt" type="button" class="secondary">Export .txt</button>
-          <button id="export-md" type="button" class="secondary">Export .md</button>
+    <aside id="options-drawer" class="drawer is-hidden">
+      <div class="drawer-head">
+        <h2>Optionen</h2>
+        <button id="close-options-drawer" type="button" class="text-btn">Schliessen</button>
+      </div>
+      <div class="drawer-body">
+        <div class="panel">
+          <h3>Theme</h3>
+          <label class="radio"><input type="radio" name="theme" value="system" /> System</label>
+          <label class="radio"><input type="radio" name="theme" value="light" /> Light</label>
+          <label class="radio"><input type="radio" name="theme" value="dark" /> Dark</label>
         </div>
 
-        <div class="history">
-          <h3>Prompt-Verlauf</h3>
-          <ul id="history-list"></ul>
+        <div class="panel top-space">
+          <h3>Flow-Modus</h3>
+          <label class="radio"><input type="radio" name="flow-mode" value="step" /> Schrittweise Ansicht</label>
+          <label class="radio"><input type="radio" name="flow-mode" value="single" /> Kompaktansicht</label>
         </div>
-      </section>
-    </main>
 
-    <footer class="footer">Sicherheitsmodus: API-Keys werden nur verschlüsselt im Browser gespeichert.</footer>
+        <div class="panel top-space">
+          <h3>Standardverhalten</h3>
+          <label class="checkbox"><input id="setting-copy-metadata" type="checkbox" /><span>Metadata beim Kopieren standardmaessig aktivieren</span></label>
+          <label class="checkbox"><input id="setting-advanced-open" type="checkbox" /><span>Erweiterte Optionen standardmaessig offen</span></label>
+        </div>
+
+        <div class="inline-actions top-space">
+          <button id="save-settings" type="button">Einstellungen speichern</button>
+          <small id="settings-status" class="hint"></small>
+        </div>
+      </div>
+    </aside>
+
+    <div id="flow-choice-modal" class="modal is-hidden">
+      <div class="modal-card">
+        <h2>Ansicht waehlen</h2>
+        <p class="subline">Du kannst das spaeter jederzeit unter Optionen aendern.</p>
+        <div class="inline-actions top-space">
+          <button id="choose-flow-step" type="button">Schrittweise Ansicht</button>
+          <button id="choose-flow-single" type="button" class="secondary">Kompaktansicht</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay is-hidden"></div>
 
     <script src="app.js"></script>
   </body>

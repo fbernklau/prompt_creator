@@ -11,9 +11,9 @@ services:
     environment:
       # Internal app port (Traefik forwards to this port).
       - PORT=8080
-      # Enforce authentication and teacher-group access.
+      # Enforce authentication and teachers-group access.
       - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
-      - OIDC_REQUIRED_GROUP=${OIDC_REQUIRED_GROUP:-teacher}
+      - OIDC_REQUIRED_GROUP=${OIDC_REQUIRED_GROUP:-teachers}
       # Database URL built from .env values.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-prompt}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-prompt_creator}
     networks:
