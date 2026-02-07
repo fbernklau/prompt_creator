@@ -58,6 +58,7 @@ Owner: Team + Codex
 - [ ] Real per-template required/optional fields model (current logic is category-level config).
 - [ ] User-managed template hierarchy (category/subcategory/template creation by level).
 - [ ] Official vs Personal vs Community template lifecycle with review/approval flow.
+- [ ] Role-based access model via Authentik groups (beyond basic user/admin split).
 - [ ] User setting to hide/show community templates.
 - [ ] Ratings for template scopes (`official`, `personal`, `community`) in the upcoming template engine.
 - [ ] Tag system for search/filter.
@@ -104,8 +105,15 @@ Owner: Team + Codex
 ### Phase 3 - Governance and sharing model
 - [ ] Add scopes: `official`, `personal`, `community`.
 - [ ] Add review states: `draft`, `submitted`, `approved`, `rejected`.
+- [ ] Implement RBAC from Authentik group claims (`x-authentik-groups`) with a simple, scalable role model:
+  - `teachers` (access gate): can use app, create/edit personal templates, submit for review, rate visible templates.
+  - `template_reviewers`: can review/approve/reject community submissions and moderate community tags.
+  - `template_curators`: can publish/manage official templates and maintain official taxonomy/tag catalog.
+  - `platform_admins`: full access (RBAC config, emergency override, destructive admin actions).
 - [ ] Add moderation endpoints and admin checks.
 - [ ] Add per-user preference: `show_community_templates`.
+- [ ] Add deny-by-default permission matrix for every template/tag/review endpoint.
+- [ ] Document Authentik setup steps for required groups and policy bindings.
 
 ### Phase 4 - Discovery features
 - [ ] Implement tag tables and filtering endpoints.
