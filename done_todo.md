@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-06
+Last updated: 2026-02-07
 Owner: Team + Codex
 
 ## Purpose
@@ -11,7 +11,11 @@ Owner: Team + Codex
 ## Current Snapshot
 - Branch: `main`
 - Latest commit: `ff982bd` (2026-02-06) `refactor for modularity`
-- Local note: `node` is not installed in this environment, so runtime checks were not executed here.
+- Working tree currently includes refactor changes not yet committed.
+- Recovered context source loaded: `/home/flo/rollout-2026-02-06T11-39-43-019c3289-4736-7743-8909-bf609d4cea11.jsonl`
+- Local runtime note:
+  - `node`/`npm` are now available for Codex in this WSL shell (via `~/.profile` PATH update).
+  - `docker` CLI is still not available in this shell yet (Docker checks pending).
 
 ## Done (confirmed in git/code)
 - [x] Docker/build refactor (`56bb8de`): Dockerfile + compose + env cleanup.
@@ -22,6 +26,9 @@ Owner: Team + Codex
 - [x] Frontend now loads template catalog dynamically from `/api/template-catalog` instead of hardcoded definitions.
 - [x] Frontend modularization completed: `app.js` is now an entry/orchestrator and logic is split into `frontend/*` controllers/modules.
 - [x] Container build hardening: added `.dockerignore`, and Dockerfile now prefers `npm ci` when `package-lock.json` is present.
+- [x] Root ignore cleanup: `.gitignore` now excludes dependency artifacts (`node_modules`, npm/yarn logs).
+- [x] Frontend bootstrap updated to ESM entry (`<script type="module" src="app.js">`).
+- [x] Startup log now prints active auth mode and required group.
 - [x] Traefik/Auth headers and access control are integrated.
 - [x] PostgreSQL-backed persistence exists for:
   - Providers
@@ -30,12 +37,29 @@ Owner: Team + Codex
   - Prompt library + ratings
 - [x] Provider key vault encryption/decryption flow exists on the client side.
 
+## Recovered Session Decisions (merged from old rollout file)
+- [x] Auth group naming settled on `teachers` (not `teacher`) for access checks and docs.
+- [x] Non-breaking principle reaffirmed: additive changes first; no destructive migration paths unless intentionally chosen.
+- [x] Preproduction DB status confirmed in prior session: currently empty, so cleaner schema redesign is allowed when starting template engine v2.
+- [x] Field modeling decision:
+  - Use hybrid approach: profile defaults for speed (`unterrichtsnah`, `kommunikation`, `organisation_admin`) but persisted per-template field schema is the final source of truth.
+- [x] Scope/visibility decision:
+  - `official`: admin-provided, globally visible.
+  - `personal`: owner-only.
+  - `community`: personal -> submitted -> approved, then globally visible with community badge.
+  - user preference `showCommunity` controls whether community templates are shown globally.
+- [x] Rating decision:
+  - ratings should be supported for all scopes in the future template system.
+- [x] Provider base URL preset UX decision:
+  - known defaults + `Auto Base URL` checkbox (ON = prefill+lock, OFF = editable override).
+
 ## What is NOT done yet (from requested roadmap)
 - [ ] Provider base URLs prefilled by known provider and lockable with checkbox override.
 - [ ] Real per-template required/optional fields model (current logic is category-level config).
 - [ ] User-managed template hierarchy (category/subcategory/template creation by level).
 - [ ] Official vs Personal vs Community template lifecycle with review/approval flow.
 - [ ] User setting to hide/show community templates.
+- [ ] Ratings for template scopes (`official`, `personal`, `community`) in the upcoming template engine.
 - [ ] Tag system for search/filter.
 - [ ] Migration/test workflow (schema currently bootstrapped in app start).
 
@@ -65,7 +89,7 @@ Owner: Team + Codex
 - [ ] Provider presets:
   - `openai -> https://api.openai.com/v1`
   - `anthropic -> https://api.anthropic.com`
-  - `google -> https://generativelanguage.googleapis.com`
+  - `google -> https://generativelanguage.googleapis.com/v1beta`
   - `mistral -> https://api.mistral.ai/v1`
 - [ ] Add checkbox: `Use recommended base URL` (locked by default).
 - [ ] Add checkbox override: `Allow custom base URL`.
@@ -73,7 +97,8 @@ Owner: Team + Codex
 
 ### Phase 2 - Template model foundation (must-have for roadmap)
 - [ ] Move template metadata to DB tables (`template_categories`, `template_nodes`, `templates`, `template_fields`, `template_versions`).
-- [ ] Make field requirements fully template-driven (including former base fields).
+- [ ] Implement profile defaults (`unterrichtsnah`, `kommunikation`, `organisation_admin`) as authoring helpers.
+- [ ] Make field requirements fully template-driven (including former base fields) as persisted source of truth.
 - [ ] Keep read-only seed templates for initial official set.
 
 ### Phase 3 - Governance and sharing model
@@ -85,11 +110,20 @@ Owner: Team + Codex
 ### Phase 4 - Discovery features
 - [ ] Implement tag tables and filtering endpoints.
 - [ ] Add tag chips + search filters in UI.
+- [ ] Add ranking policy for search results (exact > tags > rating/usage > recency).
 
 ### Phase 5 - Future-proofing
-- [ ] Split frontend into modules (`api`, `state`, `templates`, `providers`, `library`, `ui`).
 - [ ] Add DB migration tooling.
 - [ ] Add basic integration tests for critical flows.
+- [ ] Add optional feature flag for new template engine rollout (`TEMPLATE_ENGINE_V2`).
+
+## Environment / Tooling Status
+- [x] Node toolchain usable by Codex in WSL shell (`node`, `npm`).
+- [ ] Docker CLI/daemon usable by Codex in WSL shell (`docker`, `docker compose`).
+- [ ] Full in-environment validation still pending:
+  - `docker compose config`
+  - `docker compose up -d --build`
+  - runtime smoke tests with Authentik + `teachers` group enforcement
 
 ## Deployment Safety Plan (VPS with older version running)
 - [ ] On VPS, record:
@@ -114,7 +148,7 @@ Owner: Team + Codex
   - add decisions and assumptions
   - add next concrete 1-3 steps
 
-## Next 3 Recommended Steps
-- [ ] Step 1: Confirm VPS deployed commit and create backup.
-- [ ] Step 2: Implement/fix template validation/source-of-truth issues.
-- [ ] Step 3: Implement provider base URL presets + lock/override UX.
+## Next 3 Recommended Steps (after restart)
+- [ ] Step 1: Finish Docker availability in WSL shell (`docker --version`, `docker compose version`).
+- [ ] Step 2: Run deployment checks locally/in-WSL (`docker compose config`, `docker compose up -d --build`, smoke tests).
+- [ ] Step 3: Commit/push refactor changes, then proceed with template validation/source-of-truth fix.
