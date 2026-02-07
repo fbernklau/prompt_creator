@@ -1,0 +1,118 @@
+const defaultTemplateCatalog = {
+  categories: {
+    Jahresplanung: {
+      title: 'Jahres- & Semesterplanung',
+      short: 'JA',
+      description: 'Strukturierung des Schuljahres nach Lehrplan.',
+      pflichtangaben: ['schulstufe', 'fach', 'zeitraum', 'kompetenzziele'],
+      unterkategorien: ['Semesterplanung', 'Kompetenzraster', 'Themenverteilung', 'Pruefungs- und Leistungsfenster'],
+      dynamicFields: [
+        { id: 'zeitraum', label: 'Planungszeitraum', type: 'select', required: true, options: ['Semester', 'Schuljahr', 'Quartal', 'Monat'] },
+        { id: 'kompetenzziele', label: 'Kompetenzziele', type: 'textarea', required: true, placeholder: 'Welche Kompetenzen sollen erreicht werden?' },
+        { id: 'leistungsfenster', label: 'Leistungsfenster beruecksichtigen', type: 'checkbox' },
+      ],
+    },
+    Unterrichtsvorbereitung: {
+      title: 'Unterrichtsvorbereitung',
+      short: 'UV',
+      description: 'Stundenbilder, Arbeitsblaetter und Medien.',
+      pflichtangaben: ['lernziel', 'dauer', 'heterogenitaet', 'material'],
+      unterkategorien: ['Stundendesign', 'Arbeitsauftraege', 'Materialerstellung', 'Einstiegs- und Abschlussphasen'],
+      dynamicFields: [
+        { id: 'lernziel', label: 'Lernziel', type: 'text', required: true },
+        { id: 'dauer', label: 'Dauer', type: 'select', required: true, options: ['50 Min', '100 Min', '1 Woche', '2 Wochen'] },
+        { id: 'heterogenitaet', label: 'Heterogenitaet', type: 'text', required: true, placeholder: 'z. B. stark heterogen' },
+        { id: 'material', label: 'Verfuegbares Material', type: 'text', required: true, placeholder: 'z. B. Laptops, Arbeitsblaetter' },
+        { id: 'hausuebung', label: 'Mit Hausuebung', type: 'checkbox' },
+      ],
+    },
+    'Individualisierung & Differenzierung': {
+      title: 'Individualisierung & Foerderplaene',
+      short: 'ID',
+      description: 'Differenzierung fuer heterogene Klassen.',
+      pflichtangaben: ['thema', 'niveaustufen', 'foerderbedarf'],
+      unterkategorien: ['Niveaustufen', 'Foerdermassnahmen', 'Lernpfade', 'Wahlaufgaben'],
+      dynamicFields: [
+        { id: 'thema', label: 'Thema', type: 'text', required: true },
+        { id: 'niveaustufen', label: 'Niveaustufen', type: 'multiselect', required: true, options: ['Basis', 'Aufbau', 'Transfer'] },
+        { id: 'foerderbedarf', label: 'Foerderbedarf', type: 'textarea', required: true },
+        { id: 'selbstlernphase', label: 'Selbstlernphase integrieren', type: 'checkbox' },
+      ],
+    },
+    'Barrierefreiheit & Inklusion': {
+      title: 'Barrierefreiheit',
+      short: 'BI',
+      description: 'Leichte Sprache und inklusive Materialien.',
+      pflichtangaben: ['ausgangsmaterial', 'bedarfe', 'zielniveau'],
+      unterkategorien: ['Leichte Sprache', 'DaZ-Unterstuetzung', 'Visuelle Strukturierung', 'Nachteilsausgleich'],
+      dynamicFields: [
+        { id: 'ausgangsmaterial', label: 'Ausgangsmaterial', type: 'text', required: true },
+        { id: 'bedarfe', label: 'Bedarfe', type: 'multiselect', required: true, options: ['Leichte Sprache', 'DaZ', 'Screenreader', 'Visuelle Unterstuetzung'] },
+        { id: 'zielniveau', label: 'Zielniveau', type: 'select', required: true, options: ['Basis', 'Mittel', 'Erweitert'] },
+        { id: 'nachteilsausgleich', label: 'Nachteilsausgleich beruecksichtigen', type: 'checkbox' },
+      ],
+    },
+    'Elternkontakte & Kommunikation': {
+      title: 'Elternkontakte',
+      short: 'EK',
+      description: 'Briefe, Einladungen und Kommunikation.',
+      pflichtangaben: ['anlass', 'ton', 'ziel'],
+      unterkategorien: ['Elternbrief', 'Gespraechsleitfaden', 'Rueckmeldung zu Lernstand', 'Konfliktsensible Kommunikation'],
+      dynamicFields: [
+        { id: 'anlass', label: 'Anlass', type: 'text', required: true },
+        { id: 'ton', label: 'Ton', type: 'select', required: true, options: ['wertschaetzend', 'sachlich', 'motivierend'] },
+        { id: 'ziel', label: 'Kommunikationsziel', type: 'textarea', required: true },
+        { id: 'mehrsprachig', label: 'Mehrsprachige Version vorschlagen', type: 'checkbox' },
+      ],
+    },
+    'Leistungsbeurteilung & Feedback': {
+      title: 'Leistungsbeurteilung',
+      short: 'LB',
+      description: 'Kriterienkataloge und Feedback.',
+      pflichtangaben: ['kompetenzen', 'kriterienset', 'format'],
+      unterkategorien: ['Beurteilungsraster', 'Rubrics', 'Feedbacktexte', 'Selbst- und Peer-Assessment'],
+      dynamicFields: [
+        { id: 'kompetenzen', label: 'Kompetenzen', type: 'textarea', required: true },
+        { id: 'kriterienset', label: 'Kriterienset', type: 'textarea', required: true },
+        { id: 'format', label: 'Format', type: 'select', required: true, options: ['Rubric', 'Punkte', 'Noten', 'Kompetenzstufen'] },
+        { id: 'peer_assessment', label: 'Selbst-/Peer-Assessment integrieren', type: 'checkbox' },
+        { id: 'feedbackbausteine', label: 'Feedbackbausteine mitliefern', type: 'checkbox' },
+      ],
+    },
+    Administration: {
+      title: 'Administration',
+      short: 'AD',
+      description: 'Listen, Dokumentation und Anwesenheit.',
+      pflichtangaben: ['aufgabe', 'turnus', 'ausgabeformat'],
+      unterkategorien: ['Anwesenheitsdokumentation', 'Listen & Uebersichten', 'Protokolle', 'Fristenmanagement'],
+      dynamicFields: [
+        { id: 'aufgabe', label: 'Aufgabe', type: 'text', required: true },
+        { id: 'turnus', label: 'Turnus', type: 'select', required: true, options: ['taeglich', 'woechentlich', 'monatlich'] },
+        { id: 'ausgabeformat', label: 'Ausgabeformat', type: 'select', required: true, options: ['Tabelle', 'Checkliste', 'Protokoll'] },
+        { id: 'automatische_fristen', label: 'Fristenhinweise einplanen', type: 'checkbox' },
+      ],
+    },
+    Organisation: {
+      title: 'Organisation & Exkursionen',
+      short: 'OR',
+      description: 'Planung von Wandertagen und Events.',
+      pflichtangaben: ['vorhaben', 'zeitrahmen_org', 'risiken'],
+      unterkategorien: ['Exkursionen', 'Projektplanung', 'Checklisten', 'Ressourcenplanung'],
+      dynamicFields: [
+        { id: 'vorhaben', label: 'Vorhaben', type: 'text', required: true },
+        { id: 'zeitrahmen_org', label: 'Zeitrahmen', type: 'text', required: true },
+        { id: 'risiken', label: 'Risiken/Abhaengigkeiten', type: 'textarea', required: true },
+        { id: 'plan_b', label: 'Plan B ausgeben', type: 'checkbox' },
+      ],
+    },
+  },
+  presetOptions: {
+    zeitrahmen: ['', '1 Stunde', '2 Stunden', 'Halbtag', 'Tag', 'Woche', 'Monat', '__custom__'],
+    niveau: ['', 'Basis', 'Mittel', 'Erweitert', 'Heterogen', '__custom__'],
+    rahmen: ['', 'DaZ', 'Teamteaching', 'Digital', 'Inklusiv', 'Pruefung', '__custom__'],
+    ergebnisformat: ['', 'Liste', 'Tabelle', 'Ablaufplan', 'Rubric', 'Checkliste', '__custom__'],
+    ton: ['', 'klar', 'sachlich', 'formal', 'praezise', 'motivierend', 'einfach', '__custom__'],
+  },
+};
+
+module.exports = { defaultTemplateCatalog };

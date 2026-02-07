@@ -7,3 +7,9 @@
 
 # Keep example env file in git
 !.env.example
+
+# Dependency/install artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

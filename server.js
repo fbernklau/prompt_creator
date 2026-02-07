@@ -12,6 +12,7 @@ async function bootstrap() {
 
   app.listen(config.port, () => {
     console.log(`prompt-creator server running on :${config.port}`);
+    console.log(`auth required: ${config.authRequired ? 'yes' : 'no'} | required group: ${config.requiredGroup || '(none)'}`);
   });
 }
 

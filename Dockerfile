@@ -3,7 +3,8 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \
+  && npm cache clean --force
 
 COPY . .
 

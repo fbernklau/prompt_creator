@@ -1,0 +1,21 @@
+# VCS
+.git
+.gitignore
+
+# Local dependencies and caches
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files (example file is safe and useful in image context)
+.env
+.env.local
+.env.*.local
+
+# Editor / OS noise
+.DS_Store
+*.swp
+
+# Runtime tracker/docs not needed for container runtime
+done_todo.md
