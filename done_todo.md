@@ -35,7 +35,11 @@ Owner: Team + Codex
   - Prompt history
   - User settings
   - Prompt library + ratings
-- [x] Provider key vault encryption/decryption flow exists on the client side.
+- [x] Provider API keys now use server-side encryption at rest (AES-GCM) and are never returned in plaintext to the browser.
+- [x] Template-driven metaprompt generation and provider execution are available via backend endpoint (`/api/generate`).
+- [x] Optional shared Google test key flow added via `.env` allowlists (`GOOGLE_TEST_ALLOWED_USERS` / `GOOGLE_TEST_ALLOWED_GROUPS`).
+- [x] RBAC foundation implemented (roles, permissions, group-role bindings) with default 4 roles seeded on startup.
+- [x] Admin interface added for role management and Authentik group-role bindings.
 
 ## Recovered Session Decisions (merged from old rollout file)
 - [x] Auth group naming settled on `teachers` (not `teacher`) for access checks and docs.
@@ -54,18 +58,18 @@ Owner: Team + Codex
   - known defaults + `Auto Base URL` checkbox (ON = prefill+lock, OFF = editable override).
 
 ## What is NOT done yet (from requested roadmap)
-- [ ] Provider base URLs prefilled by known provider and lockable with checkbox override.
+- [x] Provider base URLs prefilled by known provider and lockable with checkbox override.
 - [ ] Real per-template required/optional fields model (current logic is category-level config).
 - [ ] User-managed template hierarchy (category/subcategory/template creation by level).
 - [ ] Official vs Personal vs Community template lifecycle with review/approval flow.
-- [ ] Role-based access model via Authentik groups (beyond basic user/admin split).
+- [x] Role-based access model via Authentik groups (beyond basic user/admin split).
 - [ ] User setting to hide/show community templates.
-- [ ] Ratings for templaate scopes (`official`, `personal`, `community`) in the upcoming template engine.
+- [ ] Ratings for template scopes (`official`, `personal`, `community`) in the upcoming template engine.
 - [ ] Tag system for search/filter.
 - [ ] Migration/test workflow (schema currently bootstrapped in app start).
 
 ## Known Issues to Fix Early
-- [ ] `Jahresplanung` validation mismatch: `pflichtangaben` includes base fields that are not part of dynamic validation.
+- [x] `Jahresplanung` validation mismatch in frontend dynamic validation has been removed (dynamic required fields now validated directly from schema).
 - [ ] `templates/*.yaml` remains documentation-only; if kept, align/update policy is needed to avoid drift from runtime catalog module.
 
 ## Git History (key milestones)
@@ -87,14 +91,14 @@ Owner: Team + Codex
 - [ ] Fix critical mismatches (template validation + source-of-truth) before shipping new large features.
 
 ### Phase 1 - Low-risk UX wins
-- [ ] Provider presets:
+- [x] Provider presets:
   - `openai -> https://api.openai.com/v1`
   - `anthropic -> https://api.anthropic.com`
   - `google -> https://generativelanguage.googleapis.com/v1beta`
   - `mistral -> https://api.mistral.ai/v1`
-- [ ] Add checkbox: `Use recommended base URL` (locked by default).
-- [ ] Add checkbox override: `Allow custom base URL`.
-- [ ] Persist provider `base_url_mode` (`preset`/`custom`) and validate in API.
+- [x] Add checkbox: `Use recommended base URL` (locked by default).
+- [x] Add checkbox override: `Allow custom base URL`.
+- [x] Persist provider `base_url_mode` (`preset`/`custom`) and validate in API.
 
 ### Phase 2 - Template model foundation (must-have for roadmap)
 - [ ] Move template metadata to DB tables (`template_categories`, `template_nodes`, `templates`, `template_fields`, `template_versions`).
@@ -105,15 +109,16 @@ Owner: Team + Codex
 ### Phase 3 - Governance and sharing model
 - [ ] Add scopes: `official`, `personal`, `community`.
 - [ ] Add review states: `draft`, `submitted`, `approved`, `rejected`.
-- [ ] Implement RBAC from Authentik group claims (`x-authentik-groups`) with a simple, scalable role model:
+- [x] Implement RBAC from Authentik group claims (`x-authentik-groups`) with a simple, scalable role model:
   - `teachers` (access gate): can use app, create/edit personal templates, submit for review, rate visible templates.
   - `template_reviewers`: can review/approve/reject community submissions and moderate community tags.
   - `template_curators`: can publish/manage official templates and maintain official taxonomy/tag catalog.
   - `platform_admins`: full access (RBAC config, emergency override, destructive admin actions).
-- [ ] Add moderation endpoints and admin checks.
+- [x] Add admin endpoints and checks for RBAC management.
 - [ ] Add per-user preference: `show_community_templates`.
-- [ ] Add deny-by-default permission matrix for every template/tag/review endpoint.
-- [ ] Document Authentik setup steps for required groups and policy bindings.
+- [x] Add deny-by-default permission checks for existing app endpoints (provider/history/library/settings/generate/template-catalog/profile).
+- [ ] Add permission checks for upcoming template/tag/review workflow endpoints.
+- [x] Document Authentik setup steps for required groups and policy bindings.
 
 ### Phase 4 - Discovery features
 - [ ] Implement tag tables and filtering endpoints.
@@ -158,5 +163,5 @@ Owner: Team + Codex
 
 ## Next 3 Recommended Steps (after restart)
 - [ ] Step 1: Finish Docker availability in WSL shell (`docker --version`, `docker compose version`).
-- [ ] Step 2: Run deployment checks locally/in-WSL (`docker compose config`, `docker compose up -d --build`, smoke tests).
-- [ ] Step 3: Commit/push refactor changes, then proceed with template validation/source-of-truth fix.
+- [ ] Step 2: Run deployment checks locally/in-WSL (`docker compose config`, `docker compose up -d --build`, smoke tests incl. `/api/generate` and provider API calls).
+- [ ] Step 3: Implement template governance workflow (official/personal/community lifecycle + moderation endpoints) on top of RBAC foundation.

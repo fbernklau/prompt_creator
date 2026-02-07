@@ -18,6 +18,7 @@
         <button id="btn-history" type="button" class="text-btn">Verlauf</button>
         <button id="btn-provider" type="button" class="text-btn">API-Provider</button>
         <button id="btn-options" type="button" class="text-btn">Optionen</button>
+        <button id="btn-admin" type="button" class="text-btn is-hidden">Admin</button>
         <span class="user-chip" id="current-user">Benutzer: lade...</span>
       </div>
     </header>
@@ -207,6 +208,90 @@
 
         <div id="library-list" class="library-list top-space"></div>
       </section>
+
+      <section id="screen-admin" class="screen is-hidden">
+        <div class="step-nav">
+          <button id="btn-back-home-from-admin" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+        </div>
+        <h2>Administration</h2>
+        <p class="subline">Rollen, Berechtigungen und Authentik-Gruppenzuordnungen verwalten.</p>
+
+        <div class="grid-2 top-space">
+          <div class="panel">
+            <h3>Neue Rolle</h3>
+            <label>Role Key
+              <input id="admin-new-role-key" placeholder="z. B. content_editors" />
+            </label>
+            <label class="top-space">Role Name
+              <input id="admin-new-role-name" placeholder="z. B. Content Editors" />
+            </label>
+            <label class="top-space">Beschreibung
+              <textarea id="admin-new-role-description" rows="2"></textarea>
+            </label>
+            <div class="inline-actions top-space">
+              <button id="admin-create-role" type="button">Rolle anlegen</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Rolle bearbeiten</h3>
+            <label>Rolle
+              <select id="admin-role-select"></select>
+            </label>
+            <label class="top-space">Role Name
+              <input id="admin-role-name" />
+            </label>
+            <label class="top-space">Beschreibung
+              <textarea id="admin-role-description" rows="2"></textarea>
+            </label>
+            <small id="admin-role-system" class="hint"></small>
+            <div class="inline-actions top-space">
+              <button id="admin-save-role" type="button">Rolle speichern</button>
+              <button id="admin-delete-role" type="button" class="secondary">Rolle loeschen</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Neue Berechtigung</h3>
+          <div class="grid-2">
+            <label>Permission Key
+              <input id="admin-new-permission-key" placeholder="z. B. templates.publish" />
+            </label>
+            <label>Beschreibung
+              <input id="admin-new-permission-description" placeholder="Kurze Beschreibung" />
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="admin-create-permission" type="button">Berechtigung anlegen</button>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Berechtigungen der Rolle</h3>
+          <div id="admin-role-permissions" class="admin-permissions-grid top-space"></div>
+          <div class="inline-actions top-space">
+            <button id="admin-save-permissions" type="button">Berechtigungen speichern</button>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Authentik Gruppen -> Rollen</h3>
+          <div class="grid-2">
+            <label>Authentik Gruppe
+              <input id="admin-binding-group" placeholder="z. B. template_reviewers" />
+            </label>
+            <label>Rolle
+              <select id="admin-binding-role"></select>
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="admin-add-binding" type="button">Zuordnung speichern</button>
+          </div>
+          <ul id="admin-binding-list" class="provider-list top-space"></ul>
+          <small id="admin-status" class="hint"></small>
+        </div>
+      </section>
     </main>
 
     <aside id="provider-drawer" class="drawer is-hidden">
@@ -216,12 +301,10 @@
       </div>
       <div class="drawer-body">
         <div class="panel">
-          <label>Vault-Passphrase
-            <input id="vault-passphrase" type="password" placeholder="mindestens 8 Zeichen" />
-          </label>
+          <p class="subline">API-Keys werden serverseitig verschluesselt gespeichert und nie im Klartext angezeigt.</p>
           <div class="inline-actions top-space">
-            <button id="unlock-vault" type="button">Vault entsperren</button>
-            <button id="lock-vault" type="button" class="secondary">Vault sperren</button>
+            <button id="unlock-vault" type="button">Hinweis anzeigen</button>
+            <button id="lock-vault" type="button" class="secondary">Status aktualisieren</button>
           </div>
           <small id="vault-status" class="hint"></small>
         </div>
@@ -244,11 +327,16 @@
               <input id="provider-model" required placeholder="z. B. gpt-4o-mini" />
             </label>
             <label>API-Key
-              <input id="provider-key" type="password" placeholder="sk-..." />
+              <input id="provider-key" type="password" placeholder="leer lassen = vorhandenen Key behalten" />
             </label>
             <label class="span-2">API Base URL (optional)
               <input id="provider-base" placeholder="https://api.example.com/v1" />
             </label>
+            <label class="checkbox span-2">
+              <input id="provider-auto-base" type="checkbox" checked />
+              <span>Empfohlene Base URL verwenden (gesperrt, bis deaktiviert)</span>
+            </label>
+            <small id="provider-base-hint" class="hint span-2"></small>
           </div>
           <div class="inline-actions top-space">
             <button type="submit">Provider speichern</button>

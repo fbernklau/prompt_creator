@@ -13,6 +13,9 @@ async function bootstrap() {
   app.listen(config.port, () => {
     console.log(`prompt-creator server running on :${config.port}`);
     console.log(`auth required: ${config.authRequired ? 'yes' : 'no'} | required group: ${config.requiredGroup || '(none)'}`);
+    if (config.keyEncryptionSecret === 'insecure-dev-key-change-me') {
+      console.warn('WARNING: KEY_ENCRYPTION_SECRET is using insecure default. Set a strong value in production.');
+    }
   });
 }
 

@@ -13,7 +13,15 @@ const SETTINGS_DEFAULTS = {
   advancedOpen: false,
 };
 
+const PROVIDER_BASE_URLS = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  mistral: 'https://api.mistral.ai/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta',
+};
+
 export {
   DEFAULT_PRESET_OPTIONS,
   SETTINGS_DEFAULTS,
+  PROVIDER_BASE_URLS,
 };

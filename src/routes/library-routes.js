@@ -1,12 +1,13 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler, clampRating, normalizeLibraryRow } = require('../utils/api-helpers');
 
 function createLibraryRouter() {
   const router = Router();
 
-  router.get('/library', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/library', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
     const result = await pool.query(
       `SELECT
          l.*,
@@ -28,7 +29,7 @@ function createLibraryRouter() {
     res.json(result.rows.map(normalizeLibraryRow));
   }));
 
-  router.get('/library/public', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/library/public', authMiddleware, accessMiddleware, requirePermission('library.view_public'), asyncHandler(async (req, res) => {
     const filters = ['l.is_public = TRUE'];
     const params = [req.userId];
     let idx = 2;
@@ -72,7 +73,7 @@ function createLibraryRouter() {
     res.json(result.rows.map(normalizeLibraryRow));
   }));
 
-  router.post('/library', authMiddleware, asyncHandler(async (req, res) => {
+  router.post('/library', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
     const { title, promptText, fach, handlungsfeld, unterkategorie, isPublic, rating } = req.body || {};
     if (!title || !promptText || !fach || !handlungsfeld || !unterkategorie) {
       return res.status(400).json({ error: 'title, promptText, fach, handlungsfeld and unterkategorie are required.' });
@@ -100,7 +101,7 @@ function createLibraryRouter() {
     res.json({ ok: true, id: libraryId });
   }));
 
-  router.put('/library/:id', authMiddleware, asyncHandler(async (req, res) => {
+  router.put('/library/:id', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
     const libraryId = Number(req.params.id);
     if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
 
@@ -150,7 +151,7 @@ function createLibraryRouter() {
     res.json({ ok: true });
   }));
 
-  router.put('/library/:id/rating', authMiddleware, asyncHandler(async (req, res) => {
+  router.put('/library/:id/rating', authMiddleware, accessMiddleware, requirePermission('library.rate'), asyncHandler(async (req, res) => {
     const libraryId = Number(req.params.id);
     const rating = clampRating(req.body?.rating);
     if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
@@ -173,7 +174,7 @@ function createLibraryRouter() {
     res.json({ ok: true });
   }));
 
-  router.delete('/library/:id', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/library/:id', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
     const libraryId = Number(req.params.id);
     if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
 

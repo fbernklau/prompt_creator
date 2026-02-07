@@ -1,14 +1,63 @@
+import { PROVIDER_BASE_URLS } from './config.js';
+
 function createProviderController({
   state,
   el,
   api,
   uid,
-  encryptSecret,
-  decryptSecret,
   setVaultStatus,
 }) {
   function redactKeyState(provider) {
-    return provider.keyMeta ? 'verschluesselt' : 'kein Key';
+    if (provider.hasServerKey) return 'server-verschluesselt';
+    if (provider.canUseSharedTestKey) return 'shared test key';
+    return 'kein Key';
+  }
+
+  function isKnownProvider(kind) {
+    return Object.prototype.hasOwnProperty.call(PROVIDER_BASE_URLS, kind);
+  }
+
+  function getRecommendedBaseUrl(kind) {
+    return PROVIDER_BASE_URLS[kind] || '';
+  }
+
+  function syncProviderBaseUi() {
+    const kind = el('provider-kind').value;
+    const baseInput = el('provider-base');
+    const autoCheckbox = el('provider-auto-base');
+    const hint = el('provider-base-hint');
+    const recommendedBaseUrl = getRecommendedBaseUrl(kind);
+    const knownProvider = Boolean(recommendedBaseUrl);
+
+    if (!knownProvider) {
+      autoCheckbox.checked = false;
+      autoCheckbox.disabled = true;
+      baseInput.readOnly = false;
+      if (Object.values(PROVIDER_BASE_URLS).includes(baseInput.value.trim())) baseInput.value = '';
+      baseInput.placeholder = 'https://api.example.com/v1';
+      hint.textContent = 'Custom API: Base URL frei editierbar.';
+      return;
+    }
+
+    autoCheckbox.disabled = false;
+    baseInput.placeholder = recommendedBaseUrl;
+    if (autoCheckbox.checked) {
+      baseInput.value = recommendedBaseUrl;
+      baseInput.readOnly = true;
+      hint.textContent = `Empfohlene URL aktiv: ${recommendedBaseUrl}`;
+      return;
+    }
+
+    baseInput.readOnly = false;
+    hint.textContent = 'Empfohlene URL deaktiviert: eigene Base URL verwenden.';
+  }
+
+  function initializeProviderForm() {
+    setVaultStatus('Server-Key-Schutz aktiv: API-Keys werden nur serverseitig verschluesselt gespeichert.', 'ok');
+    el('provider-kind').addEventListener('change', syncProviderBaseUi);
+    el('provider-auto-base').addEventListener('change', syncProviderBaseUi);
+    el('provider-auto-base').checked = true;
+    syncProviderBaseUi();
   }
 
   function startEditProvider(id) {
@@ -19,14 +68,23 @@ function createProviderController({
     el('provider-kind').value = provider.kind;
     el('provider-model').value = provider.model;
     el('provider-key').value = '';
-    el('provider-key').placeholder = 'Leer lassen = vorhandenen Key behalten';
+    el('provider-key').placeholder = provider.hasServerKey
+      ? 'Leer lassen = vorhandenen Key beibehalten'
+      : 'API-Key fuer diesen Provider';
     el('provider-base').value = provider.baseUrl || '';
+    const recommendedBaseUrl = getRecommendedBaseUrl(provider.kind);
+    const isPresetMode = provider.baseUrlMode === 'preset'
+      || (!provider.baseUrlMode && !!recommendedBaseUrl && provider.baseUrl === recommendedBaseUrl);
+    el('provider-auto-base').checked = isPresetMode;
+    syncProviderBaseUi();
   }
 
   function clearProviderForm() {
     state.editProviderId = null;
     el('provider-form').reset();
-    el('provider-key').placeholder = 'sk-...';
+    el('provider-key').placeholder = 'API-Key (wird serverseitig verschluesselt)';
+    el('provider-auto-base').checked = true;
+    syncProviderBaseUi();
   }
 
   async function deleteProvider(id) {
@@ -72,45 +130,25 @@ function createProviderController({
     });
   }
 
-  function unlockVault() {
-    const passphrase = el('vault-passphrase').value;
-    if (!passphrase || passphrase.length < 8) {
-      setVaultStatus('Passphrase muss mindestens 8 Zeichen haben.', 'error');
-      return;
-    }
-    state.vault.unlocked = true;
-    state.vault.passphrase = passphrase;
-    setVaultStatus('Vault entsperrt. API-Keys werden verschluesselt gespeichert.', 'ok');
+  async function unlockVault() {
+    setVaultStatus('Nicht mehr erforderlich: Keys werden serverseitig verschluesselt.', 'info');
   }
 
-  function lockVault() {
-    state.vault.unlocked = false;
-    state.vault.passphrase = '';
-    el('vault-passphrase').value = '';
-    setVaultStatus('Vault gesperrt.', 'info');
+  async function lockVault() {
+    setVaultStatus('Nicht mehr erforderlich: Keys bleiben serverseitig geschuetzt.', 'info');
   }
 
   async function handleProviderSubmit(event) {
     event.preventDefault();
 
-    if (!state.vault.unlocked) {
-      alert('Bitte zuerst den Key-Vault entsperren. Ohne entsperrten Vault wird kein API-Key gespeichert.');
-      return;
-    }
-
     const name = el('provider-name').value.trim();
     const kind = el('provider-kind').value;
     const model = el('provider-model').value.trim();
-    const baseUrl = el('provider-base').value.trim();
+    const recommendedBaseUrl = getRecommendedBaseUrl(kind);
+    const useRecommendedBaseUrl = isKnownProvider(kind) && el('provider-auto-base').checked;
+    const baseUrl = useRecommendedBaseUrl ? recommendedBaseUrl : el('provider-base').value.trim();
+    const baseUrlMode = useRecommendedBaseUrl ? 'preset' : 'custom';
     const keyInput = el('provider-key').value.trim();
-
-    const existing = state.editProviderId ? state.providers.find((provider) => provider.id === state.editProviderId) : null;
-    let keyMeta = existing?.keyMeta || null;
-    if (keyInput) keyMeta = await encryptSecret(keyInput, state.vault.passphrase);
-    if (!keyMeta) {
-      alert('Bitte API-Key eingeben oder bestehenden Key beibehalten.');
-      return;
-    }
 
     const provider = {
       id: state.editProviderId || uid(),
@@ -118,44 +156,32 @@ function createProviderController({
       kind,
       model,
       baseUrl,
-      keyMeta,
+      baseUrlMode,
     };
+    if (keyInput) provider.apiKey = keyInput;
 
     await api(`/api/providers/${encodeURIComponent(provider.id)}`, {
       method: 'PUT',
       body: JSON.stringify(provider),
     });
 
-    if (state.editProviderId) {
-      const index = state.providers.findIndex((item) => item.id === state.editProviderId);
-      if (index >= 0) state.providers[index] = provider;
-    } else {
-      state.providers.unshift(provider);
-    }
-
+    state.providers = await api('/api/providers');
     if (!state.activeId) state.activeId = provider.id;
+    if (!state.providers.some((entry) => entry.id === state.activeId)) {
+      state.activeId = state.providers[0]?.id || null;
+    }
     clearProviderForm();
     renderProviders();
   }
 
-  async function maybeDecryptActiveKey() {
-    const active = state.providers.find((provider) => provider.id === state.activeId);
-    if (!active?.keyMeta || !state.vault.unlocked) return null;
-    try {
-      return await decryptSecret(active.keyMeta, state.vault.passphrase);
-    } catch (_error) {
-      return null;
-    }
-  }
-
   return {
+    initializeProviderForm,
     renderProviders,
     clearProviderForm,
     deleteProvider,
     unlockVault,
     lockVault,
     handleProviderSubmit,
-    maybeDecryptActiveKey,
   };
 }
 

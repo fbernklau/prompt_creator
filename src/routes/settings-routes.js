@@ -2,18 +2,19 @@ const { Router } = require('express');
 const { config } = require('../config');
 const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler, sanitizeSettings } = require('../utils/api-helpers');
 
 function createSettingsRouter() {
   const router = Router();
 
-  router.get('/settings', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/settings', authMiddleware, accessMiddleware, requirePermission('settings.manage_own'), asyncHandler(async (req, res) => {
     const result = await pool.query('SELECT settings_json FROM user_settings WHERE user_id = $1', [req.userId]);
     const stored = result.rows[0]?.settings_json || {};
     res.json({ ...config.settingsDefaults, ...stored });
   }));
 
-  router.put('/settings', authMiddleware, asyncHandler(async (req, res) => {
+  router.put('/settings', authMiddleware, accessMiddleware, requirePermission('settings.manage_own'), asyncHandler(async (req, res) => {
     const incoming = sanitizeSettings(req.body || {});
     const existingResult = await pool.query('SELECT settings_json FROM user_settings WHERE user_id = $1', [req.userId]);
     const existing = existingResult.rows[0]?.settings_json || {};

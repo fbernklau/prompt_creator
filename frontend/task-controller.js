@@ -1,12 +1,10 @@
-import { buildPrompt } from './prompt-builder.js';
-
 function createTaskController({
   state,
   el,
+  api,
   getCategoryConfig,
   getPresetOptions,
   showScreen,
-  maybeDecryptActiveKey,
   saveHistory,
 }) {
   function setupPresetSelect(selectId, customId, values) {
@@ -132,8 +130,11 @@ function createTaskController({
       container.appendChild(wrap);
     });
 
-    el('validation-hint').textContent = cfg.pflichtangaben.length
-      ? `Pflichtfelder fuer ${cfg.title}: ${cfg.pflichtangaben.join(', ')}`
+    const requiredDynamic = (cfg.dynamicFields || []).filter((field) => field.required).map((field) => field.id);
+    const requiredBase = ['fach', 'schulstufe', 'ziel'];
+    const required = [...requiredBase, ...requiredDynamic];
+    el('validation-hint').textContent = required.length
+      ? `Pflichtfelder fuer ${cfg.title}: ${required.join(', ')}`
       : '';
   }
 
@@ -156,7 +157,8 @@ function createTaskController({
   function validateDynamicValues(values) {
     const categoryConfig = getCategoryConfig();
     const cfg = categoryConfig[state.selectedCategory];
-    const missing = cfg.pflichtangaben.filter((fieldName) => !values[fieldName]);
+    const requiredDynamic = (cfg.dynamicFields || []).filter((field) => field.required).map((field) => field.id);
+    const missing = requiredDynamic.filter((fieldName) => !values[fieldName]);
     if (missing.length) {
       alert(`Bitte Pflichtfelder ausfuellen: ${missing.join(', ')}`);
       return false;
@@ -218,7 +220,6 @@ function createTaskController({
 
     updateSelectedSubcategory();
     const activeProvider = state.providers.find((provider) => provider.id === state.activeId);
-    const decryptedKey = await maybeDecryptActiveKey();
     const data = {
       fach: el('fach').value.trim(),
       schulstufe: el('schulstufe').value.trim(),
@@ -238,12 +239,24 @@ function createTaskController({
       return;
     }
 
-    const prompt = buildPrompt(data, dynamicValues);
-    const providerMeta = activeProvider
-      ? `Aktiver Provider: ${activeProvider.name} (${activeProvider.kind}, ${activeProvider.model}) | Key: ${decryptedKey ? 'entschluesselt im RAM' : 'verschluesselt/gesperrt'}`
-      : 'Kein aktiver Provider gewaehlt.';
+    if (!activeProvider) {
+      alert('Bitte zuerst einen aktiven Provider auswaehlen.');
+      return;
+    }
 
-    state.generatedPrompt = prompt;
+    const generation = await api('/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        providerId: activeProvider.id,
+        categoryName: data.handlungsfeld,
+        subcategoryName: data.unterkategorie,
+        baseFields: data,
+        dynamicValues,
+      }),
+    });
+    const providerMeta = `Aktiver Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
+
+    state.generatedPrompt = generation.output;
     state.generatedMeta = providerMeta;
     state.lastPromptContext = {
       fach: data.fach,
@@ -251,7 +264,7 @@ function createTaskController({
       unterkategorie: data.unterkategorie,
     };
 
-    el('result').value = prompt;
+    el('result').value = generation.output;
     el('result-meta').textContent = providerMeta;
     el('library-title').value = `${data.unterkategorie} - ${data.fach}`;
     el('save-library-status').textContent = '';

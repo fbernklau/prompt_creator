@@ -1,12 +1,13 @@
 const { Router } = require('express');
 const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
+const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
 
 function createHistoryRouter() {
   const router = Router();
 
-  router.get('/history', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/history', authMiddleware, accessMiddleware, requirePermission('history.manage_own'), asyncHandler(async (req, res) => {
     const result = await pool.query(
       `SELECT fach, handlungsfeld, created_at
        FROM prompt_history
@@ -25,7 +26,7 @@ function createHistoryRouter() {
     );
   }));
 
-  router.post('/history', authMiddleware, asyncHandler(async (req, res) => {
+  router.post('/history', authMiddleware, accessMiddleware, requirePermission('history.manage_own'), asyncHandler(async (req, res) => {
     const { fach, handlungsfeld } = req.body || {};
     if (!fach || !handlungsfeld) {
       return res.status(400).json({ error: 'fach and handlungsfeld are required.' });

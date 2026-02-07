@@ -1,14 +1,14 @@
 const { Router } = require('express');
 const { authMiddleware } = require('../middleware/auth');
-const { accessMiddleware, requirePermission } = require('../middleware/rbac');
+const { accessMiddleware } = require('../middleware/rbac');
 
-function createProfileRouter() {
+function createRbacRouter() {
   const router = Router();
 
-  router.get('/me', authMiddleware, accessMiddleware, requirePermission('app.access'), (req, res) => {
+  router.get('/rbac/me', authMiddleware, accessMiddleware, (req, res) => {
     res.json({
       userId: req.userId,
-      groups: req.userGroups,
+      groups: req.userGroups || [],
       roles: req.access?.roles || [],
       permissions: req.access?.permissions || [],
     });
@@ -17,4 +17,4 @@ function createProfileRouter() {
   return router;
 }
 
-module.exports = { createProfileRouter };
+module.exports = { createRbacRouter };

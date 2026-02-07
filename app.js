@@ -3,19 +3,20 @@ import { el } from './frontend/dom.js';
 import { api } from './frontend/api.js';
 import { uid } from './frontend/id.js';
 import { loadTemplateCatalog } from './frontend/catalog.js';
-import { encryptSecret, decryptSecret } from './frontend/crypto-vault.js';
 import { createUiShell } from './frontend/ui-shell.js';
 import { createSettingsController } from './frontend/settings-controller.js';
 import { createHistoryController } from './frontend/history-controller.js';
 import { createProviderController } from './frontend/provider-controller.js';
 import { createLibraryController } from './frontend/library-controller.js';
 import { createTaskController } from './frontend/task-controller.js';
+import { createAdminController } from './frontend/admin-controller.js';
 
 let categoryConfig = {};
 let presetOptions = { ...DEFAULT_PRESET_OPTIONS };
 
 const state = {
   currentUser: null,
+  access: { roles: [], permissions: [] },
   settings: { ...SETTINGS_DEFAULTS },
   providers: [],
   history: [],
@@ -28,10 +29,6 @@ const state = {
   libraryMode: 'own',
   libraryOwn: [],
   libraryPublic: [],
-  vault: {
-    unlocked: false,
-    passphrase: '',
-  },
   editProviderId: null,
 };
 
@@ -56,8 +53,6 @@ const providerController = createProviderController({
   el,
   api,
   uid,
-  encryptSecret,
-  decryptSecret,
   setVaultStatus: uiShell.setVaultStatus,
 });
 const libraryController = createLibraryController({
@@ -66,20 +61,30 @@ const libraryController = createLibraryController({
   api,
   getCategoryConfig,
 });
+const adminController = createAdminController({
+  state,
+  el,
+  api,
+  showScreen: uiShell.showScreen,
+});
 const taskController = createTaskController({
   state,
   el,
+  api,
   getCategoryConfig,
   getPresetOptions,
   showScreen: uiShell.showScreen,
-  maybeDecryptActiveKey: providerController.maybeDecryptActiveKey,
   saveHistory: historyController.saveHistory,
 });
 
 async function loadServerData() {
   const me = await api('/api/me');
   state.currentUser = me.userId;
-  el('current-user').textContent = `Benutzer: ${state.currentUser}`;
+  state.access = {
+    roles: Array.isArray(me.roles) ? me.roles : [],
+    permissions: Array.isArray(me.permissions) ? me.permissions : [],
+  };
+  el('current-user').textContent = `Benutzer: ${state.currentUser} | Rollen: ${(state.access.roles || []).join(', ') || 'keine'}`;
 
   state.settings = await api('/api/settings');
   state.providers = await api('/api/providers');
@@ -88,6 +93,9 @@ async function loadServerData() {
 }
 
 function bindEvents() {
+  providerController.initializeProviderForm();
+  adminController.bindEvents();
+
   el('btn-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
   el('btn-history').addEventListener('click', () => {
     historyController.renderHistory();
@@ -167,7 +175,7 @@ function bindEvents() {
 }
 
 async function init() {
-  uiShell.setVaultStatus('Vault gesperrt. Bitte Passphrase setzen/entsperren.');
+  uiShell.setVaultStatus('Server-Key-Schutz aktiv.');
   bindEvents();
 
   try {
@@ -182,6 +190,7 @@ async function init() {
     settingsController.applySettingsToUi();
     providerController.renderProviders();
     historyController.renderHistory();
+    adminController.ensureAdminVisible();
     uiShell.showScreen('home');
 
     if (!state.settings.flowMode) {

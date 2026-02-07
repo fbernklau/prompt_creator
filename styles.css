@@ -326,6 +326,12 @@ button.small {
   gap: 10px;
 }
 
+.admin-permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
 .span-2 {
   grid-column: span 2;
 }
@@ -531,6 +537,10 @@ textarea {
   }
 
   .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-permissions-grid {
     grid-template-columns: 1fr;
   }
 }

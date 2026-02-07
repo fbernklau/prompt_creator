@@ -5,8 +5,43 @@ Prompt creator web app with:
 - PostgreSQL persistence
 - Traefik reverse proxy integration
 - Authentik forward-auth/OIDC header based access control
+- Template-driven metaprompt rendering + provider API execution
+- Server-side encrypted provider API key storage
+- RBAC with admin-managed roles and Authentik group bindings
 
 Target host: `prompts.berncloud.eu`
+
+## New architecture highlights
+
+### 1) Template-driven metaprompt execution
+- Metaprompt is now built server-side from selected template (`Handlungsfeld` + `Unterkategorie`) and template variables.
+- Endpoint: `POST /api/generate`
+- The backend validates required fields, renders a template prompt, sends it to the active provider, and returns generated output.
+
+### 2) Server-side encrypted API keys
+- Provider keys are encrypted at rest on the server (`AES-256-GCM`) using `KEY_ENCRYPTION_SECRET`.
+- Plaintext keys are never returned to the browser and are only decrypted in server memory during outbound provider requests.
+- Existing provider records can be updated without re-entering key; old incompatible key formats require one-time re-save.
+
+### 3) Shared Gemini test key (optional)
+- You can provide a server-only Gemini key in `.env`:
+  - `GOOGLE_TEST_API_KEY`
+  - `GOOGLE_TEST_ALLOWED_USERS`
+  - `GOOGLE_TEST_ALLOWED_GROUPS`
+- Only allowlisted users/groups can use this shared key.
+- If a Google provider has no personal key and user is allowlisted, backend uses the shared key automatically.
+- `GOOGLE_TEST_ALLOWED_USERS` accepts comma-separated `userId` values from Authentik header identity (`x-authentik-username` / email fallback).
+- `GOOGLE_TEST_ALLOWED_GROUPS` accepts comma-separated Authentik group names.
+
+### 4) RBAC + admin interface
+- Default roles seeded in DB:
+  - `teachers`
+  - `template_reviewers`
+  - `template_curators`
+  - `platform_admins`
+- Roles map to granular permissions.
+- Authentik groups are mapped to roles via DB bindings (`rbac_group_role_bindings`).
+- Admin UI (`Admin` button) is visible to users with `rbac.manage` permission.
 
 ## What was broken and what is fixed
 
@@ -78,6 +113,11 @@ POSTGRES_USER=prompt
 POSTGRES_PASSWORD=<strong-random-password>
 AUTH_REQUIRED=true
 OIDC_REQUIRED_GROUP=teachers
+KEY_ENCRYPTION_SECRET=<long-random-secret>
+PROVIDER_REQUEST_TIMEOUT_MS=45000
+GOOGLE_TEST_API_KEY=
+GOOGLE_TEST_ALLOWED_USERS=
+GOOGLE_TEST_ALLOWED_GROUPS=
 TRAEFIK_DOCKER_NETWORK=proxy
 TRAEFIK_AUTH_MIDDLEWARE=authentik@docker
 ```
