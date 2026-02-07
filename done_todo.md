@@ -60,7 +60,7 @@ Owner: Team + Codex
 - [ ] Official vs Personal vs Community template lifecycle with review/approval flow.
 - [ ] Role-based access model via Authentik groups (beyond basic user/admin split).
 - [ ] User setting to hide/show community templates.
-- [ ] Ratings for template scopes (`official`, `personal`, `community`) in the upcoming template engine.
+- [ ] Ratings for templaate scopes (`official`, `personal`, `community`) in the upcoming template engine.
 - [ ] Tag system for search/filter.
 - [ ] Migration/test workflow (schema currently bootstrapped in app start).
 
