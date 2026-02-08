@@ -164,6 +164,13 @@ function createTaskController({
     });
   }
 
+  function getCategoryShort(categoryName) {
+    const categoryConfig = getCategoryConfig();
+    const short = categoryConfig?.[categoryName]?.short;
+    if (typeof short === 'string' && short.trim()) return short.trim().slice(0, 3).toUpperCase();
+    return 'TPL';
+  }
+
   function renderQuickTemplateList(containerId, templates, emptyText) {
     const node = el(containerId);
     if (!templates.length) {
@@ -176,25 +183,36 @@ function createTaskController({
         const recentHint = template.recentUsedAt
           ? `Zuletzt: ${new Date(template.recentUsedAt).toLocaleString('de-AT')}`
           : 'Noch nicht genutzt';
+        const short = getCategoryShort(template.categoryName);
         return `
-          <div class="list-card quick-template-card">
+          <div class="list-card quick-template-card clickable-card" data-open-template="${template.templateUid}" role="button" tabindex="0" aria-label="Template ${template.title} verwenden">
             <div class="quick-template-head">
-              <strong>${template.title}</strong>
+              <span class="quick-template-title-wrap">
+                <span class="mini-icon">${short}</span>
+                <strong>${template.title}</strong>
+              </span>
               <button type="button" class="text-btn small" data-fav-template="${template.templateUid}" data-fav-state="${template.isFavorite ? '1' : '0'}">${template.isFavorite ? '★' : '☆'}</button>
             </div>
             <small class="hint">${template.categoryName} -> ${template.subcategoryName}</small>
             <small class="hint">${recentHint}</small>
-            <button type="button" class="secondary small top-space" data-open-template="${template.templateUid}">Template verwenden</button>
           </div>
         `;
       })
       .join('');
 
-    node.querySelectorAll('[data-open-template]').forEach((button) => {
-      button.addEventListener('click', () => openTemplateFromDiscovery(button.dataset.openTemplate));
+    node.querySelectorAll('[data-open-template]').forEach((card) => {
+      const openTemplate = () => openTemplateFromDiscovery(card.dataset.openTemplate);
+      card.addEventListener('click', openTemplate);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openTemplate();
+      });
     });
     node.querySelectorAll('[data-fav-template]').forEach((button) => {
-      button.addEventListener('click', () => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
         const favorite = button.dataset.favState === '1';
         toggleTemplateFavorite(button.dataset.favTemplate, !favorite).catch((error) => alert(error.message));
       });
@@ -232,7 +250,7 @@ function createTaskController({
       ? state.templateDiscovery.templates
       : [];
 
-    const recommended = templates.slice(0, 6);
+    const recommended = templates.slice(0, 3);
     const recent = templates
       .filter((template) => template.isRecent)
       .sort((a, b) => {
@@ -240,10 +258,10 @@ function createTaskController({
         const bTime = b.recentUsedAt ? new Date(b.recentUsedAt).getTime() : 0;
         return bTime - aTime;
       })
-      .slice(0, 6);
+      .slice(0, 3);
     const favorites = templates
       .filter((template) => template.isFavorite)
-      .slice(0, 6);
+      .slice(0, 3);
 
     renderTagChips(templates);
     renderQuickTemplateList('home-recommended-list', recommended, 'Noch keine Empfehlungen verfuegbar.');
@@ -303,22 +321,31 @@ function createTaskController({
           const discoveryEntry = (state.templateDiscovery.templates || []).find((entry) => (
             entry.categoryName === categoryName && entry.subcategoryName === subcategory
           ));
+          const short = getCategoryShort(categoryName);
           return `
-            <div class="list-card subcategory-card">
+            <div class="list-card subcategory-card-item clickable-card" data-subcategory="${subcategory}" role="button" tabindex="0" aria-label="${subcategory} auswaehlen">
               <div class="quick-template-head">
-                <strong>${subcategory}</strong>
+                <span class="quick-template-title-wrap">
+                  <span class="mini-icon">${short}</span>
+                  <strong>${subcategory}</strong>
+                </span>
                 <button type="button" class="text-btn small" data-fav-template="${discoveryEntry?.templateUid || ''}" data-fav-state="${discoveryEntry?.isFavorite ? '1' : '0'}">${discoveryEntry?.isFavorite ? '★' : '☆'}</button>
               </div>
               <span class="hint">${template?.description || cfg.description}</span>
-              <button type="button" class="secondary small top-space" data-subcategory="${subcategory}">Template auswaehlen</button>
             </div>
           `;
         }
       )
       .join('');
 
-    el('subcategory-list').querySelectorAll('[data-subcategory]').forEach((button) => {
-      button.addEventListener('click', () => openForm(categoryName, button.dataset.subcategory));
+    el('subcategory-list').querySelectorAll('[data-subcategory]').forEach((card) => {
+      const openSubcategory = () => openForm(categoryName, card.dataset.subcategory);
+      card.addEventListener('click', openSubcategory);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openSubcategory();
+      });
     });
     el('subcategory-list').querySelectorAll('[data-fav-template]').forEach((button) => {
       const templateUid = button.dataset.favTemplate;
@@ -326,7 +353,9 @@ function createTaskController({
         button.disabled = true;
         return;
       }
-      button.addEventListener('click', () => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        event.preventDefault();
         const favorite = button.dataset.favState === '1';
         toggleTemplateFavorite(templateUid, !favorite).catch((error) => alert(error.message));
       });

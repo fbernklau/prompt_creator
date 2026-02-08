@@ -29,6 +29,7 @@
       <section id="screen-home" class="screen">
         <h1>Wie kann ich dir heute helfen?</h1>
         <p class="subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
+        <div id="category-grid" class="card-grid"></div>
 
         <div class="panel top-space">
           <h3>Template Discovery</h3>
@@ -45,28 +46,27 @@
           <div id="home-tag-chips" class="chip-row top-space"></div>
           <div class="grid-3 top-space">
             <div>
-              <h4>Empfohlen</h4>
+              <h4 class="section-title"><span class="mini-icon">TOP</span>Empfohlen</h4>
               <div id="home-recommended-list" class="list-cards compact"></div>
             </div>
             <div>
-              <h4>Zuletzt genutzt</h4>
+              <h4 class="section-title"><span class="mini-icon">REC</span>Zuletzt genutzt</h4>
               <div id="home-recent-list" class="list-cards compact"></div>
             </div>
             <div>
-              <h4>Favoriten</h4>
+              <h4 class="section-title"><span class="mini-icon">FAV</span>Favoriten</h4>
               <div id="home-favorites-list" class="list-cards compact"></div>
             </div>
           </div>
           <small id="home-discovery-status" class="hint top-space"></small>
         </div>
-        <div id="category-grid" class="card-grid"></div>
       </section>
 
       <section id="screen-subcategory" class="screen is-hidden">
         <button id="btn-back-home-from-subcat" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
         <h2 id="selected-category-title"></h2>
         <p id="selected-category-desc" class="subline"></p>
-        <div id="subcategory-list" class="list-cards"></div>
+        <div id="subcategory-list" class="subcategory-grid top-space"></div>
       </section>
 
       <section id="screen-form" class="screen is-hidden">
