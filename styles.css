@@ -504,6 +504,34 @@ body[data-theme='system'] .result-prompt-box {
   border-color: #2f3d63;
 }
 
+.metaprompt-preview-box {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid #2e3f71;
+  background: #0d1836;
+  padding: 48px 14px 14px;
+}
+
+body[data-theme='dark'] .metaprompt-preview-box,
+body[data-theme='system'] .metaprompt-preview-box {
+  border-color: #2f3d63;
+}
+
+#metaprompt-preview {
+  width: 100%;
+  min-height: 280px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: #f4f8ff;
+  line-height: 1.52;
+}
+
+#metaprompt-preview:focus {
+  outline: 1px solid #8da4ff;
+  outline-offset: 0;
+}
+
 .result-copy-inside {
   position: absolute;
   top: 10px;
@@ -863,5 +891,9 @@ body[data-theme='system'] .result-prompt-box {
 
   #result {
     min-height: 340px;
+  }
+
+  #metaprompt-preview {
+    min-height: 220px;
   }
 }

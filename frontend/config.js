@@ -21,8 +21,47 @@ const PROVIDER_BASE_URLS = {
   google: 'https://generativelanguage.googleapis.com/v1beta',
 };
 
+const PROVIDER_MODEL_CATALOG = {
+  openai: [
+    'gpt-5.2',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4.1-nano',
+    'gpt-5.2-codex',
+    'gpt-5.2-pro',
+  ],
+  anthropic: [
+    'claude-sonnet-4-5-20250929',
+    'claude-haiku-4-5-20251001',
+    'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+    'claude-opus-4-5',
+  ],
+  google: [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview',
+  ],
+  mistral: [
+    'mistral-large-2512',
+    'mistral-medium-2508',
+    'mistral-small-2506',
+    'ministral-14b-2512',
+    'ministral-8b-2512',
+    'ministral-3b-2512',
+    'codestral-2508',
+    'devstral-2512',
+  ],
+};
+
 export {
   DEFAULT_PRESET_OPTIONS,
   SETTINGS_DEFAULTS,
   PROVIDER_BASE_URLS,
+  PROVIDER_MODEL_CATALOG,
 };

@@ -203,7 +203,14 @@
               <button id="btn-preview-metaprompt" type="button" class="secondary">Vorschau aktualisieren</button>
             </div>
             <small id="metaprompt-preview-status" class="hint"></small>
-            <textarea id="metaprompt-preview" rows="8" readonly placeholder="Hier erscheint die serverseitig generierte Metaprompt-Vorschau."></textarea>
+            <div class="metaprompt-preview-box top-space">
+              <button id="copy-metaprompt-preview" type="button" class="secondary result-copy-inside">Kopieren</button>
+              <textarea id="metaprompt-preview" rows="10" placeholder="Hier erscheint die serverseitig generierte Metaprompt-Vorschau. Du kannst sie direkt bearbeiten."></textarea>
+            </div>
+            <label class="checkbox top-space">
+              <input id="use-preview-metaprompt" type="checkbox" />
+              <span>Bearbeitete Metaprompt direkt fuer Generierung verwenden</span>
+            </label>
           </div>
 
           <div class="inline-actions">
@@ -664,11 +671,15 @@
               </select>
             </label>
             <label>Modell
-              <input id="provider-model" required placeholder="z. B. gpt-4o-mini" />
+              <select id="provider-model" required></select>
             </label>
             <label>API-Key
               <input id="provider-key" type="password" placeholder="leer lassen = vorhandenen Key behalten" />
             </label>
+            <label id="provider-model-custom-wrap" class="span-2 is-hidden">Custom Modell
+              <input id="provider-model-custom" placeholder="z. B. mein-spezialmodell-v1" />
+            </label>
+            <small id="provider-model-hint" class="hint span-2"></small>
             <label class="span-2">API Base URL (optional)
               <input id="provider-base" placeholder="https://api.example.com/v1" />
             </label>

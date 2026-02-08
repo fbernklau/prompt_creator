@@ -316,6 +316,7 @@ function createGenerateRouter() {
       subcategoryName,
       baseFields,
       dynamicValues,
+      metapromptOverride,
       templateOverride,
       saveOverrideAsPersonal,
       saveOverrideTitleSuffix,
@@ -343,13 +344,16 @@ function createGenerateRouter() {
       const providerCredential = await resolveProviderCredential(req, provider);
       keySource = providerCredential.keySource;
       baseUrl = providerCredential.baseUrl;
+      const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
+        ? metapromptOverride.trim()
+        : context.metaprompt;
 
       const outputRaw = await callProvider({
         kind: provider.kind,
         baseUrl,
         model: provider.model,
         apiKey: providerCredential.apiKey,
-        metaprompt: context.metaprompt,
+        metaprompt: metapromptForProvider,
         timeoutMs: config.providerRequestTimeoutMs,
       });
       let output = parseHandoffPrompt(outputRaw);
@@ -408,7 +412,7 @@ function createGenerateRouter() {
       }
 
       res.json({
-        metaprompt: context.metaprompt,
+        metaprompt: metapromptForProvider,
         output,
         templateId: context.resolvedTemplate.templateUid,
         runtimeTemplateId: context.template.id,

@@ -154,6 +154,12 @@ function createTaskController({
     return !!node?.checked;
   }
 
+  function readRawValue(id) {
+    const node = el(id);
+    if (!node || typeof node.value !== 'string') return '';
+    return node.value;
+  }
+
   function dynamicFieldDefaultHelp(field = {}) {
     const type = String(field.type || 'text').toLowerCase();
     if (type === 'textarea') return 'Nutze Stichpunkte oder kurze Saetze mit konkreten Angaben.';
@@ -616,33 +622,108 @@ function createTaskController({
     }
 
     const oneoff = collectOneOffOverridePayload();
+    const usePreviewMetaprompt = readChecked('use-preview-metaprompt');
+    const metapromptOverride = usePreviewMetaprompt ? readRawValue('metaprompt-preview').trim() : '';
+    if (validate && usePreviewMetaprompt && !metapromptOverride) {
+      alert('Bitte zuerst die Metaprompt-Vorschau erstellen oder die Direktverwendung deaktivieren.');
+      return null;
+    }
     return {
       template,
       baseFields,
       dynamicValues,
       oneoff,
+      metapromptOverride,
     };
   }
 
+  function snapshotPromptFormValues() {
+    const form = el('prompt-form');
+    if (!form) return { values: {}, activeId: null };
+
+    const values = {};
+    form.querySelectorAll('input, select, textarea').forEach((node) => {
+      const id = node.id;
+      if (!id || id === 'metaprompt-preview') return;
+      if (node.tagName === 'SELECT' && node.multiple) {
+        values[id] = { kind: 'multi', value: [...node.selectedOptions].map((opt) => opt.value) };
+        return;
+      }
+      if (node.type === 'checkbox' || node.type === 'radio') {
+        values[id] = { kind: 'checked', value: node.checked };
+        return;
+      }
+      values[id] = { kind: 'value', value: node.value };
+    });
+
+    return {
+      values,
+      activeId: document.activeElement?.id || null,
+    };
+  }
+
+  function restorePromptFormValues(snapshot = {}) {
+    const values = snapshot.values || {};
+    Object.entries(values).forEach(([id, meta]) => {
+      const node = el(id);
+      if (!node || !meta) return;
+      if (meta.kind === 'multi' && node.tagName === 'SELECT' && node.multiple) {
+        const set = new Set(Array.isArray(meta.value) ? meta.value : []);
+        [...node.options].forEach((opt) => {
+          opt.selected = set.has(opt.value);
+        });
+        return;
+      }
+      if (meta.kind === 'checked') {
+        node.checked = !!meta.value;
+        return;
+      }
+      if (meta.kind === 'value' && typeof meta.value === 'string') {
+        node.value = meta.value;
+      }
+    });
+
+    ['zeitrahmen-select', 'niveau-select', 'rahmen-select', 'ergebnisformat-select', 'ton-select'].forEach((id) => {
+      const select = el(id);
+      if (select) {
+        select.dispatchEvent(new Event('change'));
+      }
+    });
+    const oneoffFields = el('oneoff-fields');
+    if (oneoffFields) {
+      oneoffFields.classList.toggle('is-hidden', !readChecked('oneoff-enable'));
+    }
+
+    if (snapshot.activeId) {
+      const activeNode = el(snapshot.activeId);
+      if (activeNode?.focus) activeNode.focus();
+    }
+  }
+
   async function previewMetaprompt() {
+    const formSnapshot = snapshotPromptFormValues();
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
 
     setPreviewStatus('Erstelle serverseitige Metaprompt-Vorschau...', 'info');
-    const preview = await api('/api/generate/preview', {
-      method: 'POST',
-      body: JSON.stringify({
-        templateId: context.template?.id,
-        categoryName: context.baseFields.handlungsfeld,
-        subcategoryName: context.baseFields.unterkategorie,
-        baseFields: context.baseFields,
-        dynamicValues: context.dynamicValues,
-        templateOverride: context.oneoff.templateOverride,
-      }),
-    });
+    try {
+      const preview = await api('/api/generate/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          templateId: context.template?.id,
+          categoryName: context.baseFields.handlungsfeld,
+          subcategoryName: context.baseFields.unterkategorie,
+          baseFields: context.baseFields,
+          dynamicValues: context.dynamicValues,
+          templateOverride: context.oneoff.templateOverride,
+        }),
+      });
 
-    el('metaprompt-preview').value = preview.metaprompt || '';
-    setPreviewStatus('Vorschau aktualisiert.', 'ok');
+      el('metaprompt-preview').value = preview.metaprompt || '';
+      setPreviewStatus('Vorschau aktualisiert.', 'ok');
+    } finally {
+      restorePromptFormValues(formSnapshot);
+    }
   }
 
   function resetTaskState() {
@@ -660,6 +741,7 @@ function createTaskController({
     el('save-library-status').textContent = '';
     el('metaprompt-preview').value = '';
     el('metaprompt-preview-status').textContent = '';
+    el('use-preview-metaprompt').checked = false;
     el('generation-status').textContent = '';
     el('result-compare-panel').classList.add('is-hidden');
     el('result-variant-status').textContent = '';
@@ -725,7 +807,12 @@ function createTaskController({
       return;
     }
 
-    setGenerating(true, `Metaprompt wird erstellt und an ${activeProvider.name} gesendet...`);
+    setGenerating(
+      true,
+      context.metapromptOverride
+        ? `Bearbeitete Metaprompt wird an ${activeProvider.name} gesendet...`
+        : `Metaprompt wird erstellt und an ${activeProvider.name} gesendet...`
+    );
     try {
       const generation = await api('/api/generate', {
         method: 'POST',
@@ -736,6 +823,7 @@ function createTaskController({
           subcategoryName: context.baseFields.unterkategorie,
           baseFields: context.baseFields,
           dynamicValues: context.dynamicValues,
+          metapromptOverride: context.metapromptOverride || undefined,
           templateOverride: context.oneoff.templateOverride,
           saveOverrideAsPersonal: context.oneoff.saveOverrideAsPersonal,
           saveOverrideTitleSuffix: context.oneoff.saveOverrideTitleSuffix,
@@ -804,6 +892,12 @@ function createTaskController({
     copyTextWithFeedback(buildCopyText(true), 'copy-prompt-meta');
   }
 
+  function copyMetapromptPreview() {
+    const content = readRawValue('metaprompt-preview').trim();
+    if (!content) return;
+    copyTextWithFeedback(content, 'copy-metaprompt-preview');
+  }
+
   function toggleComparePanel() {
     const panel = el('result-compare-panel');
     const willShow = panel.classList.contains('is-hidden');
@@ -847,6 +941,7 @@ function createTaskController({
       setPreviewStatus(`Fehler: ${error.message}`, 'error');
       alert(error.message);
     }));
+    el('copy-metaprompt-preview').addEventListener('click', copyMetapromptPreview);
 
     el('copy-prompt-clean').addEventListener('click', copyPromptClean);
     el('copy-prompt-meta').addEventListener('click', copyPromptWithMetadata);

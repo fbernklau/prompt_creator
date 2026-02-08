@@ -1,4 +1,13 @@
-import { PROVIDER_BASE_URLS } from './config.js';
+import { PROVIDER_BASE_URLS, PROVIDER_MODEL_CATALOG } from './config.js';
+
+const CUSTOM_MODEL_VALUE = '__custom__';
+const PROVIDER_LABELS = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  mistral: 'Mistral',
+  google: 'Google',
+  custom: 'Custom API',
+};
 
 function createProviderController({
   state,
@@ -19,6 +28,64 @@ function createProviderController({
 
   function getRecommendedBaseUrl(kind) {
     return PROVIDER_BASE_URLS[kind] || '';
+  }
+
+  function getProviderLabel(kind) {
+    return PROVIDER_LABELS[kind] || 'Provider';
+  }
+
+  function getCatalogModels(kind) {
+    return Array.isArray(PROVIDER_MODEL_CATALOG[kind]) ? PROVIDER_MODEL_CATALOG[kind] : [];
+  }
+
+  function syncModelCustomUi() {
+    const customWrap = el('provider-model-custom-wrap');
+    const customInput = el('provider-model-custom');
+    const isCustom = el('provider-model').value === CUSTOM_MODEL_VALUE;
+    customWrap.classList.toggle('is-hidden', !isCustom);
+    customInput.required = isCustom;
+    if (!isCustom) customInput.value = '';
+  }
+
+  function syncProviderModelUi({ preferredModel = '' } = {}) {
+    const kind = el('provider-kind').value;
+    const modelSelect = el('provider-model');
+    const hint = el('provider-model-hint');
+    const customInput = el('provider-model-custom');
+    const catalogModels = getCatalogModels(kind);
+    const normalizedPreferredModel = String(preferredModel || '').trim();
+
+    const optionHtml = catalogModels
+      .map((model) => `<option value="${model}">${model}</option>`)
+      .join('');
+    modelSelect.innerHTML = `${optionHtml}<option value="${CUSTOM_MODEL_VALUE}">Custom (selbst eingeben)</option>`;
+
+    if (normalizedPreferredModel && catalogModels.includes(normalizedPreferredModel)) {
+      modelSelect.value = normalizedPreferredModel;
+      customInput.value = '';
+    } else if (normalizedPreferredModel) {
+      modelSelect.value = CUSTOM_MODEL_VALUE;
+      customInput.value = normalizedPreferredModel;
+    } else if (catalogModels.length > 0) {
+      modelSelect.value = catalogModels[0];
+      customInput.value = '';
+    } else {
+      modelSelect.value = CUSTOM_MODEL_VALUE;
+      customInput.value = '';
+    }
+
+    if (catalogModels.length > 0) {
+      hint.textContent = `${getProviderLabel(kind)}: Empfohlene Modelle geladen. Fuer eigene IDs "Custom" waehlen.`;
+    } else {
+      hint.textContent = `${getProviderLabel(kind)}: Modell frei definierbar.`;
+    }
+    syncModelCustomUi();
+  }
+
+  function getSelectedModel() {
+    const modelValue = el('provider-model').value;
+    if (modelValue === CUSTOM_MODEL_VALUE) return el('provider-model-custom').value.trim();
+    return modelValue.trim();
   }
 
   function syncProviderBaseUi() {
@@ -54,9 +121,14 @@ function createProviderController({
 
   function initializeProviderForm() {
     setVaultStatus('Server-Key-Schutz aktiv: API-Keys werden nur serverseitig verschluesselt gespeichert.', 'ok');
-    el('provider-kind').addEventListener('change', syncProviderBaseUi);
+    el('provider-kind').addEventListener('change', () => {
+      syncProviderModelUi();
+      syncProviderBaseUi();
+    });
+    el('provider-model').addEventListener('change', syncModelCustomUi);
     el('provider-auto-base').addEventListener('change', syncProviderBaseUi);
     el('provider-auto-base').checked = true;
+    syncProviderModelUi();
     syncProviderBaseUi();
   }
 
@@ -66,7 +138,7 @@ function createProviderController({
     state.editProviderId = id;
     el('provider-name').value = provider.name;
     el('provider-kind').value = provider.kind;
-    el('provider-model').value = provider.model;
+    syncProviderModelUi({ preferredModel: provider.model });
     el('provider-key').value = '';
     el('provider-key').placeholder = provider.hasServerKey
       ? 'Leer lassen = vorhandenen Key beibehalten'
@@ -84,6 +156,7 @@ function createProviderController({
     el('provider-form').reset();
     el('provider-key').placeholder = 'API-Key (wird serverseitig verschluesselt)';
     el('provider-auto-base').checked = true;
+    syncProviderModelUi();
     syncProviderBaseUi();
   }
 
@@ -96,7 +169,7 @@ function createProviderController({
       providerId: state.editProviderId || state.activeId || '',
       name: el('provider-name').value.trim(),
       kind,
-      model: el('provider-model').value.trim(),
+      model: getSelectedModel(),
       baseUrl,
       baseUrlMode: useRecommendedBaseUrl ? 'preset' : 'custom',
     };
@@ -161,12 +234,16 @@ function createProviderController({
 
     const name = el('provider-name').value.trim();
     const kind = el('provider-kind').value;
-    const model = el('provider-model').value.trim();
+    const model = getSelectedModel();
     const recommendedBaseUrl = getRecommendedBaseUrl(kind);
     const useRecommendedBaseUrl = isKnownProvider(kind) && el('provider-auto-base').checked;
     const baseUrl = useRecommendedBaseUrl ? recommendedBaseUrl : el('provider-base').value.trim();
     const baseUrlMode = useRecommendedBaseUrl ? 'preset' : 'custom';
     const keyInput = el('provider-key').value.trim();
+
+    if (!model) {
+      throw new Error('Bitte ein Modell waehlen oder bei Custom ein eigenes Modell eintragen.');
+    }
 
     const provider = {
       id: state.editProviderId || uid(),
