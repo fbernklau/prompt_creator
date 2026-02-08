@@ -171,8 +171,9 @@ function createTaskController({
   function setupPresetSelect(selectId, customId, values, { includeRange = false } = {}) {
     const select = el(selectId);
     const customInput = el(customId);
-    const customWrap = includeRange ? el('zeitrahmen-custom-wrap') : null;
+    const customWrap = customInput?.closest('label') || null;
     const options = Array.isArray(values) ? [...values] : [];
+    if (!options.includes('__custom__')) options.push('__custom__');
     if (includeRange && !options.includes('__range__')) {
       const customIndex = options.indexOf('__custom__');
       if (customIndex >= 0) options.splice(customIndex, 0, '__range__');
@@ -195,12 +196,13 @@ function createTaskController({
     const syncCustomState = () => {
       const isCustom = select.value === '__custom__';
       const isRange = includeRange && select.value === '__range__';
-      if (customWrap) customWrap.classList.toggle('is-hidden', !!isRange);
+      if (customWrap) customWrap.classList.toggle('is-hidden', !isCustom || !!isRange);
       if (customInput) {
-        customInput.disabled = !!isRange;
+        customInput.disabled = !isCustom || !!isRange;
+        customInput.required = isCustom;
         customInput.placeholder = isCustom
           ? 'Eigener Wert'
-          : 'Eigener Wert eingeben (setzt automatisch Custom)';
+          : 'Nur bei Custom aktiv';
       }
 
       if (includeRange && rangeWrap && rangeStart && rangeEnd) {
@@ -213,14 +215,6 @@ function createTaskController({
     };
 
     select.addEventListener('change', syncCustomState);
-    if (customInput) {
-      customInput.addEventListener('input', () => {
-        if (customInput.value.trim() && select.value !== '__custom__') {
-          select.value = '__custom__';
-        }
-        syncCustomState();
-      });
-    }
     syncCustomState();
   }
 
@@ -575,8 +569,14 @@ function createTaskController({
       let input;
       if (field.type === 'select') {
         input = document.createElement('select');
-        const options = Array.isArray(field.options) ? field.options : [];
-        input.innerHTML = `<option value="">Bitte waehlen...</option>${options.map((opt) => `<option value="${opt}">${opt}</option>`).join('')}`;
+        const options = Array.isArray(field.options) ? [...field.options] : [];
+        if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
+        input.innerHTML = `<option value="">Bitte waehlen...</option>${options
+          .map((opt) => {
+            if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
+            return `<option value="${opt}">${opt}</option>`;
+          })
+          .join('')}`;
       } else if (field.type === 'textarea') {
         input = document.createElement('textarea');
         input.rows = 2;
@@ -591,8 +591,14 @@ function createTaskController({
       } else if (field.type === 'multiselect') {
         input = document.createElement('select');
         input.multiple = true;
-        const options = Array.isArray(field.options) ? field.options : [];
-        input.innerHTML = options.map((opt) => `<option value="${opt}">${opt}</option>`).join('');
+        const options = Array.isArray(field.options) ? [...field.options] : [];
+        if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
+        input.innerHTML = options
+          .map((opt) => {
+            if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
+            return `<option value="${opt}">${opt}</option>`;
+          })
+          .join('');
       } else {
         input = document.createElement('input');
         input.type = 'text';
@@ -625,11 +631,30 @@ function createTaskController({
         const customInput = document.createElement('input');
         customInput.type = 'text';
         customInput.id = `dyn-${field.id}-custom`;
+        customInput.disabled = true;
+        customInput.classList.add('is-hidden');
         customInput.placeholder = field.customPlaceholder
-          || (field.type === 'multiselect'
+          || (field.type === 'select'
+            ? 'Eigener Wert'
+            : (field.type === 'multiselect'
             ? 'Weitere Werte (kommagetrennt, optional)'
-            : 'Eigener Wert (optional)');
+            : 'Eigener Wert (optional)'));
         wrap.appendChild(customInput);
+
+        const syncCustomVisibility = () => {
+          let isCustomSelected = false;
+          if (field.type === 'select') {
+            isCustomSelected = input.value === '__custom__';
+          } else if (field.type === 'multiselect') {
+            isCustomSelected = [...input.selectedOptions].some((option) => option.value === '__custom__');
+          }
+          customInput.classList.toggle('is-hidden', !isCustomSelected);
+          customInput.disabled = !isCustomSelected;
+          customInput.required = Boolean(field.required && field.type === 'select' && isCustomSelected);
+          if (!isCustomSelected) customInput.value = '';
+        };
+        input.addEventListener('change', syncCustomVisibility);
+        syncCustomVisibility();
       }
 
       const target = field.required ? requiredContainer : optionalContainer;
@@ -684,12 +709,20 @@ function createTaskController({
 
       if (field.type === 'checkbox') values[field.id] = node.checked;
       else if (field.type === 'multiselect') {
-        const selected = [...node.selectedOptions].map((opt) => opt.value).filter(Boolean);
-        const customValues = allowsCustomDynamicValue(field) ? csvToArray(readValue(`dyn-${field.id}-custom`)) : [];
+        const rawSelected = [...node.selectedOptions].map((opt) => opt.value).filter(Boolean);
+        const customEnabled = rawSelected.includes('__custom__');
+        const selected = rawSelected.filter((value) => value !== '__custom__');
+        const customValues = allowsCustomDynamicValue(field) && customEnabled
+          ? csvToArray(readValue(`dyn-${field.id}-custom`))
+          : [];
         values[field.id] = [...new Set([...selected, ...customValues])].join(', ');
       } else if (field.type === 'select') {
-        const custom = allowsCustomDynamicValue(field) ? readValue(`dyn-${field.id}-custom`) : '';
-        values[field.id] = custom || String(node.value || '').trim();
+        const selectedValue = String(node.value || '').trim();
+        if (allowsCustomDynamicValue(field) && selectedValue === '__custom__') {
+          values[field.id] = readValue(`dyn-${field.id}-custom`);
+        } else {
+          values[field.id] = selectedValue;
+        }
       } else {
         values[field.id] = node.value.trim();
       }
