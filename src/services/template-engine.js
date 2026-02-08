@@ -69,6 +69,7 @@ function buildFieldLines(fieldIds, template, values, { onlyProvided = false } = 
   const lines = [];
   fieldIds.forEach((fieldId) => {
     const raw = values[fieldId];
+    if (onlyProvided && typeof raw === 'boolean' && raw === false) return;
     if (onlyProvided && !hasValue(raw)) return;
     const label = fieldLabelFor(fieldId, template);
     const formatted = hasValue(raw) ? toPromptValue(raw) : 'nicht angegeben';
@@ -203,9 +204,19 @@ function buildMetapromptFromTemplate({ template, categoryName, subcategoryName, 
     throw new Error(`Pflichtfelder fehlen: ${missing.join(', ')}`);
   }
 
-  const promptSpecification = resolvedTemplate.promptMode === 'custom' && resolvedTemplate.basePrompt
-    ? resolvedTemplate.basePrompt
-    : buildSchemaPrompt(resolvedTemplate, merged);
+  const providedOptionalBaseFields = DEFAULT_OPTIONAL_BASE_FIELDS.filter((fieldId) => (
+    fieldId !== 'rueckfragen'
+    && !resolvedTemplate.requiredFields.includes(fieldId)
+    && hasValue(merged[fieldId])
+  ));
+  const templateForPrompt = {
+    ...resolvedTemplate,
+    optionalFields: unique([...resolvedTemplate.optionalFields, ...providedOptionalBaseFields]),
+  };
+
+  const promptSpecification = templateForPrompt.promptMode === 'custom' && templateForPrompt.basePrompt
+    ? templateForPrompt.basePrompt
+    : buildSchemaPrompt(templateForPrompt, merged);
   const promptTemplate = buildPromptGenerationEnvelope(promptSpecification);
   const taxonomyPath = Array.isArray(resolvedTemplate.taxonomyPath) ? resolvedTemplate.taxonomyPath : [categoryName, subcategoryName];
 
@@ -220,7 +231,7 @@ function buildMetapromptFromTemplate({ template, categoryName, subcategoryName, 
     template_tags: Array.isArray(resolvedTemplate.tags) ? resolvedTemplate.tags.join(', ') : '',
     template_description: resolvedTemplate.description || '',
     required_fields_summary: buildFieldLines(resolvedTemplate.requiredFields, resolvedTemplate, merged),
-    optional_fields_summary: buildFieldLines(resolvedTemplate.optionalFields, resolvedTemplate, merged, { onlyProvided: true }),
+    optional_fields_summary: buildFieldLines(templateForPrompt.optionalFields, templateForPrompt, merged, { onlyProvided: true }),
     rueckfragen_instructions: merged.rueckfragen
       ? 'Stelle zuerst 3 bis 7 klaerende Rueckfragen. Warte auf Antworten und erstelle danach die finale Loesung.'
       : 'Arbeite direkt mit 1 bis 2 transparenten Annahmen und liefere sofort eine umsetzbare Version.',

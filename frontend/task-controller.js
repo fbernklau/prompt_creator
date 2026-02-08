@@ -171,6 +171,7 @@ function createTaskController({
   function setupPresetSelect(selectId, customId, values, { includeRange = false } = {}) {
     const select = el(selectId);
     const customInput = el(customId);
+    const customWrap = includeRange ? el('zeitrahmen-custom-wrap') : null;
     const options = Array.isArray(values) ? [...values] : [];
     if (includeRange && !options.includes('__range__')) {
       const customIndex = options.indexOf('__custom__');
@@ -193,15 +194,16 @@ function createTaskController({
 
     const syncCustomState = () => {
       const isCustom = select.value === '__custom__';
+      const isRange = includeRange && select.value === '__range__';
+      if (customWrap) customWrap.classList.toggle('is-hidden', !!isRange);
       if (customInput) {
-        customInput.disabled = false;
+        customInput.disabled = !!isRange;
         customInput.placeholder = isCustom
           ? 'Eigener Wert'
           : 'Eigener Wert eingeben (setzt automatisch Custom)';
       }
 
       if (includeRange && rangeWrap && rangeStart && rangeEnd) {
-        const isRange = select.value === '__range__';
         rangeWrap.classList.toggle('is-hidden', !isRange);
         rangeStart.disabled = !isRange;
         rangeEnd.disabled = !isRange;
@@ -235,8 +237,17 @@ function createTaskController({
   function formatDateForPrompt(value = '') {
     const normalized = String(value || '').trim();
     if (!normalized) return '';
-    const parsed = new Date(`${normalized}T00:00:00`);
+    const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`);
     if (Number.isNaN(parsed.getTime())) return normalized;
+    if (normalized.includes('T')) {
+      return parsed.toLocaleString('de-AT', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
     return parsed.toLocaleDateString('de-AT');
   }
 
