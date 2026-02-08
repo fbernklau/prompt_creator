@@ -46,6 +46,7 @@ Owner: Team + Codex
 - [x] Provider base URL presets implemented for known providers.
 - [x] "Use recommended base URL" checkbox implemented (lock/unlock behavior in UI).
 - [x] Base URL mode persisted (`preset`/`custom`) in DB.
+- [x] Provider connectivity test endpoint + UI action implemented (latency + key source feedback).
 - [x] Provider API keys encrypted server-side at rest (AES-GCM metadata envelope).
 - [x] Plain API keys are not returned to browser responses.
 - [x] Optional shared Gemini test key flow implemented via `.env` allowlists (`GOOGLE_TEST_API_KEY`, `GOOGLE_TEST_ALLOWED_USERS`, `GOOGLE_TEST_ALLOWED_GROUPS`).
@@ -55,6 +56,8 @@ Owner: Team + Codex
 - [x] Provider calling implemented for `openai`, `anthropic`, `google`, `mistral`.
 - [x] Prompt-only guardrail added (strict instruction + parser validation/repair to `handoff_prompt` + rejection of invalid output).
 - [x] Usage audit logging implemented (`provider_usage_audit`).
+- [x] Metaprompt preview endpoint (`/api/generate/preview`) and UI preview panel implemented.
+- [x] Per-request generation analytics logging added (`provider_generation_events`) including success/failure and latency.
 
 ### Template model and persistence
 - [x] Template system persisted in DB (not only static frontend config).
@@ -78,6 +81,8 @@ Owner: Team + Codex
 - [x] Template tag filtering implemented (`/api/templates`, `/api/template-catalog`).
 - [x] Search/ranking implemented (search + tag + rating + usage + recency score).
 - [x] Template rating API + DB implemented.
+- [x] Favorites implemented (`template_favorites` + API + Home quick access cards).
+- [x] Home discovery UI implemented (recommended/recent/favorites/tag chips/template search).
 
 ### User preferences
 - [x] `showCommunityTemplates` setting persisted per user.
@@ -87,9 +92,13 @@ Owner: Team + Codex
 - [x] Template Studio screen implemented (list/filter/create/edit/review/clone/rate/tag/node).
 - [x] Admin screen implemented for RBAC management.
 - [x] Provider UI includes preset base URL lock toggle.
+- [x] First-run setup wizard implemented (provider setup + active provider test shortcut).
+- [x] Main form includes one-off template override editor + optional save-as-personal variant.
+- [x] Generation UX improved with status feedback + metaprompt preview.
+- [x] Result UX improved with clean/meta copy buttons and compare-with-previous output panel.
+- [x] Usage dashboard screen implemented (requests, success rate, latency, provider table, top templates).
 
 ## Partially Done / Needs Follow-up
-- [ ] One-off template editing for a single generation run is backend-capable (`templateOverride`, `saveOverrideAsPersonal`) but not surfaced in the main generation UI yet.
 - [ ] Full end-to-end Docker + Authentik smoke test still needs execution against a real `.env` and running stack.
 - [ ] UX polish and guardrails in Template Studio are still needed (validation depth, clearer state transitions, safer official edit UX).
 
@@ -108,6 +117,6 @@ Owner: Team + Codex
 ## Immediate Next Steps
 - [ ] Step 1: Run full local Docker smoke test with real `.env` (`docker compose up -d --build`, UI/API flow, provider call).
 - [ ] Step 2: Add migration tooling baseline (e.g. migration table + first versioned migration).
-- [ ] Step 3: Implement one-off template override editor in main generation form and connect to existing backend payload.
-- [ ] Step 4: Add integration tests for template governance + RBAC permission matrix.
-- [ ] Step 5: Polish Template Studio UX (safer edit paths, clearer review actions, improved validation feedback).
+- [ ] Step 3: Add integration tests for template governance + RBAC permission matrix.
+- [ ] Step 4: Polish Template Studio UX (safer edit paths, clearer review actions, improved validation feedback).
+- [ ] Step 5: Tune discovery ranking heuristics based on real supervisor feedback.

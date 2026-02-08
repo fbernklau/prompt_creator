@@ -4,8 +4,9 @@ const { config } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
-const { encryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
+const { encryptApiKey, hasServerEncryptedKey, decryptApiKey } = require('../security/key-encryption');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
+const { callProvider } = require('../services/provider-clients');
 
 function normalizeSet(values = []) {
   return new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
@@ -25,6 +26,22 @@ function isSharedGoogleAllowed(req) {
     }
   }
   return false;
+}
+
+function getStoredApiKey(row) {
+  if (!hasServerEncryptedKey(row?.key_meta)) return null;
+  return decryptApiKey(row.key_meta, config.keyEncryptionSecret);
+}
+
+function buildProviderTestPrompt() {
+  return `Erstelle einen sehr kurzen Handoff-Prompt fuer ein KI-Modell.
+
+Kontext:
+- Ziel: Nur Verbindungstest, kein inhaltlicher Output.
+- Ausgabeformat: JSON mit Feld "handoff_prompt".
+- "handoff_prompt" soll mit "Du bist" beginnen und den Text "Test erfolgreich" enthalten.
+
+Gib nur JSON aus.`;
 }
 
 function createProviderRouter() {
@@ -100,6 +117,60 @@ function createProviderRouter() {
   router.delete('/providers/:providerId', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     await pool.query('DELETE FROM providers WHERE user_id = $1 AND provider_id = $2', [req.userId, req.params.providerId]);
     res.json({ ok: true });
+  }));
+
+  router.post('/providers/test', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
+    const providerId = typeof req.body?.providerId === 'string' ? req.body.providerId.trim() : '';
+    const existingResult = providerId
+      ? await pool.query(
+        `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta
+         FROM providers
+         WHERE user_id = $1 AND provider_id = $2`,
+        [req.userId, providerId]
+      )
+      : { rows: [] };
+    const existing = existingResult.rows[0] || null;
+
+    const kind = String(req.body?.kind || existing?.kind || '').trim().toLowerCase();
+    const model = String(req.body?.model || existing?.model || '').trim();
+    const baseUrl = String(req.body?.baseUrl || existing?.base_url || getRecommendedBaseUrl(kind) || '').trim();
+    if (!kind || !model || !baseUrl) {
+      return res.status(400).json({ error: 'kind, model und baseUrl sind fuer den Verbindungstest erforderlich.' });
+    }
+
+    const inlineApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+    let apiKey = inlineApiKey || getStoredApiKey(existing);
+    let keySource = inlineApiKey ? 'inline_test' : 'provider';
+    if (!apiKey && kind === 'google' && isSharedGoogleAllowed(req)) {
+      apiKey = config.googleTestApiKey;
+      keySource = 'shared_google_test';
+    }
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Kein API-Key fuer Verbindungstest verfuegbar.' });
+    }
+
+    const startedAt = Date.now();
+    let output = '';
+    try {
+      output = await callProvider({
+        kind,
+        baseUrl,
+        model,
+        apiKey,
+        metaprompt: buildProviderTestPrompt(),
+        timeoutMs: Math.min(config.providerRequestTimeoutMs, 30000),
+      });
+    } catch (error) {
+      return res.status(502).json({ error: `Provider-Test fehlgeschlagen: ${error.message}` });
+    }
+    const latencyMs = Date.now() - startedAt;
+
+    res.json({
+      ok: true,
+      latencyMs,
+      keySource,
+      preview: String(output || '').slice(0, 220),
+    });
   }));
 
   return router;

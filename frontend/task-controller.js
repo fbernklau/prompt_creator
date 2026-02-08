@@ -13,6 +13,25 @@ function createTaskController({
     schulstufe: 'Schulstufe',
     ziel: 'Ziel der Aufgabe',
   };
+  const BASE_FIELD_HINTS = {
+    fach: 'Beispiel: Mathematik, Physik, Deutsch, Geschichte.',
+    schulstufe: 'Beispiel: 7. Schulstufe, Sek II, Berufsschule.',
+    ziel: 'Formuliere ein konkretes Ergebnis (z. B. Rubric, Stundenbild, Elternbrief).',
+  };
+
+  state.templateDiscovery = state.templateDiscovery || {
+    templates: [],
+    search: '',
+    activeTag: '',
+  };
+  state.previousGeneratedPrompt = state.previousGeneratedPrompt || '';
+
+  function csvToArray(value = '') {
+    return String(value || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
 
   function getTemplateConfig(categoryName = state.selectedCategory, subcategoryName = state.selectedSubcategory) {
     const categoryConfig = getCategoryConfig();
@@ -32,7 +51,23 @@ function createTaskController({
       dynamicFields: Array.isArray(category.dynamicFields) ? category.dynamicFields : [],
       basePrompt: '',
       tags: [],
+      promptMode: 'schema',
+      taxonomyPath: [categoryName, subcategoryName],
+      profile: 'unterrichtsnah',
     };
+  }
+
+  function updateBaseFieldHints(template) {
+    const required = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+      ? template.requiredBaseFields
+      : DEFAULT_REQUIRED_BASE_FIELDS;
+    const contextHint = `Template-Pflichtfelder: ${required.join(', ')}`;
+
+    ['fach', 'schulstufe', 'ziel'].forEach((fieldId) => {
+      const node = el(`hint-${fieldId}`);
+      if (!node) return;
+      node.textContent = `${BASE_FIELD_HINTS[fieldId]} ${contextHint}`;
+    });
   }
 
   function updateBaseFieldRequirements(template) {
@@ -50,6 +85,8 @@ function createTaskController({
       inputNode.required = required;
       if (labelNode) labelNode.textContent = required ? `${labelText} *` : `${labelText} (optional)`;
     });
+
+    updateBaseFieldHints(template);
   }
 
   function setupPresetSelect(selectId, customId, values) {
@@ -82,6 +119,29 @@ function createTaskController({
     return selectValue;
   }
 
+  function setHomeDiscoveryStatus(text = '') {
+    el('home-discovery-status').textContent = text;
+  }
+
+  function setGenerationStatus(text = '', type = 'info') {
+    const node = el('generation-status');
+    node.textContent = text;
+    node.dataset.type = type;
+  }
+
+  function setGenerating(isGenerating, text = '') {
+    const button = el('generate-submit');
+    button.disabled = isGenerating;
+    button.textContent = isGenerating ? 'Generiere...' : 'Prompt generieren';
+    setGenerationStatus(text, isGenerating ? 'info' : 'ok');
+  }
+
+  function setPreviewStatus(text = '', type = 'info') {
+    const node = el('metaprompt-preview-status');
+    node.textContent = text;
+    node.dataset.type = type;
+  }
+
   function renderCategoryGrid() {
     const categoryConfig = getCategoryConfig();
     const grid = el('category-grid');
@@ -104,6 +164,133 @@ function createTaskController({
     });
   }
 
+  function renderQuickTemplateList(containerId, templates, emptyText) {
+    const node = el(containerId);
+    if (!templates.length) {
+      node.innerHTML = `<div class="hint">${emptyText}</div>`;
+      return;
+    }
+
+    node.innerHTML = templates
+      .map((template) => {
+        const recentHint = template.recentUsedAt
+          ? `Zuletzt: ${new Date(template.recentUsedAt).toLocaleString('de-AT')}`
+          : 'Noch nicht genutzt';
+        return `
+          <div class="list-card quick-template-card">
+            <div class="quick-template-head">
+              <strong>${template.title}</strong>
+              <button type="button" class="text-btn small" data-fav-template="${template.templateUid}" data-fav-state="${template.isFavorite ? '1' : '0'}">${template.isFavorite ? '★' : '☆'}</button>
+            </div>
+            <small class="hint">${template.categoryName} -> ${template.subcategoryName}</small>
+            <small class="hint">${recentHint}</small>
+            <button type="button" class="secondary small top-space" data-open-template="${template.templateUid}">Template verwenden</button>
+          </div>
+        `;
+      })
+      .join('');
+
+    node.querySelectorAll('[data-open-template]').forEach((button) => {
+      button.addEventListener('click', () => openTemplateFromDiscovery(button.dataset.openTemplate));
+    });
+    node.querySelectorAll('[data-fav-template]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const favorite = button.dataset.favState === '1';
+        toggleTemplateFavorite(button.dataset.favTemplate, !favorite).catch((error) => alert(error.message));
+      });
+    });
+  }
+
+  function renderTagChips(templates = []) {
+    const counts = new Map();
+    templates.forEach((template) => {
+      (template.tags || []).forEach((tag) => {
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      });
+    });
+    const topTags = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 14);
+
+    const active = state.templateDiscovery.activeTag;
+    const chips = [
+      `<button type="button" class="chip ${!active ? 'is-active' : ''}" data-tag-chip="">Alle</button>`,
+      ...topTags.map(([tag, count]) => `<button type="button" class="chip ${active === tag ? 'is-active' : ''}" data-tag-chip="${tag}">${tag} (${count})</button>`),
+    ];
+
+    el('home-tag-chips').innerHTML = chips.join('');
+    el('home-tag-chips').querySelectorAll('[data-tag-chip]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const tag = button.dataset.tagChip || '';
+        refreshTemplateDiscovery({ tag }).catch((error) => alert(error.message));
+      });
+    });
+  }
+
+  function renderTemplateDiscovery() {
+    const templates = Array.isArray(state.templateDiscovery.templates)
+      ? state.templateDiscovery.templates
+      : [];
+
+    const recommended = templates.slice(0, 6);
+    const recent = templates
+      .filter((template) => template.isRecent)
+      .sort((a, b) => {
+        const aTime = a.recentUsedAt ? new Date(a.recentUsedAt).getTime() : 0;
+        const bTime = b.recentUsedAt ? new Date(b.recentUsedAt).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 6);
+    const favorites = templates
+      .filter((template) => template.isFavorite)
+      .slice(0, 6);
+
+    renderTagChips(templates);
+    renderQuickTemplateList('home-recommended-list', recommended, 'Noch keine Empfehlungen verfuegbar.');
+    renderQuickTemplateList('home-recent-list', recent, 'Noch keine zuletzt genutzten Templates.');
+    renderQuickTemplateList('home-favorites-list', favorites, 'Noch keine Favoriten markiert.');
+    setHomeDiscoveryStatus(`${templates.length} sichtbare Templates geladen.`);
+  }
+
+  async function refreshTemplateDiscovery({
+    search = state.templateDiscovery.search,
+    tag = state.templateDiscovery.activeTag,
+  } = {}) {
+    const params = new URLSearchParams();
+    const normalizedSearch = String(search || '').trim();
+    const normalizedTag = String(tag || '').trim();
+    if (normalizedSearch) params.set('search', normalizedSearch);
+    if (normalizedTag) params.set('tag', normalizedTag);
+
+    setHomeDiscoveryStatus('Lade Template-Discovery...');
+    const payload = await api(`/api/templates${params.toString() ? `?${params.toString()}` : ''}`);
+    state.templateDiscovery.templates = Array.isArray(payload.templates) ? payload.templates : [];
+    state.templateDiscovery.search = normalizedSearch;
+    state.templateDiscovery.activeTag = normalizedTag;
+    renderTemplateDiscovery();
+  }
+
+  function findTemplateInDiscovery(templateUid) {
+    return (state.templateDiscovery.templates || []).find((entry) => entry.templateUid === templateUid) || null;
+  }
+
+  async function toggleTemplateFavorite(templateUid, favorite) {
+    await api(`/api/templates/${encodeURIComponent(templateUid)}/favorite`, {
+      method: 'PUT',
+      body: JSON.stringify({ favorite }),
+    });
+    await refreshTemplateDiscovery();
+  }
+
+  function openTemplateFromDiscovery(templateUid) {
+    const entry = findTemplateInDiscovery(templateUid);
+    if (!entry) {
+      alert('Template nicht gefunden. Bitte Discovery aktualisieren.');
+      return;
+    }
+    openForm(entry.categoryName, entry.subcategoryName);
+  }
+
   function renderSubcategoryList(categoryName) {
     const categoryConfig = getCategoryConfig();
     const cfg = categoryConfig[categoryName];
@@ -111,17 +298,38 @@ function createTaskController({
     el('selected-category-desc').textContent = cfg.description;
     el('subcategory-list').innerHTML = cfg.unterkategorien
       .map(
-        (subcategory) => `
-        <button type="button" class="list-card" data-subcategory="${subcategory}">
-          <strong>${subcategory}</strong>
-          <span class="hint">${getTemplateConfig(categoryName, subcategory)?.description || cfg.description}</span>
-        </button>
-      `
+        (subcategory) => {
+          const template = getTemplateConfig(categoryName, subcategory);
+          const discoveryEntry = (state.templateDiscovery.templates || []).find((entry) => (
+            entry.categoryName === categoryName && entry.subcategoryName === subcategory
+          ));
+          return `
+            <div class="list-card subcategory-card">
+              <div class="quick-template-head">
+                <strong>${subcategory}</strong>
+                <button type="button" class="text-btn small" data-fav-template="${discoveryEntry?.templateUid || ''}" data-fav-state="${discoveryEntry?.isFavorite ? '1' : '0'}">${discoveryEntry?.isFavorite ? '★' : '☆'}</button>
+              </div>
+              <span class="hint">${template?.description || cfg.description}</span>
+              <button type="button" class="secondary small top-space" data-subcategory="${subcategory}">Template auswaehlen</button>
+            </div>
+          `;
+        }
       )
       .join('');
 
     el('subcategory-list').querySelectorAll('[data-subcategory]').forEach((button) => {
       button.addEventListener('click', () => openForm(categoryName, button.dataset.subcategory));
+    });
+    el('subcategory-list').querySelectorAll('[data-fav-template]').forEach((button) => {
+      const templateUid = button.dataset.favTemplate;
+      if (!templateUid) {
+        button.disabled = true;
+        return;
+      }
+      button.addEventListener('click', () => {
+        const favorite = button.dataset.favState === '1';
+        toggleTemplateFavorite(templateUid, !favorite).catch((error) => alert(error.message));
+      });
     });
   }
 
@@ -172,6 +380,19 @@ function createTaskController({
       input.id = `dyn-${field.id}`;
       if (field.required) input.required = true;
       if (field.type !== 'checkbox') wrap.appendChild(input);
+
+      if (field.type !== 'checkbox') {
+        const hint = document.createElement('small');
+        hint.className = 'hint';
+        const optionHint = Array.isArray(field.options) && field.options.length
+          ? `Optionen: ${field.options.join(', ')}`
+          : '';
+        const requiredHint = field.required ? 'Pflichtfeld.' : 'Optional.';
+        const placeholderHint = field.placeholder ? ` Beispiel: ${field.placeholder}` : '';
+        hint.textContent = `${requiredHint}${optionHint ? ` ${optionHint}` : ''}${placeholderHint}`;
+        wrap.appendChild(hint);
+      }
+
       container.appendChild(wrap);
     });
 
@@ -214,6 +435,103 @@ function createTaskController({
     return true;
   }
 
+  function updateSelectedSubcategory() {
+    state.selectedSubcategory = el('unterkategorie-select').value;
+    el('form-subcategory-title').textContent = state.selectedSubcategory;
+    renderDynamicFields();
+  }
+
+  function collectOneOffOverridePayload() {
+    if (!el('oneoff-enable').checked) {
+      return {
+        templateOverride: null,
+        saveOverrideAsPersonal: false,
+        saveOverrideTitleSuffix: '',
+      };
+    }
+
+    const override = {};
+    const description = el('oneoff-description').value.trim();
+    const profile = el('oneoff-profile').value.trim();
+    const promptMode = el('oneoff-prompt-mode').value;
+    const basePrompt = el('oneoff-base-prompt').value.trim();
+    const tags = csvToArray(el('oneoff-tags').value);
+
+    if (description) override.description = description;
+    if (profile) override.profile = profile;
+    if (promptMode) override.promptMode = promptMode;
+    if (basePrompt) override.basePrompt = basePrompt;
+    if (tags.length) override.tags = tags;
+
+    return {
+      templateOverride: Object.keys(override).length ? override : null,
+      saveOverrideAsPersonal: !!el('oneoff-save-personal').checked,
+      saveOverrideTitleSuffix: el('oneoff-save-suffix').value.trim(),
+    };
+  }
+
+  function collectGenerationContext({ validate = true } = {}) {
+    const dynamicValues = collectDynamicValues();
+    if (validate && !validateDynamicValues(dynamicValues)) return null;
+
+    updateSelectedSubcategory();
+    const template = getTemplateConfig();
+    const baseFields = {
+      fach: el('fach').value.trim(),
+      schulstufe: el('schulstufe').value.trim(),
+      handlungsfeld: state.selectedCategory,
+      unterkategorie: state.selectedSubcategory,
+      ziel: el('ziel').value.trim(),
+      zeitrahmen: resolveSelectOrCustom('zeitrahmen-select', 'zeitrahmen-custom'),
+      niveau: resolveSelectOrCustom('niveau-select', 'niveau-custom'),
+      rahmen: resolveSelectOrCustom('rahmen-select', 'rahmen-custom', 'keine besonderen Angaben'),
+      ergebnisformat: resolveSelectOrCustom('ergebnisformat-select', 'ergebnisformat-custom', 'strukturierte Liste'),
+      ton: resolveSelectOrCustom('ton-select', 'ton-custom', 'klar'),
+      rueckfragen: el('rueckfragen').checked,
+    };
+
+    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+      ? template.requiredBaseFields
+      : DEFAULT_REQUIRED_BASE_FIELDS;
+    const missingBase = requiredBase.filter((fieldId) => {
+      const value = baseFields[fieldId];
+      return value === undefined || value === null || String(value).trim() === '';
+    });
+    if (validate && missingBase.length) {
+      alert(`Bitte Pflichtfelder ausfuellen: ${missingBase.join(', ')}`);
+      return null;
+    }
+
+    const oneoff = collectOneOffOverridePayload();
+    return {
+      template,
+      baseFields,
+      dynamicValues,
+      oneoff,
+    };
+  }
+
+  async function previewMetaprompt() {
+    const context = collectGenerationContext({ validate: true });
+    if (!context) return;
+
+    setPreviewStatus('Erstelle serverseitige Metaprompt-Vorschau...', 'info');
+    const preview = await api('/api/generate/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        templateId: context.template?.id,
+        categoryName: context.baseFields.handlungsfeld,
+        subcategoryName: context.baseFields.unterkategorie,
+        baseFields: context.baseFields,
+        dynamicValues: context.dynamicValues,
+        templateOverride: context.oneoff.templateOverride,
+      }),
+    });
+
+    el('metaprompt-preview').value = preview.metaprompt || '';
+    setPreviewStatus('Vorschau aktualisiert.', 'ok');
+  }
+
   function resetTaskState() {
     state.selectedCategory = null;
     state.selectedSubcategory = null;
@@ -227,6 +545,12 @@ function createTaskController({
     el('library-rating').value = '';
     el('library-public').checked = false;
     el('save-library-status').textContent = '';
+    el('metaprompt-preview').value = '';
+    el('metaprompt-preview-status').textContent = '';
+    el('generation-status').textContent = '';
+    el('result-compare-panel').classList.add('is-hidden');
+    el('result-variant-status').textContent = '';
+    el('btn-open-templates-from-result').classList.add('is-hidden');
     showScreen('home');
   }
 
@@ -256,79 +580,69 @@ function createTaskController({
     showScreen('form');
   }
 
-  function updateSelectedSubcategory() {
-    state.selectedSubcategory = el('unterkategorie-select').value;
-    el('form-subcategory-title').textContent = state.selectedSubcategory;
-    renderDynamicFields();
-  }
-
   async function generatePrompt(event) {
     event.preventDefault();
-    const dynamicValues = collectDynamicValues();
-    if (!validateDynamicValues(dynamicValues)) return;
+    const context = collectGenerationContext({ validate: true });
+    if (!context) return;
 
-    updateSelectedSubcategory();
     const activeProvider = state.providers.find((provider) => provider.id === state.activeId);
-    const data = {
-      fach: el('fach').value.trim(),
-      schulstufe: el('schulstufe').value.trim(),
-      handlungsfeld: state.selectedCategory,
-      unterkategorie: state.selectedSubcategory,
-      ziel: el('ziel').value.trim(),
-      zeitrahmen: resolveSelectOrCustom('zeitrahmen-select', 'zeitrahmen-custom'),
-      niveau: resolveSelectOrCustom('niveau-select', 'niveau-custom'),
-      rahmen: resolveSelectOrCustom('rahmen-select', 'rahmen-custom', 'keine besonderen Angaben'),
-      ergebnisformat: resolveSelectOrCustom('ergebnisformat-select', 'ergebnisformat-custom', 'strukturierte Liste'),
-      ton: resolveSelectOrCustom('ton-select', 'ton-custom', 'klar'),
-      rueckfragen: el('rueckfragen').checked,
-    };
-
-    const template = getTemplateConfig();
-    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
-      ? template.requiredBaseFields
-      : DEFAULT_REQUIRED_BASE_FIELDS;
-    const missingBase = requiredBase.filter((fieldId) => {
-      const value = data[fieldId];
-      return value === undefined || value === null || String(value).trim() === '';
-    });
-    if (missingBase.length) {
-      alert(`Bitte Pflichtfelder ausfuellen: ${missingBase.join(', ')}`);
-      return;
-    }
-
     if (!activeProvider) {
       alert('Bitte zuerst einen aktiven Provider auswaehlen.');
       return;
     }
 
-    const generation = await api('/api/generate', {
-      method: 'POST',
-      body: JSON.stringify({
-        providerId: activeProvider.id,
-        templateId: template?.id,
-        categoryName: data.handlungsfeld,
-        subcategoryName: data.unterkategorie,
-        baseFields: data,
-        dynamicValues,
-      }),
-    });
-    const providerMeta = `Aktiver Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
+    setGenerating(true, `Metaprompt wird erstellt und an ${activeProvider.name} gesendet...`);
+    try {
+      const generation = await api('/api/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: activeProvider.id,
+          templateId: context.template?.id,
+          categoryName: context.baseFields.handlungsfeld,
+          subcategoryName: context.baseFields.unterkategorie,
+          baseFields: context.baseFields,
+          dynamicValues: context.dynamicValues,
+          templateOverride: context.oneoff.templateOverride,
+          saveOverrideAsPersonal: context.oneoff.saveOverrideAsPersonal,
+          saveOverrideTitleSuffix: context.oneoff.saveOverrideTitleSuffix,
+        }),
+      });
 
-    state.generatedPrompt = generation.output;
-    state.generatedMeta = providerMeta;
-    state.lastPromptContext = {
-      fach: data.fach,
-      handlungsfeld: data.handlungsfeld,
-      unterkategorie: data.unterkategorie,
-    };
+      const providerMeta = `Aktiver Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
 
-    el('result').value = generation.output;
-    el('result-meta').textContent = providerMeta;
-    el('library-title').value = `${data.unterkategorie} - ${data.fach}`;
-    el('save-library-status').textContent = '';
+      state.previousGeneratedPrompt = state.generatedPrompt || '';
+      state.generatedPrompt = generation.output;
+      state.generatedMeta = providerMeta;
+      state.lastPromptContext = {
+        fach: context.baseFields.fach,
+        handlungsfeld: context.baseFields.handlungsfeld,
+        unterkategorie: context.baseFields.unterkategorie,
+      };
 
-    await saveHistory({ fach: data.fach, handlungsfeld: data.handlungsfeld });
-    showScreen('result');
+      el('result').value = generation.output;
+      el('result-meta').textContent = providerMeta;
+      el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
+      el('save-library-status').textContent = '';
+      el('result-compare-panel').classList.add('is-hidden');
+      el('result-compare-current').value = state.generatedPrompt || '';
+      el('result-compare-previous').value = state.previousGeneratedPrompt || 'Keine vorherige Generation vorhanden.';
+
+      if (generation.savedVariantTemplateId) {
+        el('result-variant-status').textContent = `Template-Variante gespeichert: ${generation.savedVariantTemplateId}`;
+        el('btn-open-templates-from-result').classList.remove('is-hidden');
+      } else {
+        el('result-variant-status').textContent = '';
+        el('btn-open-templates-from-result').classList.add('is-hidden');
+      }
+
+      await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
+      await refreshTemplateDiscovery();
+      setGenerating(false, 'Generierung abgeschlossen.');
+      showScreen('result');
+    } catch (error) {
+      setGenerating(false, `Fehler: ${error.message}`);
+      throw error;
+    }
   }
 
   function buildCopyText(includeMetadata) {
@@ -336,18 +650,32 @@ function createTaskController({
     return `${state.generatedPrompt}\n\n---\n${state.generatedMeta}`;
   }
 
-  function copyPrompt() {
-    const text = buildCopyText(el('copy-include-metadata').checked);
+  function copyTextWithFeedback(text, buttonId) {
     if (!text) return;
-
     navigator.clipboard.writeText(text).then(() => {
-      const button = el('copy-prompt');
+      const button = el(buttonId);
       const original = button.textContent;
       button.textContent = 'Kopiert';
       setTimeout(() => {
         button.textContent = original;
       }, 1100);
     });
+  }
+
+  function copyPromptClean() {
+    copyTextWithFeedback(buildCopyText(false), 'copy-prompt-clean');
+  }
+
+  function copyPromptWithMetadata() {
+    copyTextWithFeedback(buildCopyText(true), 'copy-prompt-meta');
+  }
+
+  function toggleComparePanel() {
+    const panel = el('result-compare-panel');
+    const willShow = panel.classList.contains('is-hidden');
+    panel.classList.toggle('is-hidden', !willShow);
+    el('result-compare-current').value = state.generatedPrompt || '';
+    el('result-compare-previous').value = state.previousGeneratedPrompt || 'Keine vorherige Generation vorhanden.';
   }
 
   function exportPrompt(kind) {
@@ -373,12 +701,49 @@ function createTaskController({
     setupPresetSelect('ton-select', 'ton-custom', presetOptions.ton);
   }
 
+  function bindEvents() {
+    el('unterkategorie-select').addEventListener('change', updateSelectedSubcategory);
+
+    el('oneoff-enable').addEventListener('change', () => {
+      el('oneoff-fields').classList.toggle('is-hidden', !el('oneoff-enable').checked);
+    });
+
+    el('btn-preview-metaprompt').addEventListener('click', () => previewMetaprompt().catch((error) => {
+      setPreviewStatus(`Fehler: ${error.message}`, 'error');
+      alert(error.message);
+    }));
+
+    el('copy-prompt-clean').addEventListener('click', copyPromptClean);
+    el('copy-prompt-meta').addEventListener('click', copyPromptWithMetadata);
+    el('btn-compare-last').addEventListener('click', toggleComparePanel);
+
+    el('home-template-search-btn').addEventListener('click', () => {
+      const search = el('home-template-search').value.trim();
+      refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
+    });
+    el('home-template-reset-btn').addEventListener('click', () => {
+      el('home-template-search').value = '';
+      refreshTemplateDiscovery({ search: '', tag: '' }).catch((error) => alert(error.message));
+    });
+    el('home-template-search').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const search = el('home-template-search').value.trim();
+      refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
+    });
+  }
+
   return {
+    bindEvents,
     renderCategoryGrid,
+    refreshTemplateDiscovery,
     resetTaskState,
     updateSelectedSubcategory,
     generatePrompt,
-    copyPrompt,
+    previewMetaprompt,
+    copyPromptClean,
+    copyPromptWithMetadata,
+    toggleComparePanel,
     exportPrompt,
     setupAdvancedPresets,
   };

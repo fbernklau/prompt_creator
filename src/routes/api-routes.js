@@ -10,6 +10,7 @@ const { createTemplateManagementRouter } = require('./template-management-routes
 const { createGenerateRouter } = require('./generate-routes');
 const { createRbacRouter } = require('./rbac-routes');
 const { createAdminRouter } = require('./admin-routes');
+const { createUsageRouter } = require('./usage-routes');
 
 function createApiRouter() {
   const router = Router();
@@ -25,6 +26,7 @@ function createApiRouter() {
   router.use(createGenerateRouter());
   router.use(createRbacRouter());
   router.use(createAdminRouter());
+  router.use(createUsageRouter());
 
   return router;
 }

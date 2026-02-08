@@ -87,6 +87,24 @@ function createProviderController({
     syncProviderBaseUi();
   }
 
+  function getDraftProviderPayload() {
+    const kind = el('provider-kind').value;
+    const recommendedBaseUrl = getRecommendedBaseUrl(kind);
+    const useRecommendedBaseUrl = isKnownProvider(kind) && el('provider-auto-base').checked;
+    const baseUrl = useRecommendedBaseUrl ? recommendedBaseUrl : el('provider-base').value.trim();
+    const payload = {
+      providerId: state.editProviderId || state.activeId || '',
+      name: el('provider-name').value.trim(),
+      kind,
+      model: el('provider-model').value.trim(),
+      baseUrl,
+      baseUrlMode: useRecommendedBaseUrl ? 'preset' : 'custom',
+    };
+    const apiKey = el('provider-key').value.trim();
+    if (apiKey) payload.apiKey = apiKey;
+    return payload;
+  }
+
   async function deleteProvider(id) {
     await api(`/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
     state.providers = state.providers.filter((provider) => provider.id !== id);
@@ -174,6 +192,41 @@ function createProviderController({
     renderProviders();
   }
 
+  async function testProviderConnection({ preferActive = false } = {}) {
+    const draft = getDraftProviderPayload();
+    const activeProvider = state.providers.find((provider) => provider.id === state.activeId);
+    const payload = preferActive && activeProvider
+      ? {
+        providerId: activeProvider.id || '',
+        kind: activeProvider.kind || '',
+        model: activeProvider.model || '',
+        baseUrl: activeProvider.baseUrl || '',
+      }
+      : {
+        providerId: draft.providerId || activeProvider?.id || '',
+        kind: draft.kind || activeProvider?.kind || '',
+        model: draft.model || activeProvider?.model || '',
+        baseUrl: draft.baseUrl || activeProvider?.baseUrl || '',
+      };
+    if (!preferActive && draft.name && draft.kind && draft.model && draft.baseUrl) {
+      payload.kind = draft.kind;
+      payload.model = draft.model;
+      payload.baseUrl = draft.baseUrl;
+    }
+    if (draft.apiKey) payload.apiKey = draft.apiKey;
+
+    setVaultStatus('Teste Provider-Verbindung...', 'info');
+    const result = await api('/api/providers/test', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    setVaultStatus(
+      `Provider-Test erfolgreich (${result.latencyMs} ms, Key: ${result.keySource}).`,
+      'ok'
+    );
+    return result;
+  }
+
   return {
     initializeProviderForm,
     renderProviders,
@@ -182,6 +235,7 @@ function createProviderController({
     unlockVault,
     lockVault,
     handleProviderSubmit,
+    testProviderConnection,
   };
 }
 

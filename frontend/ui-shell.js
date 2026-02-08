@@ -17,7 +17,7 @@ function createUiShell({ el }) {
   }
 
   function showScreen(screenName) {
-    const ids = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin'];
+    const ids = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin', 'dashboard'];
     ids.forEach((name) => el(`screen-${name}`).classList.toggle('is-hidden', name !== screenName));
   }
 

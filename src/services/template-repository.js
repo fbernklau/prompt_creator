@@ -89,6 +89,36 @@ async function loadUserSettings(userId) {
   return result.rows[0]?.settings_json || {};
 }
 
+async function loadFavoriteTemplateUidSet(userId) {
+  const result = await pool.query(
+    `SELECT template_uid
+     FROM template_favorites
+     WHERE user_id = $1`,
+    [userId]
+  );
+  return new Set(result.rows.map((row) => String(row.template_uid || '').trim()).filter(Boolean));
+}
+
+async function loadRecentTemplateUsageMap(userId) {
+  const result = await pool.query(
+    `SELECT template_id, MAX(created_at) AS last_used_at, COUNT(*) AS usage_count
+     FROM provider_usage_audit
+     WHERE user_id = $1
+     GROUP BY template_id`,
+    [userId]
+  );
+  const byTemplateId = new Map();
+  for (const row of result.rows) {
+    const templateId = String(row.template_id || '').trim();
+    if (!templateId) continue;
+    byTemplateId.set(templateId, {
+      recentUsedAt: row.last_used_at || null,
+      recentUsageCount: Number(row.usage_count || 0),
+    });
+  }
+  return byTemplateId;
+}
+
 async function getNodePath(nodeId) {
   const result = await pool.query(
     `WITH RECURSIVE chain AS (
@@ -259,7 +289,10 @@ function normalizeBaseFieldList(values = [], fallback = []) {
   return normalized.length ? normalized : [...fallback];
 }
 
-function buildTemplateViewRow(row, pathRows = []) {
+function buildTemplateViewRow(row, pathRows = [], {
+  favoriteSet = new Set(),
+  recentUsageMap = new Map(),
+} = {}) {
   const requiredBaseFields = normalizeBaseFieldList(parseJsonArray(row.required_base_fields), ['fach', 'schulstufe', 'ziel']);
   const optionalBaseFields = normalizeBaseFieldList(
     parseJsonArray(row.optional_base_fields),
@@ -279,6 +312,10 @@ function buildTemplateViewRow(row, pathRows = []) {
     ...subPath,
     ...(lastPath && lastPath === title ? [] : [title]),
   ]).join(' / ') || title;
+  const usageMeta = recentUsageMap.get(String(row.template_uid || '').trim()) || null;
+  const recentUsedAt = usageMeta?.recentUsedAt || null;
+  const recentUsageCount = usageMeta?.recentUsageCount || 0;
+  const isFavorite = favoriteSet.has(String(row.template_uid || '').trim());
 
   return {
     dbId: Number(row.id),
@@ -304,6 +341,10 @@ function buildTemplateViewRow(row, pathRows = []) {
     avgRating: Number(row.avg_rating || 0),
     ratingCount: Number(row.rating_count || 0),
     usageCount: Number(row.usage_count || 0),
+    isFavorite,
+    recentUsedAt,
+    recentUsageCount,
+    isRecent: Boolean(recentUsedAt),
     updatedAt: row.updated_at,
     createdAt: row.created_at,
     nodeId: row.node_id ? Number(row.node_id) : null,
@@ -351,7 +392,11 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
     ? Boolean(filters.showCommunityTemplates)
     : (settings.showCommunityTemplates !== false);
 
-  const rows = await listRawTemplates();
+  const [rows, favoriteSet, recentUsageMap] = await Promise.all([
+    listRawTemplates(),
+    loadFavoriteTemplateUidSet(userId),
+    loadRecentTemplateUsageMap(userId),
+  ]);
   const pathCache = new Map();
   const visible = [];
 
@@ -366,7 +411,7 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
       }
       pathRows = pathCache.get(nodeId) || [];
     }
-    visible.push(buildTemplateViewRow(row, pathRows));
+    visible.push(buildTemplateViewRow(row, pathRows, { favoriteSet, recentUsageMap }));
   }
 
   let filtered = visible;
@@ -412,6 +457,8 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
     if (tag && entry.tags.includes(tag)) score += 4;
     score += Math.min(entry.avgRating, 5) * 0.35;
     score += Math.min(entry.usageCount, 200) * 0.01;
+    if (entry.isFavorite) score += 2;
+    if (entry.isRecent) score += 1;
     return { ...entry, score };
   });
 
@@ -424,6 +471,36 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
     templates: withScore,
     showCommunityTemplates,
   };
+}
+
+async function setTemplateFavorite({ userId, access, templateUid, favorite }) {
+  const normalizedUid = String(templateUid || '').trim();
+  if (!normalizedUid) throw httpError(400, 'templateUid ist erforderlich.');
+
+  const visible = await getVisibleTemplatesForUser({
+    userId,
+    access,
+    filters: { showCommunityTemplates: true },
+  });
+  const exists = visible.templates.some((entry) => entry.templateUid === normalizedUid);
+  if (!exists) throw httpError(404, 'Template nicht gefunden oder nicht sichtbar.');
+
+  if (favorite) {
+    await pool.query(
+      `INSERT INTO template_favorites (user_id, template_uid)
+       VALUES ($1,$2)
+       ON CONFLICT (user_id, template_uid) DO NOTHING`,
+      [userId, normalizedUid]
+    );
+  } else {
+    await pool.query(
+      `DELETE FROM template_favorites
+       WHERE user_id = $1 AND template_uid = $2`,
+      [userId, normalizedUid]
+    );
+  }
+
+  return { ok: true, templateUid: normalizedUid, isFavorite: Boolean(favorite) };
 }
 
 function templatesToCatalog(templates) {
@@ -1178,6 +1255,7 @@ module.exports = {
   listTemplateTags,
   createOrUpdateTag,
   rateTemplate,
+  setTemplateFavorite,
   normalizeTagKeys,
   normalizeDynamicFields,
   normalizeBaseFieldList,

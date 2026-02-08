@@ -15,6 +15,7 @@
       <div class="topbar-actions">
         <button id="btn-new-task" type="button" class="text-btn">Neue Aufgabe</button>
         <button id="btn-library" type="button" class="text-btn">Bibliothek</button>
+        <button id="btn-dashboard" type="button" class="text-btn">Dashboard</button>
         <button id="btn-templates" type="button" class="text-btn is-hidden">Templates</button>
         <button id="btn-history" type="button" class="text-btn">Verlauf</button>
         <button id="btn-provider" type="button" class="text-btn">API-Provider</button>
@@ -28,6 +29,36 @@
       <section id="screen-home" class="screen">
         <h1>Wie kann ich dir heute helfen?</h1>
         <p class="subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
+
+        <div class="panel top-space">
+          <h3>Template Discovery</h3>
+          <p class="subline">Schnellzugriff auf empfohlene, zuletzt genutzte und favorisierte Templates.</p>
+          <div class="grid-3 top-space">
+            <label class="span-2">Template Suche
+              <input id="home-template-search" placeholder="Titel, Kategorie, Unterkategorie..." />
+            </label>
+            <div class="inline-actions align-end">
+              <button id="home-template-search-btn" type="button">Suchen</button>
+              <button id="home-template-reset-btn" type="button" class="secondary">Zur&uuml;cksetzen</button>
+            </div>
+          </div>
+          <div id="home-tag-chips" class="chip-row top-space"></div>
+          <div class="grid-3 top-space">
+            <div>
+              <h4>Empfohlen</h4>
+              <div id="home-recommended-list" class="list-cards compact"></div>
+            </div>
+            <div>
+              <h4>Zuletzt genutzt</h4>
+              <div id="home-recent-list" class="list-cards compact"></div>
+            </div>
+            <div>
+              <h4>Favoriten</h4>
+              <div id="home-favorites-list" class="list-cards compact"></div>
+            </div>
+          </div>
+          <small id="home-discovery-status" class="hint top-space"></small>
+        </div>
         <div id="category-grid" class="card-grid"></div>
       </section>
 
@@ -55,15 +86,18 @@
             <div class="grid-2">
               <label><span id="label-fach">Fach *</span>
                 <input id="fach" placeholder="z. B. Digitale Grundbildung" />
+                <small id="hint-fach" class="hint">Beispiel: Mathematik, Deutsch, Physik.</small>
               </label>
               <label><span id="label-schulstufe">Schulstufe *</span>
                 <input id="schulstufe" placeholder="z. B. 9. Schulstufe" />
+                <small id="hint-schulstufe" class="hint">Beispiel: 7. Schulstufe, Sek II.</small>
               </label>
               <label class="span-2">Unterkategorie
                 <select id="unterkategorie-select"></select>
               </label>
               <label class="span-2"><span id="label-ziel">Ziel der Aufgabe *</span>
                 <textarea id="ziel" rows="3" placeholder="Was soll konkret vorliegen?"></textarea>
+                <small id="hint-ziel" class="hint">Formuliere den Zielzustand klar, nicht nur das Thema.</small>
               </label>
             </div>
           </div>
@@ -122,8 +156,57 @@
               <span>Kl&auml;rende R&uuml;ckfragen aktivieren</span>
             </label>
           </div>
+          <div class="panel">
+            <div class="panel-title-row">
+              <h3>Einmaliger Template-Override (optional)</h3>
+            </div>
+            <label class="checkbox">
+              <input id="oneoff-enable" type="checkbox" />
+              <span>Nur f&uuml;r diesen Lauf ein angepasstes Template verwenden</span>
+            </label>
+            <div id="oneoff-fields" class="grid-2 top-space is-hidden">
+              <label>Prompt Mode
+                <select id="oneoff-prompt-mode">
+                  <option value="">(Template-Standard)</option>
+                  <option value="schema">schema</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label>Profil (optional)
+                <input id="oneoff-profile" placeholder="z. B. unterrichtsnah" />
+              </label>
+              <label class="span-2">Beschreibung f&uuml;r diesen Lauf
+                <textarea id="oneoff-description" rows="2" placeholder="Zus&auml;tzliche Hinweise f&uuml;r den Promptaufbau"></textarea>
+              </label>
+              <label class="span-2">Base Prompt Override (bei custom)
+                <textarea id="oneoff-base-prompt" rows="5" placeholder="Eigener Base Prompt mit {{variablen}}"></textarea>
+              </label>
+              <label class="span-2">Tags (CSV, optional)
+                <input id="oneoff-tags" placeholder="z. B. differenzierung,projektlernen" />
+              </label>
+              <label class="checkbox span-2">
+                <input id="oneoff-save-personal" type="checkbox" />
+                <span>Als pers&ouml;nliche Template-Variante speichern</span>
+              </label>
+              <label class="span-2">Titel-Suffix f&uuml;r gespeicherte Variante
+                <input id="oneoff-save-suffix" placeholder="z. B. (Supervisor-Testversion)" />
+              </label>
+            </div>
+          </div>
 
-          <button type="submit" class="cta">Prompt generieren</button>
+          <div class="panel">
+            <div class="panel-title-row">
+              <h3>Metaprompt Vorschau</h3>
+              <button id="btn-preview-metaprompt" type="button" class="secondary">Vorschau aktualisieren</button>
+            </div>
+            <small id="metaprompt-preview-status" class="hint"></small>
+            <textarea id="metaprompt-preview" rows="8" readonly placeholder="Hier erscheint die serverseitig generierte Metaprompt-Vorschau."></textarea>
+          </div>
+
+          <div class="inline-actions">
+            <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
+            <small id="generation-status" class="hint"></small>
+          </div>
         </form>
       </section>
 
@@ -132,18 +215,28 @@
 
         <div class="panel top-space">
           <div class="result-toolbar">
-            <label class="checkbox">
-              <input id="copy-include-metadata" type="checkbox" />
-              <span>Include Metadata</span>
-            </label>
             <div class="inline-actions">
-              <button id="copy-prompt" type="button" class="secondary">Kopieren</button>
+              <button id="copy-prompt-clean" type="button" class="secondary">Kopieren (clean)</button>
+              <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
               <button id="export-txt" type="button" class="secondary">Export .txt</button>
               <button id="export-md" type="button" class="secondary">Export .md</button>
+              <button id="btn-compare-last" type="button" class="secondary">Mit vorheriger Version vergleichen</button>
             </div>
           </div>
           <div id="result-meta" class="hint"></div>
           <textarea id="result" rows="16" readonly></textarea>
+        </div>
+
+        <div id="result-compare-panel" class="panel top-space is-hidden">
+          <h3>Vergleich zur vorherigen Generation</h3>
+          <div class="grid-2 top-space">
+            <label>Aktuelle Version
+              <textarea id="result-compare-current" rows="10" readonly></textarea>
+            </label>
+            <label>Vorherige Version
+              <textarea id="result-compare-previous" rows="10" readonly></textarea>
+            </label>
+          </div>
         </div>
 
         <div class="panel top-space">
@@ -171,11 +264,77 @@
             <button id="save-library" type="button">Save to library</button>
             <small id="save-library-status" class="hint"></small>
           </div>
+          <div class="inline-actions top-space">
+            <small id="result-variant-status" class="hint"></small>
+            <button id="btn-open-templates-from-result" type="button" class="secondary is-hidden">Template Studio &ouml;ffnen</button>
+          </div>
         </div>
 
         <div class="inline-actions top-space">
           <button id="btn-adjust" type="button" class="secondary">Anpassungen vornehmen</button>
           <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+        </div>
+      </section>
+
+      <section id="screen-dashboard" class="screen is-hidden">
+        <div class="step-nav">
+          <button id="btn-back-home-from-dashboard" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+        </div>
+        <h2>Nutzungs-Dashboard</h2>
+        <p class="subline">Eigene Anfrage-Qualit&auml;t, Latenzen und Provider-Stabilit&auml;t im Blick behalten.</p>
+
+        <div class="panel top-space">
+          <div class="inline-actions">
+            <label>Zeitraum
+              <select id="usage-window-days">
+                <option value="7">7 Tage</option>
+                <option value="14">14 Tage</option>
+                <option value="30" selected>30 Tage</option>
+                <option value="60">60 Tage</option>
+                <option value="120">120 Tage</option>
+              </select>
+            </label>
+            <button id="usage-refresh" type="button">Aktualisieren</button>
+            <small id="usage-status" class="hint"></small>
+          </div>
+        </div>
+
+        <div class="grid-3 top-space">
+          <div class="panel">
+            <h3>Requests</h3>
+            <p id="usage-total-requests" class="metric">0</p>
+          </div>
+          <div class="panel">
+            <h3>Success Rate</h3>
+            <p id="usage-success-rate" class="metric">0%</p>
+          </div>
+          <div class="panel">
+            <h3>Ø Latenz</h3>
+            <p id="usage-avg-latency" class="metric">0 ms</p>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Provider &Uuml;berblick</h3>
+          <div class="table-wrap top-space">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Requests</th>
+                  <th>Success Rate</th>
+                  <th>Ø Latenz</th>
+                  <th>Letzter Fehler</th>
+                </tr>
+              </thead>
+              <tbody id="usage-provider-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Top Templates</h3>
+          <ul id="usage-template-list" class="provider-list top-space"></ul>
         </div>
       </section>
 
@@ -513,6 +672,7 @@
           </div>
           <div class="inline-actions top-space">
             <button type="submit">Provider speichern</button>
+            <button id="provider-test" type="button" class="secondary">Provider testen</button>
             <button id="provider-reset" type="button" class="secondary">Formular leeren</button>
           </div>
         </form>
@@ -577,6 +737,25 @@
           <button id="choose-flow-step" type="button">Schrittweise Ansicht</button>
           <button id="choose-flow-single" type="button" class="secondary">Kompaktansicht</button>
         </div>
+      </div>
+    </div>
+
+    <div id="setup-wizard-modal" class="modal is-hidden">
+      <div class="modal-card">
+        <h2>Schnellstart</h2>
+        <p class="subline">In 3 Schritten bist du startklar:</p>
+        <ol class="wizard-list top-space">
+          <li>Provider einrichten (API-Provider).</li>
+          <li>Verbindung testen (inkl. Modell + API-Key).</li>
+          <li>Ersten Prompt generieren.</li>
+        </ol>
+        <div class="inline-actions top-space">
+          <button id="wizard-open-provider" type="button">Provider einrichten</button>
+          <button id="wizard-test-provider" type="button" class="secondary">Aktiven Provider testen</button>
+          <button id="wizard-complete" type="button" class="secondary">Setup abgeschlossen</button>
+          <button id="wizard-skip" type="button" class="text-btn">Sp&auml;ter</button>
+        </div>
+        <small id="wizard-status" class="hint top-space"></small>
       </div>
     </div>
 

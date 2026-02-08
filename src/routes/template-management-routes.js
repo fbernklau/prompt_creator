@@ -15,6 +15,7 @@ const {
   listTemplateTags,
   createOrUpdateTag,
   rateTemplate,
+  setTemplateFavorite,
 } = require('../services/template-repository');
 
 function hasAnyPermission(access = {}, keys = []) {
@@ -169,6 +170,16 @@ function createTemplateManagementRouter() {
       userId: req.userId,
       templateUid: req.params.templateUid,
       rating: req.body?.rating,
+    });
+    res.json(result);
+  }));
+
+  router.put('/templates/:templateUid/favorite', ...baseGuard, requirePermission('templates.read'), asyncHandler(async (req, res) => {
+    const result = await setTemplateFavorite({
+      userId: req.userId,
+      access: req.access,
+      templateUid: req.params.templateUid,
+      favorite: Boolean(req.body?.favorite),
     });
     res.json(result);
   }));

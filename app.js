@@ -11,6 +11,7 @@ import { createLibraryController } from './frontend/library-controller.js';
 import { createTaskController } from './frontend/task-controller.js';
 import { createAdminController } from './frontend/admin-controller.js';
 import { createTemplateStudioController } from './frontend/template-studio-controller.js';
+import { createDashboardController } from './frontend/dashboard-controller.js';
 
 let categoryConfig = {};
 let presetOptions = { ...DEFAULT_PRESET_OPTIONS };
@@ -78,8 +79,15 @@ const templateStudioController = createTemplateStudioController({
     categoryConfig = catalog.categories;
     presetOptions = catalog.presetOptions;
     taskController.renderCategoryGrid();
+    await taskController.refreshTemplateDiscovery();
     libraryController.prepareLibraryFilters();
   },
+});
+const dashboardController = createDashboardController({
+  state,
+  el,
+  api,
+  showScreen: uiShell.showScreen,
 });
 const taskController = createTaskController({
   state,
@@ -90,6 +98,21 @@ const taskController = createTaskController({
   showScreen: uiShell.showScreen,
   saveHistory: historyController.saveHistory,
 });
+
+function hideSetupWizard() {
+  el('setup-wizard-modal').classList.add('is-hidden');
+}
+
+function showSetupWizard() {
+  el('setup-wizard-modal').classList.remove('is-hidden');
+}
+
+function shouldShowSetupWizard() {
+  if (sessionStorage.getItem('eduprompt_setup_skip_session') === '1') return false;
+  const setupDone = localStorage.getItem('eduprompt_setup_done') === '1';
+  if (!setupDone) return true;
+  return state.providers.length === 0;
+}
 
 async function loadServerData() {
   const me = await api('/api/me');
@@ -110,6 +133,8 @@ function bindEvents() {
   providerController.initializeProviderForm();
   adminController.bindEvents();
   templateStudioController.bindEvents();
+  dashboardController.bindEvents();
+  taskController.bindEvents();
 
   el('btn-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
   el('btn-history').addEventListener('click', () => {
@@ -138,6 +163,7 @@ function bindEvents() {
   el('unlock-vault').addEventListener('click', providerController.unlockVault);
   el('lock-vault').addEventListener('click', providerController.lockVault);
   el('provider-form').addEventListener('submit', (event) => providerController.handleProviderSubmit(event).catch((error) => alert(error.message)));
+  el('provider-test').addEventListener('click', () => providerController.testProviderConnection().catch((error) => alert(error.message)));
   el('provider-reset').addEventListener('click', providerController.clearProviderForm);
 
   el('prompt-form').addEventListener('submit', (event) => taskController.generatePrompt(event).catch((error) => alert(error.message)));
@@ -146,12 +172,12 @@ function bindEvents() {
     area.classList.toggle('is-hidden');
   });
 
-  el('unterkategorie-select').addEventListener('change', taskController.updateSelectedSubcategory);
-
-  el('copy-prompt').addEventListener('click', taskController.copyPrompt);
   el('export-txt').addEventListener('click', () => taskController.exportPrompt('txt'));
   el('export-md').addEventListener('click', () => taskController.exportPrompt('md'));
   el('save-library').addEventListener('click', () => libraryController.saveCurrentPromptToLibrary().catch((error) => alert(error.message)));
+  el('btn-open-templates-from-result').addEventListener('click', () => {
+    el('btn-templates').click();
+  });
 
   el('lib-tab-own').addEventListener('click', async () => {
     state.libraryMode = 'own';
@@ -182,16 +208,42 @@ function bindEvents() {
     categoryConfig = catalog.categories;
     presetOptions = catalog.presetOptions;
     taskController.renderCategoryGrid();
+    await taskController.refreshTemplateDiscovery();
     libraryController.prepareLibraryFilters();
   });
 
   el('choose-flow-step').addEventListener('click', async () => {
     await settingsController.saveSettings({ flowMode: 'step' }, false);
     el('flow-choice-modal').classList.add('is-hidden');
+    if (shouldShowSetupWizard()) showSetupWizard();
   });
   el('choose-flow-single').addEventListener('click', async () => {
     await settingsController.saveSettings({ flowMode: 'single' }, false);
     el('flow-choice-modal').classList.add('is-hidden');
+    if (shouldShowSetupWizard()) showSetupWizard();
+  });
+
+  el('wizard-open-provider').addEventListener('click', () => {
+    uiShell.openDrawer('provider-drawer');
+    el('wizard-status').textContent = 'Provider Drawer geoeffnet. Bitte Modell, Key und Base URL setzen.';
+  });
+  el('wizard-test-provider').addEventListener('click', async () => {
+    el('wizard-status').textContent = 'Teste aktiven Provider...';
+    try {
+      const result = await providerController.testProviderConnection({ preferActive: true });
+      el('wizard-status').textContent = `Test erfolgreich (${result.latencyMs} ms).`;
+    } catch (error) {
+      el('wizard-status').textContent = `Test fehlgeschlagen: ${error.message}`;
+    }
+  });
+  el('wizard-complete').addEventListener('click', () => {
+    localStorage.setItem('eduprompt_setup_done', '1');
+    sessionStorage.removeItem('eduprompt_setup_skip_session');
+    hideSetupWizard();
+  });
+  el('wizard-skip').addEventListener('click', () => {
+    sessionStorage.setItem('eduprompt_setup_skip_session', '1');
+    hideSetupWizard();
   });
 }
 
@@ -206,6 +258,7 @@ async function init() {
     presetOptions = catalog.presetOptions;
 
     taskController.renderCategoryGrid();
+    await taskController.refreshTemplateDiscovery();
     libraryController.prepareLibraryFilters();
     taskController.setupAdvancedPresets();
     settingsController.applySettingsToUi();
@@ -217,6 +270,8 @@ async function init() {
 
     if (!state.settings.flowMode) {
       el('flow-choice-modal').classList.remove('is-hidden');
+    } else if (shouldShowSetupWizard()) {
+      showSetupWizard();
     }
   } catch (error) {
     alert(`Fehler beim Laden der Anwendungsdaten: ${error.message}`);

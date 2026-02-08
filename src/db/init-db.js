@@ -333,6 +333,30 @@ async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS provider_generation_events (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      provider_kind TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      success BOOLEAN NOT NULL DEFAULT FALSE,
+      latency_ms INTEGER NOT NULL DEFAULT 0,
+      error_type TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS template_favorites (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      template_uid TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, template_uid)
+    );
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS template_nodes (
       id BIGSERIAL PRIMARY KEY,
       parent_id BIGINT REFERENCES template_nodes(id) ON DELETE CASCADE,
@@ -471,6 +495,10 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_user ON prompt_library(user_id, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_public ON prompt_library(is_public, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_provider ON provider_generation_events(provider_kind, success, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_user ON template_favorites(user_id, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_template ON template_favorites(template_uid)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_rbac_group_name ON rbac_group_role_bindings(LOWER(group_name))');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_nodes_parent ON template_nodes(parent_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_nodes_scope_owner ON template_nodes(scope, owner_user_id, review_state, is_archived)');
