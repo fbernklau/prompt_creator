@@ -37,6 +37,7 @@ function createTaskController({
     search: '',
     activeTag: '',
   };
+  state.templateCoverageAudit = state.templateCoverageAudit || { issues: [] };
   state.previousGeneratedPrompt = state.previousGeneratedPrompt || '';
 
   function csvToArray(value = '') {
@@ -68,6 +69,36 @@ function createTaskController({
       taxonomyPath: [categoryName, subcategoryName],
       profile: 'unterrichtsnah',
     };
+  }
+
+  function auditTemplateCoverageOnce() {
+    const issues = [];
+    const categoryConfig = getCategoryConfig();
+    Object.entries(categoryConfig).forEach(([categoryName, category]) => {
+      Object.entries(category?.templates || {}).forEach(([subcategoryName, template]) => {
+        const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+          ? template.requiredBaseFields
+          : DEFAULT_REQUIRED_BASE_FIELDS;
+        const dynamicIds = new Set(
+          (Array.isArray(template?.dynamicFields) ? template.dynamicFields : [])
+            .map((field) => String(field?.id || '').trim())
+            .filter(Boolean)
+        );
+        const unresolved = requiredBase.filter((fieldId) => !BASE_FIELD_LABELS[fieldId] && !dynamicIds.has(fieldId));
+        if (unresolved.length) {
+          issues.push({
+            categoryName,
+            subcategoryName,
+            unresolved,
+          });
+        }
+      });
+    });
+
+    state.templateCoverageAudit = { issues };
+    if (issues.length) {
+      console.warn('Template coverage audit: unresolved required fields found', issues);
+    }
   }
 
   function updateBaseFieldHints(template) {
@@ -109,6 +140,32 @@ function createTaskController({
 
     updateBaseFieldHints(template);
     return requiredSet;
+  }
+
+  function parkBaseFieldWrappers() {
+    const pool = el('base-fields-pool');
+    if (!pool) return;
+    BASE_FIELD_ORDER.forEach((fieldId) => {
+      const wrapper = el(`wrap-${fieldId}`);
+      if (!wrapper) return;
+      if (wrapper.parentElement !== pool) pool.appendChild(wrapper);
+    });
+  }
+
+  function hasNonEmptyValue(value) {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'boolean') return true;
+    return String(value).trim() !== '';
+  }
+
+  function getRequiredTemplateFields(template) {
+    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+      ? template.requiredBaseFields
+      : DEFAULT_REQUIRED_BASE_FIELDS;
+    const requiredDynamic = (Array.isArray(template?.dynamicFields) ? template.dynamicFields : [])
+      .filter((field) => field.required)
+      .map((field) => field.id);
+    return [...new Set([...requiredBase, ...requiredDynamic].map((entry) => String(entry || '').trim()).filter(Boolean))];
   }
 
   function setupPresetSelect(selectId, customId, values) {
@@ -200,6 +257,7 @@ function createTaskController({
   }
 
   function renderCategoryGrid() {
+    auditTemplateCoverageOnce();
     const categoryConfig = getCategoryConfig();
     const grid = el('category-grid');
     const categoryNames = Object.keys(categoryConfig);
@@ -429,6 +487,7 @@ function createTaskController({
     const optionalContainer = el('optional-fields-grid');
     if (!requiredContainer || !optionalContainer) return;
 
+    parkBaseFieldWrappers();
     if (requiredContainer) requiredContainer.innerHTML = '';
     if (optionalContainer) optionalContainer.innerHTML = '';
 
@@ -511,6 +570,29 @@ function createTaskController({
       if (target) target.appendChild(wrap);
     });
 
+    const dynamicFieldIds = new Set(
+      fields.map((field) => String(field?.id || '').trim()).filter(Boolean)
+    );
+    const unresolvedRequiredFields = [...requiredBaseSet].filter(
+      (fieldId) => !BASE_FIELD_LABELS[fieldId] && !dynamicFieldIds.has(fieldId)
+    );
+    unresolvedRequiredFields.forEach((fieldId) => {
+      const wrap = document.createElement('label');
+      wrap.textContent = `${fieldId} *`;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = `dyn-extra-${fieldId}`;
+      input.required = true;
+      input.dataset.extraRequiredField = fieldId;
+      input.placeholder = `${fieldId} eingeben`;
+      wrap.appendChild(input);
+      const hint = document.createElement('small');
+      hint.className = 'hint';
+      hint.textContent = `Pflichtfeld aus Template-Konfiguration (${fieldId}).`;
+      wrap.appendChild(hint);
+      requiredContainer.appendChild(wrap);
+    });
+
     if (requiredContainer && !requiredContainer.children.length) {
       requiredContainer.innerHTML = '<small class="hint span-2">Dieses Template hat keine Pflicht-Parameter.</small>';
     }
@@ -549,11 +631,19 @@ function createTaskController({
     return values;
   }
 
-  function validateDynamicValues(values) {
-    const template = getTemplateConfig();
-    const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
-    const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);
-    const missing = requiredDynamic.filter((fieldName) => !values[fieldName]);
+  function collectExtraRequiredValues() {
+    const values = {};
+    document.querySelectorAll('[data-extra-required-field]').forEach((node) => {
+      const fieldId = String(node.dataset.extraRequiredField || '').trim();
+      if (!fieldId) return;
+      if (typeof node.value !== 'string') return;
+      values[fieldId] = node.value.trim();
+    });
+    return values;
+  }
+
+  function validateTemplateRequiredValues(template, values) {
+    const missing = getRequiredTemplateFields(template).filter((fieldName) => !hasNonEmptyValue(values[fieldName]));
     if (missing.length) {
       alert(`Bitte Pflichtfelder ausfuellen: ${missing.join(', ')}`);
       return false;
@@ -592,8 +682,8 @@ function createTaskController({
 
   function collectGenerationContext({ validate = true } = {}) {
     const dynamicValues = collectDynamicValues();
-    if (validate && !validateDynamicValues(dynamicValues)) return null;
-
+    const extraRequiredValues = collectExtraRequiredValues();
+    const mergedDynamicValues = { ...dynamicValues, ...extraRequiredValues };
     const template = getTemplateConfig();
     const baseFields = {
       fach: readValue('fach'),
@@ -609,15 +699,7 @@ function createTaskController({
       rueckfragen: readChecked('rueckfragen'),
     };
 
-    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
-      ? template.requiredBaseFields
-      : DEFAULT_REQUIRED_BASE_FIELDS;
-    const missingBase = requiredBase.filter((fieldId) => {
-      const value = baseFields[fieldId];
-      return value === undefined || value === null || String(value).trim() === '';
-    });
-    if (validate && missingBase.length) {
-      alert(`Bitte Pflichtfelder ausfuellen: ${missingBase.join(', ')}`);
+    if (validate && !validateTemplateRequiredValues(template, { ...baseFields, ...mergedDynamicValues })) {
       return null;
     }
 
@@ -631,7 +713,7 @@ function createTaskController({
     return {
       template,
       baseFields,
-      dynamicValues,
+      dynamicValues: mergedDynamicValues,
       oneoff,
       metapromptOverride,
     };
