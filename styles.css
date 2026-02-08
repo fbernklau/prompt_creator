@@ -205,8 +205,9 @@ button.small {
 .card-grid {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 340px));
   gap: 12px;
+  justify-content: center;
 }
 
 .category-card {
@@ -214,11 +215,13 @@ button.small {
   border-radius: 16px;
   background: var(--surface);
   padding: 14px;
-  text-align: left;
+  text-align: center;
   color: var(--text);
   min-height: 138px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -230,7 +233,7 @@ button.small {
 .category-card-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -837,7 +840,7 @@ body[data-theme='system'] .metaprompt-preview-box {
 
 @media (max-width: 980px) {
   .card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 340px));
   }
 
   .grid-3 {
@@ -869,7 +872,7 @@ body[data-theme='system'] .metaprompt-preview-box {
   }
 
   .card-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 340px);
   }
 
   .grid-2 {
