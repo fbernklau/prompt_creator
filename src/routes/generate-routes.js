@@ -5,7 +5,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
 const { buildMetapromptFromTemplate } = require('../services/template-engine');
-const { callProvider } = require('../services/provider-clients');
+const { callProvider, isOverloadedProviderError } = require('../services/provider-clients');
 const { decryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const {
@@ -423,6 +423,10 @@ function createGenerateRouter() {
         },
       });
     } catch (error) {
+      let finalError = error;
+      if (isOverloadedProviderError(error)) {
+        finalError = httpError(503, 'Das gewaehlte Modell ist derzeit ueberlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell waehlen.');
+      }
       try {
         await logGenerationEvent({
           userId: req.userId,
@@ -430,12 +434,12 @@ function createGenerateRouter() {
           templateId: context.resolvedTemplate.templateUid,
           success: false,
           latencyMs: Date.now() - startedAt,
-          errorType: error?.message || 'generation_failed',
+          errorType: finalError?.message || 'generation_failed',
         });
       } catch (_logError) {
         // Do not override original provider error path.
       }
-      throw error;
+      throw finalError;
     }
   }));
 

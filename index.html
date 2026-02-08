@@ -214,68 +214,73 @@
       </section>
 
       <section id="screen-result" class="screen is-hidden">
-        <div class="result-banner">Dein KI-Prompt ist bereit!</div>
+        <div class="result-layout">
+          <div class="result-banner">Dein KI-Prompt ist bereit!</div>
 
-        <div class="panel top-space">
-          <div class="result-toolbar">
-            <div class="inline-actions">
-              <button id="copy-prompt-clean" type="button" class="secondary">Kopieren (clean)</button>
+          <div class="panel top-space result-prompt-panel">
+            <div id="result-meta" class="hint"></div>
+            <div class="result-prompt-box top-space">
+              <button id="copy-prompt-clean" type="button" class="secondary result-copy-inside">Kopieren</button>
+              <textarea id="result" rows="16" readonly></textarea>
+            </div>
+          </div>
+
+          <div class="panel top-space">
+            <div class="inline-actions result-actions-row">
               <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
               <button id="export-txt" type="button" class="secondary">Export .txt</button>
               <button id="export-md" type="button" class="secondary">Export .md</button>
               <button id="btn-compare-last" type="button" class="secondary">Mit vorheriger Version vergleichen</button>
             </div>
           </div>
-          <div id="result-meta" class="hint"></div>
-          <textarea id="result" rows="16" readonly></textarea>
-        </div>
 
-        <div id="result-compare-panel" class="panel top-space is-hidden">
-          <h3>Vergleich zur vorherigen Generation</h3>
-          <div class="grid-2 top-space">
-            <label>Aktuelle Version
-              <textarea id="result-compare-current" rows="10" readonly></textarea>
-            </label>
-            <label>Vorherige Version
-              <textarea id="result-compare-previous" rows="10" readonly></textarea>
-            </label>
+          <div id="result-compare-panel" class="panel top-space is-hidden">
+            <h3>Vergleich zur vorherigen Generation</h3>
+            <div class="grid-2 top-space">
+              <label>Aktuelle Version
+                <textarea id="result-compare-current" rows="10" readonly></textarea>
+              </label>
+              <label>Vorherige Version
+                <textarea id="result-compare-previous" rows="10" readonly></textarea>
+              </label>
+            </div>
           </div>
-        </div>
 
-        <div class="panel top-space">
-          <h3>In Bibliothek speichern</h3>
-          <div class="grid-2">
-            <label class="span-2">Titel
-              <input id="library-title" placeholder="z. B. Stoffverteilungsplan 9. Schulstufe" />
-            </label>
-            <label>Bewertung
-              <select id="library-rating">
-                <option value="">Keine</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-              </select>
-            </label>
-            <label class="checkbox">
-              <input id="library-public" type="checkbox" />
-              <span>In &ouml;ffentliche Bibliothek aufnehmen</span>
-            </label>
+          <div class="panel top-space">
+            <h3>In Bibliothek speichern</h3>
+            <div class="grid-2">
+              <label class="span-2">Titel
+                <input id="library-title" placeholder="z. B. Stoffverteilungsplan 9. Schulstufe" />
+              </label>
+              <label>Bewertung
+                <select id="library-rating">
+                  <option value="">Keine</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </label>
+              <label class="checkbox">
+                <input id="library-public" type="checkbox" />
+                <span>In &ouml;ffentliche Bibliothek aufnehmen</span>
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="save-library" type="button">Save to library</button>
+              <small id="save-library-status" class="hint"></small>
+            </div>
+            <div class="inline-actions top-space">
+              <small id="result-variant-status" class="hint"></small>
+              <button id="btn-open-templates-from-result" type="button" class="secondary is-hidden">Template Studio &ouml;ffnen</button>
+            </div>
           </div>
-          <div class="inline-actions top-space">
-            <button id="save-library" type="button">Save to library</button>
-            <small id="save-library-status" class="hint"></small>
-          </div>
-          <div class="inline-actions top-space">
-            <small id="result-variant-status" class="hint"></small>
-            <button id="btn-open-templates-from-result" type="button" class="secondary is-hidden">Template Studio &ouml;ffnen</button>
-          </div>
-        </div>
 
-        <div class="inline-actions top-space">
-          <button id="btn-adjust" type="button" class="secondary">Anpassungen vornehmen</button>
-          <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+          <div class="inline-actions top-space result-final-actions">
+            <button id="btn-adjust" type="button" class="secondary">Anpassungen vornehmen</button>
+            <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+          </div>
         </div>
       </section>
 

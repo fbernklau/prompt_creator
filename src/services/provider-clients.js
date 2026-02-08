@@ -3,11 +3,35 @@ function trimTrailingSlash(value) {
 }
 
 const PROMPT_ONLY_SYSTEM_INSTRUCTION = 'Du bist ein Prompt-Engineer. Gib ausschliesslich einen Handoff-Prompt aus und niemals die fachliche Endloesung.';
+const MAX_PROVIDER_ATTEMPTS = 3;
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504, 529]);
 
 function withTimeout(timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return { controller, timer };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+class ProviderHttpError extends Error {
+  constructor(message, {
+    status = 500,
+    kind = '',
+    overloaded = false,
+    retryable = false,
+    code = '',
+  } = {}) {
+    super(message);
+    this.name = 'ProviderHttpError';
+    this.status = status;
+    this.kind = kind;
+    this.overloaded = overloaded;
+    this.retryable = retryable;
+    this.code = code;
+  }
 }
 
 async function parseJson(response) {
@@ -48,6 +72,35 @@ function extractGoogleText(payload) {
   return parts.map((part) => part?.text || '').filter(Boolean).join('\n').trim();
 }
 
+function detectProviderErrorCode(payload = {}) {
+  const rawStatus = payload?.error?.status || payload?.status || '';
+  return String(rawStatus || '').trim().toUpperCase();
+}
+
+function isOverloadedError({ status, payload, message = '' }) {
+  const code = detectProviderErrorCode(payload);
+  const normalized = String(message || '').toLowerCase();
+  if (status === 503 || status === 529) return true;
+  if (status === 429 && normalized.includes('overload')) return true;
+  if (code === 'UNAVAILABLE' || code === 'MODEL_OVERLOADED') return true;
+  if (normalized.includes('model is overloaded')) return true;
+  if (normalized.includes('overloaded')) return true;
+  if (normalized.includes('temporarily unavailable')) return true;
+  return false;
+}
+
+function isRetryableProviderError(error) {
+  if (!error) return false;
+  if (error.overloaded) return true;
+  if (error.retryable) return true;
+  if (error.status && RETRYABLE_STATUSES.has(Number(error.status))) return true;
+  return false;
+}
+
+function isOverloadedProviderError(error) {
+  return !!error?.overloaded;
+}
+
 async function doJsonRequest({ url, method = 'POST', headers = {}, body, timeoutMs = 45000 }) {
   const { controller, timer } = withTimeout(timeoutMs);
   try {
@@ -62,6 +115,16 @@ async function doJsonRequest({ url, method = 'POST', headers = {}, body, timeout
     });
     const payload = await parseJson(response);
     return { response, payload };
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new ProviderHttpError('Provider request timeout.', {
+        status: 408,
+        kind: 'provider',
+        retryable: true,
+        code: 'TIMEOUT',
+      });
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -85,7 +148,16 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
     timeoutMs,
   });
 
-  if (!response.ok) throw new Error(parseProviderError('openai', payload, response.status));
+  if (!response.ok) {
+    const message = parseProviderError('openai', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'openai',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
   const text = extractOpenAiLikeText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
   return text;
@@ -114,7 +186,16 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
     timeoutMs,
   });
 
-  if (!response.ok) throw new Error(parseProviderError('anthropic', payload, response.status));
+  if (!response.ok) {
+    const message = parseProviderError('anthropic', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'anthropic',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
   const text = extractAnthropicText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
   return text;
@@ -142,18 +223,22 @@ async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
     timeoutMs,
   });
 
-  if (!response.ok) throw new Error(parseProviderError('google', payload, response.status));
+  if (!response.ok) {
+    const message = parseProviderError('google', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'google',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
   const text = extractGoogleText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
   return text;
 }
 
-async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
-  if (!kind) throw new Error('Provider kind fehlt.');
-  if (!baseUrl) throw new Error('Provider base URL fehlt.');
-  if (!model) throw new Error('Provider model fehlt.');
-  if (!apiKey) throw new Error('Provider API key fehlt.');
-
+async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
   if (kind === 'openai' || kind === 'mistral') {
     return callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs });
   }
@@ -163,10 +248,32 @@ async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutM
   if (kind === 'google') {
     return callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs });
   }
-
   throw new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+}
+
+async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
+  if (!kind) throw new Error('Provider kind fehlt.');
+  if (!baseUrl) throw new Error('Provider base URL fehlt.');
+  if (!model) throw new Error('Provider model fehlt.');
+  if (!apiKey) throw new Error('Provider API key fehlt.');
+
+  let attempt = 0;
+  let lastError = null;
+  while (attempt < MAX_PROVIDER_ATTEMPTS) {
+    attempt += 1;
+    try {
+      return await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableProviderError(error) || attempt >= MAX_PROVIDER_ATTEMPTS) break;
+      const backoffMs = 500 * Math.pow(2, attempt - 1);
+      await wait(backoffMs);
+    }
+  }
+  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
 }
 
 module.exports = {
   callProvider,
+  isOverloadedProviderError,
 };
