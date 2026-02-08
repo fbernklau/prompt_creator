@@ -168,36 +168,91 @@ function createTaskController({
     return [...new Set([...requiredBase, ...requiredDynamic].map((entry) => String(entry || '').trim()).filter(Boolean))];
   }
 
-  function setupPresetSelect(selectId, customId, values) {
+  function setupPresetSelect(selectId, customId, values, { includeRange = false } = {}) {
     const select = el(selectId);
-    select.innerHTML = values
+    const customInput = el(customId);
+    const options = Array.isArray(values) ? [...values] : [];
+    if (includeRange && !options.includes('__range__')) {
+      const customIndex = options.indexOf('__custom__');
+      if (customIndex >= 0) options.splice(customIndex, 0, '__range__');
+      else options.push('__range__');
+    }
+
+    select.innerHTML = options
       .map((value) => {
         if (!value) return '<option value="">Bitte waehlen...</option>';
+        if (value === '__range__') return '<option value="__range__">Von - bis</option>';
         if (value === '__custom__') return '<option value="__custom__">Custom...</option>';
         return `<option value="${value}">${value}</option>`;
       })
       .join('');
 
+    const rangeWrap = includeRange ? el('zeitrahmen-range-wrap') : null;
+    const rangeStart = includeRange ? el('zeitrahmen-range-start') : null;
+    const rangeEnd = includeRange ? el('zeitrahmen-range-end') : null;
+
     const syncCustomState = () => {
       const isCustom = select.value === '__custom__';
-      el(customId).disabled = !isCustom;
-      if (!isCustom && !el(customId).value) {
-        el(customId).placeholder = 'Nur bei Custom aktiv';
+      if (customInput) {
+        customInput.disabled = false;
+        customInput.placeholder = isCustom
+          ? 'Eigener Wert'
+          : 'Eigener Wert eingeben (setzt automatisch Custom)';
+      }
+
+      if (includeRange && rangeWrap && rangeStart && rangeEnd) {
+        const isRange = select.value === '__range__';
+        rangeWrap.classList.toggle('is-hidden', !isRange);
+        rangeStart.disabled = !isRange;
+        rangeEnd.disabled = !isRange;
+        rangeStart.required = isRange;
+        rangeEnd.required = isRange;
       }
     };
 
     select.addEventListener('change', syncCustomState);
+    if (customInput) {
+      customInput.addEventListener('input', () => {
+        if (customInput.value.trim() && select.value !== '__custom__') {
+          select.value = '__custom__';
+        }
+        syncCustomState();
+      });
+    }
     syncCustomState();
   }
 
-  function resolveSelectOrCustom(selectId, customId, fallback = 'nicht angegeben') {
+  function resolveSelectOrCustom(selectId, customId, fallback = '') {
     const selectNode = el(selectId);
     const customNode = el(customId);
     const selectValue = selectNode ? selectNode.value : '';
     const customValue = customNode && typeof customNode.value === 'string' ? customNode.value.trim() : '';
-    if (customValue) return customValue;
-    if (!selectValue || selectValue === '__custom__') return fallback;
-    return selectValue;
+    if (selectValue === '__custom__') return customValue || fallback;
+    if (selectValue) return selectValue;
+    return fallback;
+  }
+
+  function formatDateForPrompt(value = '') {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    const parsed = new Date(`${normalized}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return normalized;
+    return parsed.toLocaleDateString('de-AT');
+  }
+
+  function resolveZeitrahmenValue() {
+    const mode = String(el('zeitrahmen-select')?.value || '').trim();
+    if (mode === '__range__') {
+      const start = readValue('zeitrahmen-range-start');
+      const end = readValue('zeitrahmen-range-end');
+      const startLabel = formatDateForPrompt(start);
+      const endLabel = formatDateForPrompt(end);
+      if (startLabel && endLabel) return `von ${startLabel} bis ${endLabel}`;
+      if (startLabel) return `ab ${startLabel}`;
+      if (endLabel) return `bis ${endLabel}`;
+      return '';
+    }
+    return resolveSelectOrCustom('zeitrahmen-select', 'zeitrahmen-custom');
   }
 
   function readValue(id) {
@@ -691,11 +746,11 @@ function createTaskController({
       handlungsfeld: state.selectedCategory,
       unterkategorie: state.selectedSubcategory,
       ziel: readValue('ziel'),
-      zeitrahmen: resolveSelectOrCustom('zeitrahmen-select', 'zeitrahmen-custom'),
+      zeitrahmen: resolveZeitrahmenValue(),
       niveau: resolveSelectOrCustom('niveau-select', 'niveau-custom'),
-      rahmen: resolveSelectOrCustom('rahmen-select', 'rahmen-custom', 'keine besonderen Angaben'),
-      ergebnisformat: resolveSelectOrCustom('ergebnisformat-select', 'ergebnisformat-custom', 'strukturierte Liste'),
-      ton: resolveSelectOrCustom('ton-select', 'ton-custom', 'klar'),
+      rahmen: resolveSelectOrCustom('rahmen-select', 'rahmen-custom'),
+      ergebnisformat: resolveSelectOrCustom('ergebnisformat-select', 'ergebnisformat-custom'),
+      ton: resolveSelectOrCustom('ton-select', 'ton-custom'),
       rueckfragen: readChecked('rueckfragen'),
     };
 
@@ -1004,7 +1059,7 @@ function createTaskController({
 
   function setupAdvancedPresets() {
     const presetOptions = getPresetOptions();
-    setupPresetSelect('zeitrahmen-select', 'zeitrahmen-custom', presetOptions.zeitrahmen);
+    setupPresetSelect('zeitrahmen-select', 'zeitrahmen-custom', presetOptions.zeitrahmen, { includeRange: true });
     setupPresetSelect('niveau-select', 'niveau-custom', presetOptions.niveau);
     setupPresetSelect('rahmen-select', 'rahmen-custom', presetOptions.rahmen);
     setupPresetSelect('ergebnisformat-select', 'ergebnisformat-custom', presetOptions.ergebnisformat);
