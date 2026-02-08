@@ -18,6 +18,18 @@ function createTaskController({
     schulstufe: 'Beispiel: 7. Schulstufe, Sek II, Berufsschule.',
     ziel: 'Formuliere ein konkretes Ergebnis (z. B. Rubric, Stundenbild, Elternbrief).',
   };
+  const BASE_FIELD_ORDER = ['fach', 'schulstufe', 'ziel'];
+  const CATEGORY_ICONS = {
+    Jahresplanung: '🗓️',
+    Unterrichtsvorbereitung: '🧰',
+    'Individualisierung & Differenzierung': '🎯',
+    'Barrierefreiheit & Inklusion': '♿',
+    'Elternkontakte & Kommunikation': '✉️',
+    'Leistungsbeurteilung & Feedback': '⚖️',
+    Administration: '📁',
+    Organisation: '🚌',
+    'Schulentwicklung & Teamarbeit': '🧩',
+  };
 
   state.templateDiscovery = state.templateDiscovery || {
     templates: [],
@@ -86,6 +98,27 @@ function createTaskController({
       if (labelNode) labelNode.textContent = required ? `${labelText} *` : `${labelText} (optional)`;
     });
 
+    const requiredContainer = el('base-required-fields');
+    const optionalContainer = el('base-optional-fields');
+    const wrappers = BASE_FIELD_ORDER
+      .map((fieldId) => ({ fieldId, node: el(`wrap-${fieldId}`) }))
+      .filter((entry) => !!entry.node);
+
+    if (requiredContainer) requiredContainer.innerHTML = '';
+    if (optionalContainer) optionalContainer.innerHTML = '';
+
+    wrappers.forEach(({ fieldId, node }) => {
+      const target = requiredSet.has(fieldId) ? requiredContainer : optionalContainer;
+      if (target) target.appendChild(node);
+    });
+
+    if (requiredContainer && !requiredContainer.children.length) {
+      requiredContainer.innerHTML = '<small class="hint span-2">Dieses Template hat keine Pflicht-Basisfelder.</small>';
+    }
+    if (optionalContainer && !optionalContainer.children.length) {
+      optionalContainer.innerHTML = '<small class="hint span-2">Keine optionalen Basisfelder verfuegbar.</small>';
+    }
+
     updateBaseFieldHints(template);
   }
 
@@ -149,9 +182,13 @@ function createTaskController({
     grid.innerHTML = categoryNames
       .map((categoryName) => {
         const cfg = categoryConfig[categoryName];
+        const icon = CATEGORY_ICONS[categoryName] || '📘';
         return `
         <button type="button" class="category-card" data-category="${categoryName}">
-          <span class="category-kicker">${cfg.short}</span>
+          <div class="category-card-head">
+            <span class="category-icon" aria-hidden="true">${icon}</span>
+            <span class="category-kicker">${cfg.short}</span>
+          </div>
           <strong>${cfg.title}</strong>
           <span class="hint">${cfg.description}</span>
         </button>
@@ -372,8 +409,10 @@ function createTaskController({
 
   function renderDynamicFields() {
     const template = getTemplateConfig();
-    const container = el('dynamic-fields');
-    container.innerHTML = '';
+    const requiredContainer = el('dynamic-required-fields');
+    const optionalContainer = el('dynamic-optional-fields');
+    if (requiredContainer) requiredContainer.innerHTML = '';
+    if (optionalContainer) optionalContainer.innerHTML = '';
 
     const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
     fields.forEach((field) => {
@@ -422,8 +461,16 @@ function createTaskController({
         wrap.appendChild(hint);
       }
 
-      container.appendChild(wrap);
+      const target = field.required ? requiredContainer : optionalContainer;
+      if (target) target.appendChild(wrap);
     });
+
+    if (requiredContainer && !requiredContainer.children.length) {
+      requiredContainer.innerHTML = '<small class="hint span-2">Dieses Template hat keine Pflicht-Parameter.</small>';
+    }
+    if (optionalContainer && !optionalContainer.children.length) {
+      optionalContainer.innerHTML = '<small class="hint span-2">Keine optionalen Template-Parameter.</small>';
+    }
 
     updateBaseFieldRequirements(template);
     const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);

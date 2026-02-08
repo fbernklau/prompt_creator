@@ -83,19 +83,29 @@
         <form id="prompt-form" class="stack-form">
           <div class="panel panel-soft">
             <h3>Basisdaten</h3>
-            <div class="grid-2">
-              <label><span id="label-fach">Fach *</span>
-                <input id="fach" placeholder="z. B. Digitale Grundbildung" />
-                <small id="hint-fach" class="hint">Beispiel: Mathematik, Deutsch, Physik.</small>
-              </label>
-              <label><span id="label-schulstufe">Schulstufe *</span>
-                <input id="schulstufe" placeholder="z. B. 9. Schulstufe" />
-                <small id="hint-schulstufe" class="hint">Beispiel: 7. Schulstufe, Sek II.</small>
-              </label>
+            <div class="grid-2 compact-grid">
               <label class="span-2">Unterkategorie
                 <select id="unterkategorie-select"></select>
               </label>
-              <label class="span-2"><span id="label-ziel">Ziel der Aufgabe *</span>
+            </div>
+            <div class="field-section top-space">
+              <h4>Pflichtfelder</h4>
+              <div id="base-required-fields" class="grid-2 compact-grid"></div>
+            </div>
+            <div class="field-section top-space">
+              <h4>Optionale Felder</h4>
+              <div id="base-optional-fields" class="grid-2 compact-grid"></div>
+            </div>
+            <div id="base-fields-pool" class="is-hidden">
+              <label id="wrap-fach"><span id="label-fach">Fach *</span>
+                <input id="fach" placeholder="z. B. Digitale Grundbildung" />
+                <small id="hint-fach" class="hint">Beispiel: Mathematik, Deutsch, Physik.</small>
+              </label>
+              <label id="wrap-schulstufe"><span id="label-schulstufe">Schulstufe *</span>
+                <input id="schulstufe" placeholder="z. B. 9. Schulstufe" />
+                <small id="hint-schulstufe" class="hint">Beispiel: 7. Schulstufe, Sek II.</small>
+              </label>
+              <label id="wrap-ziel" class="span-2"><span id="label-ziel">Ziel der Aufgabe *</span>
                 <textarea id="ziel" rows="3" placeholder="Was soll konkret vorliegen?"></textarea>
                 <small id="hint-ziel" class="hint">Formuliere den Zielzustand klar, nicht nur das Thema.</small>
               </label>
@@ -105,7 +115,14 @@
           <div class="panel">
             <h3>Template-spezifische Parameter</h3>
             <small id="validation-hint" class="hint"></small>
-            <div id="dynamic-fields" class="grid-2"></div>
+            <div class="field-section top-space">
+              <h4>Pflichtfelder</h4>
+              <div id="dynamic-required-fields" class="grid-2 compact-grid"></div>
+            </div>
+            <div class="field-section top-space">
+              <h4>Optionale Felder</h4>
+              <div id="dynamic-optional-fields" class="grid-2 compact-grid"></div>
+            </div>
           </div>
 
           <div class="panel">

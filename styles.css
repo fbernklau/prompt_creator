@@ -1,44 +1,44 @@
 :root {
-  --bg: #f5f7fb;
+  --bg: #f2f4f8;
   --surface: #ffffff;
-  --surface-soft: #f3f7ff;
-  --line: #dfe7f8;
-  --text: #102042;
-  --text-soft: #566488;
-  --brand: #3b57ff;
-  --brand-strong: #2438b4;
+  --surface-soft: #f7f9fd;
+  --line: #d6dde8;
+  --text: #1a2334;
+  --text-soft: #5d6780;
+  --brand: #4e63ff;
+  --brand-strong: #3444cb;
   --ok-bg: #e7fff3;
   --ok-text: #116a42;
-  --shadow: 0 8px 30px rgba(22, 43, 99, 0.08);
+  --shadow: 0 8px 24px rgba(22, 43, 99, 0.1);
 }
 
 body[data-theme='dark'] {
-  --bg: #131620;
-  --surface: #1a1f2f;
-  --surface-soft: #20273a;
-  --line: #2a334d;
-  --text: #e8edff;
-  --text-soft: #a6b3d9;
+  --bg: #0f1423;
+  --surface: #171f34;
+  --surface-soft: #1f2941;
+  --line: #2f3d63;
+  --text: #ecf0ff;
+  --text-soft: #afbbdf;
   --brand: #6f86ff;
-  --brand-strong: #88a1ff;
+  --brand-strong: #89a0ff;
   --ok-bg: #133528;
   --ok-text: #84efbf;
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: dark) {
   body[data-theme='system'] {
-    --bg: #131620;
-    --surface: #1a1f2f;
-    --surface-soft: #20273a;
-    --line: #2a334d;
-    --text: #e8edff;
-    --text-soft: #a6b3d9;
+    --bg: #0f1423;
+    --surface: #171f34;
+    --surface-soft: #1f2941;
+    --line: #2f3d63;
+    --text: #ecf0ff;
+    --text-soft: #afbbdf;
     --brand: #6f86ff;
-    --brand-strong: #88a1ff;
+    --brand-strong: #89a0ff;
     --ok-bg: #133528;
     --ok-text: #84efbf;
-    --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    --shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -213,13 +213,13 @@ button.small {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  padding: 18px;
+  padding: 14px;
   text-align: left;
   color: var(--text);
-  min-height: 146px;
+  min-height: 138px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .category-card:hover {
@@ -227,22 +227,47 @@ button.small {
   box-shadow: var(--shadow);
 }
 
+.category-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.category-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+}
+
 .category-kicker {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  min-width: 30px;
+  height: 22px;
+  border-radius: 999px;
   background: var(--surface-soft);
   border: 1px solid var(--line);
-  display: grid;
+  display: inline-grid;
   place-items: center;
   color: var(--brand);
   font-weight: 700;
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  padding: 0 8px;
 }
 
 .category-title {
   font-size: 28px;
   margin-top: 2px;
+}
+
+.category-card strong {
+  font-size: 25px;
+  line-height: 1.22;
 }
 
 .list-cards {
@@ -320,6 +345,10 @@ button.small {
   gap: 10px;
 }
 
+.compact-grid {
+  gap: 8px;
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -341,6 +370,18 @@ label {
   gap: 6px;
   font-weight: 600;
   color: var(--text);
+}
+
+.field-section {
+  display: grid;
+  gap: 8px;
+}
+
+.field-section h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-soft);
+  font-weight: 700;
 }
 
 input,
