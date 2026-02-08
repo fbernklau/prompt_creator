@@ -684,6 +684,15 @@ function createTaskController({
       requiredContainer.appendChild(wrap);
     });
 
+    // Prioritize contextual lead-in fields (e.g. "anlass") at the top of required fields.
+    const priorityRequiredIds = ['anlass'];
+    [...priorityRequiredIds].reverse().forEach((fieldId) => {
+      const node = el(`dyn-${fieldId}`);
+      const wrap = node?.closest('label');
+      if (!wrap || wrap.parentElement !== requiredContainer) return;
+      requiredContainer.insertBefore(wrap, requiredContainer.firstChild);
+    });
+
     if (requiredContainer && !requiredContainer.children.length) {
       requiredContainer.innerHTML = '<small class="hint span-2">Dieses Template hat keine Pflicht-Parameter.</small>';
     }
