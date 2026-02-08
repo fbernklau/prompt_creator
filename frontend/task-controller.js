@@ -20,6 +20,7 @@ function createTaskController({
   };
   const BASE_FIELD_ORDER = ['fach', 'schulstufe', 'ziel'];
   const CATEGORY_ICONS = {
+    'Pädagogische Planung': '📚',
     Jahresplanung: '🗓️',
     Unterrichtsvorbereitung: '🧰',
     'Individualisierung & Differenzierung': '🎯',
@@ -133,11 +134,40 @@ function createTaskController({
   }
 
   function resolveSelectOrCustom(selectId, customId, fallback = 'nicht angegeben') {
-    const selectValue = el(selectId).value;
-    const customValue = el(customId).value.trim();
+    const selectNode = el(selectId);
+    const customNode = el(customId);
+    const selectValue = selectNode ? selectNode.value : '';
+    const customValue = customNode && typeof customNode.value === 'string' ? customNode.value.trim() : '';
     if (customValue) return customValue;
     if (!selectValue || selectValue === '__custom__') return fallback;
     return selectValue;
+  }
+
+  function readValue(id) {
+    const node = el(id);
+    if (!node || typeof node.value !== 'string') return '';
+    return node.value.trim();
+  }
+
+  function readChecked(id) {
+    const node = el(id);
+    return !!node?.checked;
+  }
+
+  function dynamicFieldDefaultHelp(field = {}) {
+    const type = String(field.type || 'text').toLowerCase();
+    if (type === 'textarea') return 'Nutze Stichpunkte oder kurze Saetze mit konkreten Angaben.';
+    if (type === 'select') return 'Waehle eine Option oder nutze einen eigenen Wert.';
+    if (type === 'multiselect') return 'Mehrere Optionen moeglich; eigene Werte koennen ergaenzt werden.';
+    if (type === 'checkbox') return 'Aktivieren, wenn fuer den Prompt relevant.';
+    return 'Kurze, konkrete Angabe fuer den Prompt-Kontext.';
+  }
+
+  function allowsCustomDynamicValue(field = {}) {
+    const type = String(field.type || '').toLowerCase();
+    if (type !== 'select' && type !== 'multiselect') return false;
+    if (field.allowCustom === false) return false;
+    return true;
   }
 
   function setHomeDiscoveryStatus(text = '') {
@@ -409,11 +439,13 @@ function createTaskController({
       const wrap = document.createElement('label');
       wrap.className = field.type === 'checkbox' ? 'checkbox span-2' : '';
       if (field.type !== 'checkbox') wrap.textContent = field.label;
+      const allowCustom = allowsCustomDynamicValue(field);
 
       let input;
       if (field.type === 'select') {
         input = document.createElement('select');
-        input.innerHTML = `<option value="">Bitte waehlen...</option>${field.options.map((opt) => `<option value="${opt}">${opt}</option>`).join('')}`;
+        const options = Array.isArray(field.options) ? field.options : [];
+        input.innerHTML = `<option value="">Bitte waehlen...</option>${options.map((opt) => `<option value="${opt}">${opt}</option>`).join('')}`;
       } else if (field.type === 'textarea') {
         input = document.createElement('textarea');
         input.rows = 2;
@@ -428,7 +460,8 @@ function createTaskController({
       } else if (field.type === 'multiselect') {
         input = document.createElement('select');
         input.multiple = true;
-        input.innerHTML = field.options.map((opt) => `<option value="${opt}">${opt}</option>`).join('');
+        const options = Array.isArray(field.options) ? field.options : [];
+        input.innerHTML = options.map((opt) => `<option value="${opt}">${opt}</option>`).join('');
       } else {
         input = document.createElement('input');
         input.type = 'text';
@@ -442,13 +475,30 @@ function createTaskController({
       if (field.type !== 'checkbox') {
         const hint = document.createElement('small');
         hint.className = 'hint';
+        const explanation = (field.helpText || '').trim() || dynamicFieldDefaultHelp(field);
         const optionHint = Array.isArray(field.options) && field.options.length
           ? `Optionen: ${field.options.join(', ')}`
           : '';
         const requiredHint = field.required ? 'Pflichtfeld.' : 'Optional.';
         const placeholderHint = field.placeholder ? ` Beispiel: ${field.placeholder}` : '';
-        hint.textContent = `${requiredHint}${optionHint ? ` ${optionHint}` : ''}${placeholderHint}`;
+        const customHint = allowCustom
+          ? (field.type === 'multiselect'
+            ? ' Eigene Werte (kommagetrennt) sind zusaetzlich moeglich.'
+            : ' Eigener Wert ist alternativ moeglich.')
+          : '';
+        hint.textContent = `${requiredHint} ${explanation}${optionHint ? ` ${optionHint}` : ''}${placeholderHint}${customHint}`;
         wrap.appendChild(hint);
+      }
+
+      if (allowCustom && field.type !== 'checkbox') {
+        const customInput = document.createElement('input');
+        customInput.type = 'text';
+        customInput.id = `dyn-${field.id}-custom`;
+        customInput.placeholder = field.customPlaceholder
+          || (field.type === 'multiselect'
+            ? 'Weitere Werte (kommagetrennt, optional)'
+            : 'Eigener Wert (optional)');
+        wrap.appendChild(customInput);
       }
 
       const target = field.required ? requiredContainer : optionalContainer;
@@ -479,8 +529,16 @@ function createTaskController({
       if (!node) return;
 
       if (field.type === 'checkbox') values[field.id] = node.checked;
-      else if (field.type === 'multiselect') values[field.id] = [...node.selectedOptions].map((opt) => opt.value).join(', ');
-      else values[field.id] = node.value.trim();
+      else if (field.type === 'multiselect') {
+        const selected = [...node.selectedOptions].map((opt) => opt.value).filter(Boolean);
+        const customValues = allowsCustomDynamicValue(field) ? csvToArray(readValue(`dyn-${field.id}-custom`)) : [];
+        values[field.id] = [...new Set([...selected, ...customValues])].join(', ');
+      } else if (field.type === 'select') {
+        const custom = allowsCustomDynamicValue(field) ? readValue(`dyn-${field.id}-custom`) : '';
+        values[field.id] = custom || String(node.value || '').trim();
+      } else {
+        values[field.id] = node.value.trim();
+      }
     });
     return values;
   }
@@ -498,7 +556,7 @@ function createTaskController({
   }
 
   function collectOneOffOverridePayload() {
-    if (!el('oneoff-enable').checked) {
+    if (!readChecked('oneoff-enable')) {
       return {
         templateOverride: null,
         saveOverrideAsPersonal: false,
@@ -507,11 +565,11 @@ function createTaskController({
     }
 
     const override = {};
-    const description = el('oneoff-description').value.trim();
-    const profile = el('oneoff-profile').value.trim();
-    const promptMode = el('oneoff-prompt-mode').value;
-    const basePrompt = el('oneoff-base-prompt').value.trim();
-    const tags = csvToArray(el('oneoff-tags').value);
+    const description = readValue('oneoff-description');
+    const profile = readValue('oneoff-profile');
+    const promptMode = el('oneoff-prompt-mode')?.value || '';
+    const basePrompt = readValue('oneoff-base-prompt');
+    const tags = csvToArray(readValue('oneoff-tags'));
 
     if (description) override.description = description;
     if (profile) override.profile = profile;
@@ -521,8 +579,8 @@ function createTaskController({
 
     return {
       templateOverride: Object.keys(override).length ? override : null,
-      saveOverrideAsPersonal: !!el('oneoff-save-personal').checked,
-      saveOverrideTitleSuffix: el('oneoff-save-suffix').value.trim(),
+      saveOverrideAsPersonal: readChecked('oneoff-save-personal'),
+      saveOverrideTitleSuffix: readValue('oneoff-save-suffix'),
     };
   }
 
@@ -532,17 +590,17 @@ function createTaskController({
 
     const template = getTemplateConfig();
     const baseFields = {
-      fach: el('fach').value.trim(),
-      schulstufe: el('schulstufe').value.trim(),
+      fach: readValue('fach'),
+      schulstufe: readValue('schulstufe'),
       handlungsfeld: state.selectedCategory,
       unterkategorie: state.selectedSubcategory,
-      ziel: el('ziel').value.trim(),
+      ziel: readValue('ziel'),
       zeitrahmen: resolveSelectOrCustom('zeitrahmen-select', 'zeitrahmen-custom'),
       niveau: resolveSelectOrCustom('niveau-select', 'niveau-custom'),
       rahmen: resolveSelectOrCustom('rahmen-select', 'rahmen-custom', 'keine besonderen Angaben'),
       ergebnisformat: resolveSelectOrCustom('ergebnisformat-select', 'ergebnisformat-custom', 'strukturierte Liste'),
       ton: resolveSelectOrCustom('ton-select', 'ton-custom', 'klar'),
-      rueckfragen: el('rueckfragen').checked,
+      rueckfragen: readChecked('rueckfragen'),
     };
 
     const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length

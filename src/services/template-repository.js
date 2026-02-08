@@ -6,6 +6,13 @@ const VALID_SCOPES = new Set(['official', 'personal', 'community']);
 const VALID_REVIEW_STATES = new Set(['draft', 'submitted', 'approved', 'rejected']);
 const VALID_PROMPT_MODES = new Set(['schema', 'custom']);
 const VALID_NODE_TYPES = new Set(['category', 'subcategory', 'group']);
+const MERGED_PLANNING_CATEGORY = 'Pädagogische Planung';
+const MERGED_CATEGORY_MAP = {
+  jahresplanung: MERGED_PLANNING_CATEGORY,
+  'jahres- & semesterplanung': MERGED_PLANNING_CATEGORY,
+  unterrichtsvorbereitung: MERGED_PLANNING_CATEGORY,
+  [MERGED_PLANNING_CATEGORY.toLowerCase()]: MERGED_PLANNING_CATEGORY,
+};
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -77,6 +84,36 @@ function normalizeTagKeys(values = []) {
   return unique((Array.isArray(values) ? values : [])
     .map((entry) => normalizeTagKey(entry))
     .filter(Boolean));
+}
+
+function normalizeCategoryLookup(value = '') {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function mapCategoryDisplayName(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return raw;
+  const normalized = normalizeCategoryLookup(raw);
+  return MERGED_CATEGORY_MAP[normalized] || raw;
+}
+
+function categoryMetaFor(categoryName = '') {
+  if (categoryName === MERGED_PLANNING_CATEGORY) {
+    return {
+      title: MERGED_PLANNING_CATEGORY,
+      short: 'PP',
+      description: 'Jahresplanung, Unterrichtssequenzen und Unterrichtseinheiten.',
+    };
+  }
+  return {
+    title: categoryName,
+    short: categoryName.slice(0, 2).toUpperCase(),
+    description: '',
+  };
 }
 
 function hasPermission(access = {}, permissionKey) {
@@ -271,16 +308,89 @@ function normalizeDynamicFields(values) {
       if (!id) return null;
       const type = asText(entry.type || 'text').trim().toLowerCase();
       const options = Array.isArray(entry.options) ? entry.options.map((option) => asText(option).trim()).filter(Boolean) : undefined;
+      const allowCustomDefault = type === 'select' || type === 'multiselect';
       return {
         id,
         label: asText(entry.label || id),
         type,
         required: Boolean(entry.required),
         placeholder: asText(entry.placeholder || ''),
+        helpText: asText(entry.helpText || ''),
+        allowCustom: entry.allowCustom === undefined ? allowCustomDefault : Boolean(entry.allowCustom),
+        customPlaceholder: asText(entry.customPlaceholder || ''),
         options,
       };
     })
     .filter(Boolean);
+}
+
+function defaultHelpTextForField(field = {}) {
+  const fieldType = String(field.type || 'text').toLowerCase();
+  if (fieldType === 'textarea') return 'Nutze Stichpunkte oder kurze Saetze mit konkretem Kontext.';
+  if (fieldType === 'select') return 'Waehle eine Option oder nutze einen eigenen Wert.';
+  if (fieldType === 'multiselect') return 'Mehrfachauswahl moeglich; eigene Werte sind zusaetzlich moeglich.';
+  if (fieldType === 'checkbox') return 'Aktiviere diese Option, wenn sie fuer den Prompt relevant ist.';
+  return 'Kurze, konkrete Angabe fuer den Prompt-Kontext.';
+}
+
+function hasContextField(dynamicFields = []) {
+  return dynamicFields.some((field) => (
+    /(hinweis|bemerk|zusatz|kontext|anmerk|details|infos|note)/i.test(`${field.id} ${field.label}`)
+  ));
+}
+
+function ensureContextField(dynamicFields = [], templateTitle = '') {
+  if (hasContextField(dynamicFields)) return dynamicFields;
+  const contextField = {
+    id: 'zusatzhinweise',
+    label: 'Zusatzhinweise',
+    type: 'textarea',
+    required: false,
+    placeholder: 'Besondere Details, Randbedingungen oder No-Gos',
+    helpText: templateTitle
+      ? `Optional: Zusaetzliche Infos fuer ${templateTitle}.`
+      : 'Optional: Zusaetzliche Infos, Randbedingungen oder No-Gos.',
+    allowCustom: false,
+    customPlaceholder: '',
+    options: undefined,
+  };
+  return [...dynamicFields, contextField];
+}
+
+function enrichDynamicFields(dynamicFields = [], { templateUid = '', templateTitle = '' } = {}) {
+  let enriched = dynamicFields.map((field) => {
+    const fieldType = String(field.type || 'text').toLowerCase();
+    const allowCustomDefault = fieldType === 'select' || fieldType === 'multiselect';
+    return {
+      ...field,
+      helpText: asText(field.helpText || '') || defaultHelpTextForField(field),
+      allowCustom: field.allowCustom === undefined ? allowCustomDefault : Boolean(field.allowCustom),
+      customPlaceholder: asText(field.customPlaceholder || '') || (
+        fieldType === 'multiselect'
+          ? 'Weitere Werte (kommagetrennt, optional)'
+          : (fieldType === 'select' ? 'Eigener Wert (optional)' : '')
+      ),
+    };
+  });
+
+  if (String(templateUid || '') === 'ja-themenverteilung' && !enriched.some((field) => field.id === 'sequenzlogik')) {
+    enriched = [
+      ...enriched,
+      {
+        id: 'sequenzlogik',
+        label: 'Sequenzlogik',
+        type: 'text',
+        required: true,
+        placeholder: 'z. B. vom Einfachen zum Komplexen',
+        helpText: 'Wie sollen Themen didaktisch aufeinander aufbauen?',
+        allowCustom: false,
+        customPlaceholder: '',
+        options: undefined,
+      },
+    ];
+  }
+
+  return ensureContextField(enriched, templateTitle);
 }
 
 function normalizeBaseFieldList(values = [], fallback = []) {
@@ -298,16 +408,22 @@ function buildTemplateViewRow(row, pathRows = [], {
     parseJsonArray(row.optional_base_fields),
     ['zeitrahmen', 'niveau', 'rahmen', 'ergebnisformat', 'ton', 'rueckfragen']
   );
-  const dynamicFields = normalizeDynamicFields(parseJsonArray(row.dynamic_fields));
+  const rawDynamicFields = normalizeDynamicFields(parseJsonArray(row.dynamic_fields));
   const tags = normalizeTagKeys(parseJsonArray(row.tags));
   const explicitPath = parseJsonArray(row.taxonomy_path).map((entry) => asText(entry).trim()).filter(Boolean);
   const nodePath = pathRows.map((entry) => entry.display_name).filter(Boolean);
-  const taxonomyPath = explicitPath.length ? explicitPath : (nodePath.length ? nodePath : [asText(row.node_name || ''), asText(row.title || '')].filter(Boolean));
+  const taxonomyPathRaw = explicitPath.length ? explicitPath : (nodePath.length ? nodePath : [asText(row.node_name || ''), asText(row.title || '')].filter(Boolean));
+  const taxonomyPath = [...taxonomyPathRaw];
+  if (taxonomyPath.length) taxonomyPath[0] = mapCategoryDisplayName(taxonomyPath[0]);
 
-  const rootCategory = taxonomyPath[0] || 'Sonstige';
+  const rootCategory = mapCategoryDisplayName(taxonomyPath[0] || 'Sonstige');
   const subPath = taxonomyPath.slice(1);
   const lastPath = subPath[subPath.length - 1];
   const title = asText(row.title || row.node_name || 'Template').trim() || 'Template';
+  const dynamicFields = enrichDynamicFields(rawDynamicFields, {
+    templateUid: row.template_uid,
+    templateTitle: title,
+  });
   const subcategoryName = unique([
     ...subPath,
     ...(lastPath && lastPath === title ? [] : [title]),
@@ -509,10 +625,11 @@ function templatesToCatalog(templates) {
   for (const template of templates) {
     const categoryKey = template.categoryName;
     if (!categories[categoryKey]) {
+      const meta = categoryMetaFor(categoryKey);
       categories[categoryKey] = {
-        title: categoryKey,
-        short: categoryKey.slice(0, 2).toUpperCase(),
-        description: '',
+        title: meta.title,
+        short: meta.short,
+        description: meta.description,
         unterkategorien: [],
         templates: {},
       };
