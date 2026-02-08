@@ -7,6 +7,51 @@ function createTaskController({
   showScreen,
   saveHistory,
 }) {
+  const DEFAULT_REQUIRED_BASE_FIELDS = ['fach', 'schulstufe', 'ziel'];
+  const BASE_FIELD_LABELS = {
+    fach: 'Fach',
+    schulstufe: 'Schulstufe',
+    ziel: 'Ziel der Aufgabe',
+  };
+
+  function getTemplateConfig(categoryName = state.selectedCategory, subcategoryName = state.selectedSubcategory) {
+    const categoryConfig = getCategoryConfig();
+    const category = categoryConfig[categoryName];
+    if (!category) return null;
+
+    const explicitTemplate = category.templates && category.templates[subcategoryName]
+      ? category.templates[subcategoryName]
+      : null;
+    if (explicitTemplate) return explicitTemplate;
+
+    return {
+      id: `${categoryName}:${subcategoryName}`,
+      description: category.description || '',
+      requiredBaseFields: DEFAULT_REQUIRED_BASE_FIELDS,
+      optionalBaseFields: [],
+      dynamicFields: Array.isArray(category.dynamicFields) ? category.dynamicFields : [],
+      basePrompt: '',
+      tags: [],
+    };
+  }
+
+  function updateBaseFieldRequirements(template) {
+    const requiredSet = new Set(
+      Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+        ? template.requiredBaseFields
+        : DEFAULT_REQUIRED_BASE_FIELDS
+    );
+
+    Object.entries(BASE_FIELD_LABELS).forEach(([fieldId, labelText]) => {
+      const labelNode = el(`label-${fieldId}`);
+      const inputNode = el(fieldId);
+      if (!inputNode) return;
+      const required = requiredSet.has(fieldId);
+      inputNode.required = required;
+      if (labelNode) labelNode.textContent = required ? `${labelText} *` : `${labelText} (optional)`;
+    });
+  }
+
   function setupPresetSelect(selectId, customId, values) {
     const select = el(selectId);
     select.innerHTML = values
@@ -69,7 +114,7 @@ function createTaskController({
         (subcategory) => `
         <button type="button" class="list-card" data-subcategory="${subcategory}">
           <strong>${subcategory}</strong>
-          <span class="hint">${cfg.description}</span>
+          <span class="hint">${getTemplateConfig(categoryName, subcategory)?.description || cfg.description}</span>
         </button>
       `
       )
@@ -89,12 +134,12 @@ function createTaskController({
   }
 
   function renderDynamicFields() {
-    const categoryConfig = getCategoryConfig();
-    const cfg = categoryConfig[state.selectedCategory];
+    const template = getTemplateConfig();
     const container = el('dynamic-fields');
     container.innerHTML = '';
 
-    cfg.dynamicFields.forEach((field) => {
+    const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
+    fields.forEach((field) => {
       const wrap = document.createElement('label');
       wrap.className = field.type === 'checkbox' ? 'checkbox span-2' : '';
       if (field.type !== 'checkbox') wrap.textContent = field.label;
@@ -130,20 +175,23 @@ function createTaskController({
       container.appendChild(wrap);
     });
 
-    const requiredDynamic = (cfg.dynamicFields || []).filter((field) => field.required).map((field) => field.id);
-    const requiredBase = ['fach', 'schulstufe', 'ziel'];
+    updateBaseFieldRequirements(template);
+    const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);
+    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+      ? template.requiredBaseFields
+      : DEFAULT_REQUIRED_BASE_FIELDS;
     const required = [...requiredBase, ...requiredDynamic];
     el('validation-hint').textContent = required.length
-      ? `Pflichtfelder fuer ${cfg.title}: ${required.join(', ')}`
+      ? `Pflichtfelder fuer ${state.selectedSubcategory}: ${required.join(', ')}`
       : '';
   }
 
   function collectDynamicValues() {
-    const categoryConfig = getCategoryConfig();
+    const template = getTemplateConfig();
     const values = {};
-    const cfg = categoryConfig[state.selectedCategory];
+    const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
 
-    cfg.dynamicFields.forEach((field) => {
+    fields.forEach((field) => {
       const node = el(`dyn-${field.id}`);
       if (!node) return;
 
@@ -155,9 +203,9 @@ function createTaskController({
   }
 
   function validateDynamicValues(values) {
-    const categoryConfig = getCategoryConfig();
-    const cfg = categoryConfig[state.selectedCategory];
-    const requiredDynamic = (cfg.dynamicFields || []).filter((field) => field.required).map((field) => field.id);
+    const template = getTemplateConfig();
+    const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
+    const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);
     const missing = requiredDynamic.filter((fieldName) => !values[fieldName]);
     if (missing.length) {
       alert(`Bitte Pflichtfelder ausfuellen: ${missing.join(', ')}`);
@@ -211,6 +259,7 @@ function createTaskController({
   function updateSelectedSubcategory() {
     state.selectedSubcategory = el('unterkategorie-select').value;
     el('form-subcategory-title').textContent = state.selectedSubcategory;
+    renderDynamicFields();
   }
 
   async function generatePrompt(event) {
@@ -234,8 +283,16 @@ function createTaskController({
       rueckfragen: el('rueckfragen').checked,
     };
 
-    if (!data.fach || !data.schulstufe || !data.ziel) {
-      alert('Bitte Fach, Schulstufe und Ziel ausfuellen.');
+    const template = getTemplateConfig();
+    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
+      ? template.requiredBaseFields
+      : DEFAULT_REQUIRED_BASE_FIELDS;
+    const missingBase = requiredBase.filter((fieldId) => {
+      const value = data[fieldId];
+      return value === undefined || value === null || String(value).trim() === '';
+    });
+    if (missingBase.length) {
+      alert(`Bitte Pflichtfelder ausfuellen: ${missingBase.join(', ')}`);
       return;
     }
 
@@ -248,6 +305,7 @@ function createTaskController({
       method: 'POST',
       body: JSON.stringify({
         providerId: activeProvider.id,
+        templateId: template?.id,
         categoryName: data.handlungsfeld,
         subcategoryName: data.unterkategorie,
         baseFields: data,

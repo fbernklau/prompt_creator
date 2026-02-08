@@ -20,6 +20,7 @@ const config = {
     flowMode: null,
     copyIncludeMetadata: false,
     advancedOpen: false,
+    showCommunityTemplates: true,
   },
 };
 

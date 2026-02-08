@@ -4,10 +4,17 @@ const { config } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
-const { buildMetaprompt } = require('../services/template-engine');
+const { buildMetapromptFromTemplate } = require('../services/template-engine');
 const { callProvider } = require('../services/provider-clients');
 const { decryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
+const {
+  getTemplateForGeneration,
+  cloneTemplateAsPersonal,
+  normalizeDynamicFields,
+  normalizeBaseFieldList,
+  normalizeTagKeys,
+} = require('../services/template-repository');
 
 function normalizeSet(values = []) {
   return new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
@@ -34,13 +41,92 @@ function getStoredApiKey(row) {
   return decryptApiKey(row.key_meta, config.keyEncryptionSecret);
 }
 
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function stripCodeFence(text = '') {
+  const trimmed = String(text || '').trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+
+  const match = trimmed.match(/^```[a-zA-Z0-9_-]*\s*([\s\S]*?)\s*```$/);
+  return match ? match[1].trim() : trimmed;
+}
+
+function isLikelyHandoffPrompt(text = '') {
+  const normalized = String(text || '').trim();
+  if (normalized.length < 40) return false;
+  return /^(du bist|you are)\b/i.test(normalized);
+}
+
+function extractPromptFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const candidates = [
+    payload.handoff_prompt,
+    payload.handoffPrompt,
+    payload.prompt,
+    payload.final_prompt,
+  ];
+  for (const entry of candidates) {
+    if (typeof entry !== 'string') continue;
+    const candidate = entry.trim();
+    if (!candidate) continue;
+    if (isLikelyHandoffPrompt(candidate)) return candidate;
+  }
+  return null;
+}
+
+function parseHandoffPrompt(rawOutput = '') {
+  const text = String(rawOutput || '').trim();
+  if (!text) return null;
+
+  const directJson = tryParseJson(text);
+  const fromDirectJson = extractPromptFromPayload(directJson);
+  if (fromDirectJson) return fromDirectJson;
+
+  const fenceStripped = stripCodeFence(text);
+  const fenceJson = tryParseJson(fenceStripped);
+  const fromFenceJson = extractPromptFromPayload(fenceJson);
+  if (fromFenceJson) return fromFenceJson;
+
+  if (isLikelyHandoffPrompt(fenceStripped)) return fenceStripped;
+  return null;
+}
+
+function buildRepairMetaprompt(rawOutput) {
+  const original = String(rawOutput || '').trim() || '(leer)';
+  return `Konvertiere die folgende Antwort strikt in ein JSON-Objekt mit genau einem Feld "handoff_prompt".
+
+Regeln:
+- Gib nur JSON aus, kein Markdown.
+- "handoff_prompt" muss mit "Du bist" beginnen.
+- Liefere keinen fachlichen Ergebnistext, sondern nur einen ausfuehrbaren Handoff-Prompt fuer eine zweite KI.
+
+Antwort zum Konvertieren:
+${original}`;
+}
+
 function createGenerateRouter() {
   const router = Router();
 
   router.post('/generate', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {
-    const { providerId, categoryName, subcategoryName, baseFields, dynamicValues } = req.body || {};
-    if (!providerId || !categoryName || !subcategoryName) {
-      return res.status(400).json({ error: 'providerId, categoryName and subcategoryName are required.' });
+    const {
+      providerId,
+      templateId,
+      categoryName,
+      subcategoryName,
+      baseFields,
+      dynamicValues,
+      templateOverride,
+      saveOverrideAsPersonal,
+      saveOverrideTitleSuffix,
+    } = req.body || {};
+    if (!providerId || (!templateId && (!categoryName || !subcategoryName))) {
+      return res.status(400).json({ error: 'providerId and either templateId or categoryName+subcategoryName are required.' });
     }
 
     const providerResult = await pool.query(
@@ -52,9 +138,71 @@ function createGenerateRouter() {
     const provider = providerResult.rows[0];
     if (!provider) return res.status(404).json({ error: 'Aktiver Provider nicht gefunden.' });
 
-    const { metaprompt, template } = buildMetaprompt({
-      categoryName: String(categoryName),
-      subcategoryName: String(subcategoryName),
+    const resolvedTemplate = await getTemplateForGeneration({
+      userId: req.userId,
+      access: req.access,
+      templateUid: templateId ? String(templateId) : null,
+      categoryName: categoryName ? String(categoryName) : null,
+      subcategoryName: subcategoryName ? String(subcategoryName) : null,
+    });
+    if (!resolvedTemplate) {
+      return res.status(404).json({ error: 'Template nicht gefunden oder nicht sichtbar.' });
+    }
+
+    const categoryLabel = resolvedTemplate.categoryName || String(categoryName || 'Unsortiert');
+    const subcategoryLabel = resolvedTemplate.subcategoryName || String(subcategoryName || resolvedTemplate.title || 'Template');
+
+    let runtimeTemplate = {
+      id: resolvedTemplate.templateUid,
+      description: resolvedTemplate.description,
+      profile: resolvedTemplate.profile,
+      requiredBaseFields: resolvedTemplate.requiredBaseFields,
+      optionalBaseFields: resolvedTemplate.optionalBaseFields,
+      dynamicFields: resolvedTemplate.dynamicFields,
+      tags: resolvedTemplate.tags,
+      promptMode: resolvedTemplate.promptMode,
+      taxonomyPath: resolvedTemplate.taxonomyPath,
+      basePrompt: resolvedTemplate.basePrompt,
+    };
+
+    if (templateOverride && typeof templateOverride === 'object') {
+      const overrideRequired = Array.isArray(templateOverride.requiredBaseFields)
+        ? normalizeBaseFieldList(templateOverride.requiredBaseFields, runtimeTemplate.requiredBaseFields)
+        : runtimeTemplate.requiredBaseFields;
+      const overrideOptional = Array.isArray(templateOverride.optionalBaseFields)
+        ? normalizeBaseFieldList(templateOverride.optionalBaseFields, runtimeTemplate.optionalBaseFields)
+        : runtimeTemplate.optionalBaseFields;
+      const overrideDynamic = Array.isArray(templateOverride.dynamicFields)
+        ? normalizeDynamicFields(templateOverride.dynamicFields)
+        : runtimeTemplate.dynamicFields;
+      const overrideTags = Array.isArray(templateOverride.tags)
+        ? normalizeTagKeys(templateOverride.tags)
+        : runtimeTemplate.tags;
+      const overrideTaxonomyPath = Array.isArray(templateOverride.taxonomyPath)
+        ? templateOverride.taxonomyPath.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : runtimeTemplate.taxonomyPath;
+
+      runtimeTemplate = {
+        ...runtimeTemplate,
+        id: `${resolvedTemplate.templateUid}::oneoff`,
+        description: typeof templateOverride.description === 'string' ? templateOverride.description.trim() : runtimeTemplate.description,
+        profile: typeof templateOverride.profile === 'string' && templateOverride.profile.trim()
+          ? templateOverride.profile.trim()
+          : runtimeTemplate.profile,
+        promptMode: typeof templateOverride.promptMode === 'string' ? templateOverride.promptMode : runtimeTemplate.promptMode,
+        basePrompt: typeof templateOverride.basePrompt === 'string' ? templateOverride.basePrompt : runtimeTemplate.basePrompt,
+        requiredBaseFields: overrideRequired,
+        optionalBaseFields: overrideOptional,
+        dynamicFields: overrideDynamic,
+        tags: overrideTags,
+        taxonomyPath: overrideTaxonomyPath.length ? overrideTaxonomyPath : runtimeTemplate.taxonomyPath,
+      };
+    }
+
+    const { metaprompt, template } = buildMetapromptFromTemplate({
+      template: runtimeTemplate,
+      categoryName: categoryLabel,
+      subcategoryName: subcategoryLabel,
       baseFields: baseFields || {},
       dynamicValues: dynamicValues || {},
     });
@@ -76,7 +224,7 @@ function createGenerateRouter() {
       return res.status(400).json({ error: 'Provider base URL fehlt.' });
     }
 
-    const output = await callProvider({
+    const outputRaw = await callProvider({
       kind: provider.kind,
       baseUrl,
       model: provider.model,
@@ -84,17 +232,60 @@ function createGenerateRouter() {
       metaprompt,
       timeoutMs: config.providerRequestTimeoutMs,
     });
+    let output = parseHandoffPrompt(outputRaw);
+    if (!output) {
+      const repairedRaw = await callProvider({
+        kind: provider.kind,
+        baseUrl,
+        model: provider.model,
+        apiKey,
+        metaprompt: buildRepairMetaprompt(outputRaw),
+        timeoutMs: config.providerRequestTimeoutMs,
+      });
+      output = parseHandoffPrompt(repairedRaw);
+    }
+    if (!output) {
+      return res.status(502).json({
+        error: 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.',
+      });
+    }
 
     await pool.query(
       `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
        VALUES ($1,$2,$3,$4,$5)`,
-      [req.userId, provider.provider_id, provider.kind, keySource, template.id]
+      [req.userId, provider.provider_id, provider.kind, keySource, resolvedTemplate.templateUid]
     );
+
+    let savedVariantTemplateId = null;
+    if (saveOverrideAsPersonal && templateOverride && typeof templateOverride === 'object') {
+      const clone = await cloneTemplateAsPersonal({
+        userId: req.userId,
+        access: req.access,
+        templateUid: resolvedTemplate.templateUid,
+        titleSuffix: typeof saveOverrideTitleSuffix === 'string' ? saveOverrideTitleSuffix : ' (Variante)',
+        overrides: {
+          title: templateOverride.title,
+          description: templateOverride.description,
+          profile: templateOverride.profile,
+          promptMode: templateOverride.promptMode,
+          basePrompt: templateOverride.basePrompt,
+          requiredBaseFields: templateOverride.requiredBaseFields,
+          optionalBaseFields: templateOverride.optionalBaseFields,
+          dynamicFields: templateOverride.dynamicFields,
+          tags: templateOverride.tags,
+          taxonomyPath: templateOverride.taxonomyPath,
+          changeNote: templateOverride.changeNote || 'Generated one-off variant saved from run',
+        },
+      });
+      savedVariantTemplateId = clone.templateUid;
+    }
 
     res.json({
       metaprompt,
       output,
-      templateId: template.id,
+      templateId: resolvedTemplate.templateUid,
+      runtimeTemplateId: template.id,
+      savedVariantTemplateId,
       provider: {
         id: provider.provider_id,
         name: provider.name,

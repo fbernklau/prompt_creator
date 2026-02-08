@@ -5,6 +5,7 @@ function createSettingsController({ state, el, api, applyTheme }) {
     document.querySelectorAll('input[name="flow-mode"]').forEach((node) => (node.checked = node.value === (state.settings.flowMode || 'step')));
     el('setting-copy-metadata').checked = !!state.settings.copyIncludeMetadata;
     el('setting-advanced-open').checked = !!state.settings.advancedOpen;
+    el('setting-show-community').checked = state.settings.showCommunityTemplates !== false;
     el('copy-include-metadata').checked = !!state.settings.copyIncludeMetadata;
     el('advanced-fields').classList.toggle('is-hidden', !state.settings.advancedOpen);
   }

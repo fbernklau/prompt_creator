@@ -10,6 +10,7 @@ import { createProviderController } from './frontend/provider-controller.js';
 import { createLibraryController } from './frontend/library-controller.js';
 import { createTaskController } from './frontend/task-controller.js';
 import { createAdminController } from './frontend/admin-controller.js';
+import { createTemplateStudioController } from './frontend/template-studio-controller.js';
 
 let categoryConfig = {};
 let presetOptions = { ...DEFAULT_PRESET_OPTIONS };
@@ -67,6 +68,19 @@ const adminController = createAdminController({
   api,
   showScreen: uiShell.showScreen,
 });
+const templateStudioController = createTemplateStudioController({
+  state,
+  el,
+  api,
+  showScreen: uiShell.showScreen,
+  reloadCatalog: async () => {
+    const catalog = await loadTemplateCatalog(api);
+    categoryConfig = catalog.categories;
+    presetOptions = catalog.presetOptions;
+    taskController.renderCategoryGrid();
+    libraryController.prepareLibraryFilters();
+  },
+});
 const taskController = createTaskController({
   state,
   el,
@@ -95,6 +109,7 @@ async function loadServerData() {
 function bindEvents() {
   providerController.initializeProviderForm();
   adminController.bindEvents();
+  templateStudioController.bindEvents();
 
   el('btn-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
   el('btn-history').addEventListener('click', () => {
@@ -161,7 +176,13 @@ function bindEvents() {
       flowMode,
       copyIncludeMetadata: el('setting-copy-metadata').checked,
       advancedOpen: el('setting-advanced-open').checked,
+      showCommunityTemplates: el('setting-show-community').checked,
     });
+    const catalog = await loadTemplateCatalog(api);
+    categoryConfig = catalog.categories;
+    presetOptions = catalog.presetOptions;
+    taskController.renderCategoryGrid();
+    libraryController.prepareLibraryFilters();
   });
 
   el('choose-flow-step').addEventListener('click', async () => {
@@ -191,6 +212,7 @@ async function init() {
     providerController.renderProviders();
     historyController.renderHistory();
     adminController.ensureAdminVisible();
+    templateStudioController.ensureVisible();
     uiShell.showScreen('home');
 
     if (!state.settings.flowMode) {

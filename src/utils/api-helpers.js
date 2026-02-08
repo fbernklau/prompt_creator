@@ -41,6 +41,9 @@ function sanitizeSettings(input = {}) {
   if (typeof input.advancedOpen === 'boolean') {
     output.advancedOpen = input.advancedOpen;
   }
+  if (typeof input.showCommunityTemplates === 'boolean') {
+    output.showCommunityTemplates = input.showCommunityTemplates;
+  }
   return output;
 }
 

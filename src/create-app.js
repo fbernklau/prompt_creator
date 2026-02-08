@@ -18,7 +18,9 @@ function createApp({ staticDir }) {
 
   app.use((error, _req, res, _next) => {
     console.error('Unhandled API error', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const status = Number(error?.status);
+    const normalizedStatus = Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
+    res.status(normalizedStatus).json({ error: error?.message || 'Internal server error' });
   });
 
   return app;

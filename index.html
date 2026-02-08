@@ -15,6 +15,7 @@
       <div class="topbar-actions">
         <button id="btn-new-task" type="button" class="text-btn">Neue Aufgabe</button>
         <button id="btn-library" type="button" class="text-btn">Bibliothek</button>
+        <button id="btn-templates" type="button" class="text-btn is-hidden">Templates</button>
         <button id="btn-history" type="button" class="text-btn">Verlauf</button>
         <button id="btn-provider" type="button" class="text-btn">API-Provider</button>
         <button id="btn-options" type="button" class="text-btn">Optionen</button>
@@ -52,17 +53,17 @@
           <div class="panel panel-soft">
             <h3>Basisdaten</h3>
             <div class="grid-2">
-              <label>Fach
-                <input id="fach" required placeholder="z. B. Digitale Grundbildung" />
+              <label><span id="label-fach">Fach *</span>
+                <input id="fach" placeholder="z. B. Digitale Grundbildung" />
               </label>
-              <label>Schulstufe
-                <input id="schulstufe" required placeholder="z. B. 9. Schulstufe" />
+              <label><span id="label-schulstufe">Schulstufe *</span>
+                <input id="schulstufe" placeholder="z. B. 9. Schulstufe" />
               </label>
               <label class="span-2">Unterkategorie
                 <select id="unterkategorie-select"></select>
               </label>
-              <label class="span-2">Ziel der Aufgabe
-                <textarea id="ziel" rows="3" required placeholder="Was soll konkret vorliegen?"></textarea>
+              <label class="span-2"><span id="label-ziel">Ziel der Aufgabe *</span>
+                <textarea id="ziel" rows="3" placeholder="Was soll konkret vorliegen?"></textarea>
               </label>
             </div>
           </div>
@@ -207,6 +208,178 @@
         </div>
 
         <div id="library-list" class="library-list top-space"></div>
+      </section>
+
+      <section id="screen-templates" class="screen is-hidden">
+        <div class="step-nav">
+          <button id="btn-back-home-from-templates" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+        </div>
+        <h2>Template Studio</h2>
+        <p class="subline">Pers&ouml;nliche Templates erstellen, Varianten speichern, zur Review einreichen und Community/Official verwalten.</p>
+
+        <div class="panel top-space">
+          <h3>Filter</h3>
+          <div class="grid-3">
+            <label>Suche
+              <input id="template-filter-search" placeholder="Titel, Beschreibung, Kategorie" />
+            </label>
+            <label>Tag
+              <input id="template-filter-tag" placeholder="z. B. differenzierung" />
+            </label>
+            <label>Scope
+              <select id="template-filter-scope">
+                <option value="">Alle</option>
+                <option value="official">Official</option>
+                <option value="personal">Personal</option>
+                <option value="community">Community</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid-3 top-space">
+            <label>Review-State
+              <select id="template-filter-review">
+                <option value="">Alle</option>
+                <option value="draft">draft</option>
+                <option value="submitted">submitted</option>
+                <option value="approved">approved</option>
+                <option value="rejected">rejected</option>
+              </select>
+            </label>
+            <label>Tag-Katalog
+              <select id="template-tag-catalog"></select>
+            </label>
+            <label>Template-Bewertung (1-5)
+              <input id="template-rating-value" type="number" min="1" max="5" placeholder="optional" />
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="template-refresh" type="button">Aktualisieren</button>
+            <button id="template-clear-selection" type="button" class="secondary">Auswahl aufheben</button>
+            <small id="template-studio-status" class="hint"></small>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Template Liste</h3>
+          <div id="template-list" class="list-cards"></div>
+        </div>
+
+        <div class="grid-2 top-space">
+          <div class="panel">
+            <h3>Taxonomie Node erstellen</h3>
+            <label>Parent Node
+              <select id="template-node-parent"></select>
+            </label>
+            <label class="top-space">Typ
+              <select id="template-node-type">
+                <option value="category">category</option>
+                <option value="subcategory">subcategory</option>
+                <option value="group">group</option>
+              </select>
+            </label>
+            <label class="top-space">Scope
+              <select id="template-node-scope">
+                <option value="personal">personal</option>
+                <option value="community">community</option>
+                <option value="official">official</option>
+              </select>
+            </label>
+            <label class="top-space">Name
+              <input id="template-node-name" placeholder="z. B. Mathematik Sek I" />
+            </label>
+            <label class="top-space">Beschreibung
+              <textarea id="template-node-description" rows="2"></textarea>
+            </label>
+            <div class="inline-actions top-space">
+              <button id="template-node-create" type="button">Node erstellen</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Tag anlegen</h3>
+            <label>Tag Key
+              <input id="template-new-tag-key" placeholder="z. B. projektlernen" />
+            </label>
+            <label class="top-space">Anzeigename
+              <input id="template-new-tag-name" placeholder="z. B. Projektlernen" />
+            </label>
+            <label class="top-space">Beschreibung
+              <textarea id="template-new-tag-description" rows="2"></textarea>
+            </label>
+            <label class="checkbox top-space">
+              <input id="template-new-tag-official" type="checkbox" />
+              <span>Als official Tag markieren (nur Moderation)</span>
+            </label>
+            <div class="inline-actions top-space">
+              <button id="template-tag-create" type="button">Tag speichern</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Template Editor</h3>
+          <small id="template-selected-id" class="hint">Ausgew&auml;hlt: -</small>
+          <div class="grid-2 top-space">
+            <label>Title
+              <input id="template-form-title" placeholder="Template Titel" />
+            </label>
+            <label>Scope
+              <select id="template-form-scope">
+                <option value="personal">personal</option>
+                <option value="community">community</option>
+                <option value="official">official</option>
+              </select>
+            </label>
+            <label>Node
+              <select id="template-form-node"></select>
+            </label>
+            <label>Profil
+              <input id="template-form-profile" placeholder="unterrichtsnah | kommunikation | organisation_admin" />
+            </label>
+            <label class="span-2">Beschreibung
+              <textarea id="template-form-description" rows="2"></textarea>
+            </label>
+            <label class="span-2">Required Base Fields (CSV)
+              <input id="template-form-required-base" placeholder="fach,schulstufe,ziel" />
+            </label>
+            <label class="span-2">Optional Base Fields (CSV)
+              <input id="template-form-optional-base" placeholder="zeitrahmen,niveau,rahmen,ergebnisformat,ton,rueckfragen" />
+            </label>
+            <label class="span-2">Tags (CSV)
+              <input id="template-form-tags" placeholder="differenzierung,planung" />
+            </label>
+            <label>Prompt Mode
+              <select id="template-form-prompt-mode">
+                <option value="schema">schema</option>
+                <option value="custom">custom</option>
+              </select>
+            </label>
+            <label>Taxonomy Path (CSV)
+              <input id="template-form-taxonomy-path" placeholder="Jahresplanung,Semesterplanung" />
+            </label>
+            <label class="span-2">Dynamic Fields (JSON Array)
+              <textarea id="template-form-dynamic-fields" rows="6" placeholder='[{"id":"lernziel","label":"Lernziel","type":"text","required":true}]'></textarea>
+            </label>
+            <label class="span-2">Base Prompt (nur bei custom)
+              <textarea id="template-form-base-prompt" rows="6"></textarea>
+            </label>
+            <label class="span-2">Change Note
+              <input id="template-form-change-note" placeholder="Kurzbeschreibung der Aenderung" />
+            </label>
+            <label class="span-2">Review Note
+              <input id="template-form-review-note" placeholder="Optionaler Kommentar fuer Review" />
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="template-create" type="button">Template erstellen</button>
+            <button id="template-update" type="button" class="secondary">Neue Version speichern</button>
+            <button id="template-submit" type="button" class="secondary">Zur Review einreichen</button>
+            <button id="template-clone" type="button" class="secondary">Als persoenliche Variante speichern</button>
+            <button id="template-approve" type="button" class="secondary">Approve</button>
+            <button id="template-reject" type="button" class="secondary">Reject</button>
+            <button id="template-rate" type="button" class="secondary">Bewertung speichern</button>
+          </div>
+        </div>
       </section>
 
       <section id="screen-admin" class="screen is-hidden">
@@ -386,6 +559,7 @@
           <h3>Standardverhalten</h3>
           <label class="checkbox"><input id="setting-copy-metadata" type="checkbox" /><span>Metadata beim Kopieren standardmaessig aktivieren</span></label>
           <label class="checkbox"><input id="setting-advanced-open" type="checkbox" /><span>Erweiterte Optionen standardmaessig offen</span></label>
+          <label class="checkbox"><input id="setting-show-community" type="checkbox" /><span>Community-Templates in Katalog anzeigen</span></label>
         </div>
 
         <div class="inline-actions top-space">

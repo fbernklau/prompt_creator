@@ -6,6 +6,7 @@ const { createProviderRouter } = require('./provider-routes');
 const { createHistoryRouter } = require('./history-routes');
 const { createLibraryRouter } = require('./library-routes');
 const { createTemplateCatalogRouter } = require('./template-catalog-routes');
+const { createTemplateManagementRouter } = require('./template-management-routes');
 const { createGenerateRouter } = require('./generate-routes');
 const { createRbacRouter } = require('./rbac-routes');
 const { createAdminRouter } = require('./admin-routes');
@@ -20,6 +21,7 @@ function createApiRouter() {
   router.use(createHistoryRouter());
   router.use(createLibraryRouter());
   router.use(createTemplateCatalogRouter());
+  router.use(createTemplateManagementRouter());
   router.use(createGenerateRouter());
   router.use(createRbacRouter());
   router.use(createAdminRouter());

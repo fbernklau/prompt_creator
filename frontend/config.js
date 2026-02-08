@@ -11,6 +11,7 @@ const SETTINGS_DEFAULTS = {
   flowMode: null,
   copyIncludeMetadata: false,
   advancedOpen: false,
+  showCommunityTemplates: true,
 };
 
 const PROVIDER_BASE_URLS = {

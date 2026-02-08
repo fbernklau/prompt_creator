@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-07
+Last updated: 2026-02-08
 Owner: Team + Codex
 
 ## Purpose
@@ -40,6 +40,11 @@ Owner: Team + Codex
 - [x] Optional shared Google test key flow added via `.env` allowlists (`GOOGLE_TEST_ALLOWED_USERS` / `GOOGLE_TEST_ALLOWED_GROUPS`).
 - [x] RBAC foundation implemented (roles, permissions, group-role bindings) with default 4 roles seeded on startup.
 - [x] Admin interface added for role management and Authentik group-role bindings.
+- [x] Template catalog now defines required/optional fields per template (no longer category-wide dynamic fields only).
+- [x] Added extended official template set with new category `Schulentwicklung & Teamarbeit`.
+- [x] Official seed catalog expanded to 9 categories with 36 subcategory templates (each with template-specific field schema).
+- [x] Metaprompt builder is now schema-driven and hierarchy-aware (`taxonomyPath`), automatically composing required/optional sections and supporting custom prompt mode per template.
+- [x] Prompt generation is now enforced as handoff-only: metaprompt instructs "no final solution", output contract requires `handoff_prompt`, backend validates/repairs provider output before returning it.
 
 ## Recovered Session Decisions (merged from old rollout file)
 - [x] Auth group naming settled on `teachers` (not `teacher`) for access checks and docs.
@@ -59,10 +64,11 @@ Owner: Team + Codex
 
 ## What is NOT done yet (from requested roadmap)
 - [x] Provider base URLs prefilled by known provider and lockable with checkbox override.
-- [ ] Real per-template required/optional fields model (current logic is category-level config).
+- [ ] Real per-template required/optional fields model persisted in DB and versioned (currently implemented in static catalog, not yet persisted).
 - [ ] User-managed template hierarchy (category/subcategory/template creation by level).
 - [ ] Official vs Personal vs Community template lifecycle with review/approval flow.
 - [x] Role-based access model via Authentik groups (beyond basic user/admin split).
+- [ ] User template creation/alteration UI + API (create own templates, edit official templates as one-off run override or save to personal library).
 - [ ] User setting to hide/show community templates.
 - [ ] Ratings for template scopes (`official`, `personal`, `community`) in the upcoming template engine.
 - [ ] Tag system for search/filter.
@@ -103,7 +109,8 @@ Owner: Team + Codex
 ### Phase 2 - Template model foundation (must-have for roadmap)
 - [ ] Move template metadata to DB tables (`template_categories`, `template_nodes`, `templates`, `template_fields`, `template_versions`).
 - [ ] Implement profile defaults (`unterrichtsnah`, `kommunikation`, `organisation_admin`) as authoring helpers.
-- [ ] Make field requirements fully template-driven (including former base fields) as persisted source of truth.
+- [x] Make field requirements template-driven in runtime catalog (including base fields) for generation and validation.
+- [ ] Persist template-driven field requirements in DB as source of truth (with template versioning).
 - [ ] Keep read-only seed templates for initial official set.
 
 ### Phase 3 - Governance and sharing model
@@ -119,6 +126,10 @@ Owner: Team + Codex
 - [x] Add deny-by-default permission checks for existing app endpoints (provider/history/library/settings/generate/template-catalog/profile).
 - [ ] Add permission checks for upcoming template/tag/review workflow endpoints.
 - [x] Document Authentik setup steps for required groups and policy bindings.
+- [ ] Add template editing modes:
+  - one-off edit for current metaprompt run (no persistent change to official template)
+  - save edited variant to personal template library
+  - submit personal template for official/community review flow
 
 ### Phase 4 - Discovery features
 - [ ] Implement tag tables and filtering endpoints.

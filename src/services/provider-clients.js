@@ -2,6 +2,8 @@ function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
 
+const PROMPT_ONLY_SYSTEM_INSTRUCTION = 'Du bist ein Prompt-Engineer. Gib ausschliesslich einen Handoff-Prompt aus und niemals die fachliche Endloesung.';
+
 function withTimeout(timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -75,6 +77,7 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
     body: {
       model,
       messages: [
+        { role: 'system', content: PROMPT_ONLY_SYSTEM_INSTRUCTION },
         { role: 'user', content: metaprompt },
       ],
       temperature: 0.2,
@@ -103,6 +106,7 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
     body: {
       model,
       max_tokens: 2048,
+      system: PROMPT_ONLY_SYSTEM_INSTRUCTION,
       messages: [
         { role: 'user', content: metaprompt },
       ],
@@ -121,6 +125,10 @@ async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   const { response, payload } = await doJsonRequest({
     url,
     body: {
+      systemInstruction: {
+        role: 'system',
+        parts: [{ text: PROMPT_ONLY_SYSTEM_INSTRUCTION }],
+      },
       contents: [
         {
           role: 'user',
