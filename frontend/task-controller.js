@@ -82,7 +82,7 @@ function createTaskController({
     });
   }
 
-  function updateBaseFieldRequirements(template) {
+  function updateBaseFieldRequirements(template, requiredContainer, optionalContainer) {
     const requiredSet = new Set(
       Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
         ? template.requiredBaseFields
@@ -97,29 +97,17 @@ function createTaskController({
       inputNode.required = required;
       if (labelNode) labelNode.textContent = required ? `${labelText} *` : `${labelText} (optional)`;
     });
-
-    const requiredContainer = el('base-required-fields');
-    const optionalContainer = el('base-optional-fields');
     const wrappers = BASE_FIELD_ORDER
       .map((fieldId) => ({ fieldId, node: el(`wrap-${fieldId}`) }))
       .filter((entry) => !!entry.node);
-
-    if (requiredContainer) requiredContainer.innerHTML = '';
-    if (optionalContainer) optionalContainer.innerHTML = '';
 
     wrappers.forEach(({ fieldId, node }) => {
       const target = requiredSet.has(fieldId) ? requiredContainer : optionalContainer;
       if (target) target.appendChild(node);
     });
 
-    if (requiredContainer && !requiredContainer.children.length) {
-      requiredContainer.innerHTML = '<small class="hint span-2">Dieses Template hat keine Pflicht-Basisfelder.</small>';
-    }
-    if (optionalContainer && !optionalContainer.children.length) {
-      optionalContainer.innerHTML = '<small class="hint span-2">Keine optionalen Basisfelder verfuegbar.</small>';
-    }
-
     updateBaseFieldHints(template);
+    return requiredSet;
   }
 
   function setupPresetSelect(selectId, customId, values) {
@@ -399,20 +387,22 @@ function createTaskController({
     });
   }
 
-  function populateSubcategorySelect(categoryName, selected) {
-    const categoryConfig = getCategoryConfig();
-    const select = el('unterkategorie-select');
-    const options = categoryConfig[categoryName].unterkategorien;
-    select.innerHTML = options.map((item) => `<option value="${item}">${item}</option>`).join('');
-    select.value = selected || options[0];
-  }
-
   function renderDynamicFields() {
     const template = getTemplateConfig();
-    const requiredContainer = el('dynamic-required-fields');
-    const optionalContainer = el('dynamic-optional-fields');
+    const requiredContainer = el('required-fields-grid');
+    const optionalContainer = el('optional-fields-grid');
+    if (!requiredContainer || !optionalContainer) return;
+
     if (requiredContainer) requiredContainer.innerHTML = '';
     if (optionalContainer) optionalContainer.innerHTML = '';
+
+    const templateTitle = state.selectedSubcategory || 'Template';
+    const requiredTitle = el('required-panel-title');
+    const optionalTitle = el('optional-panel-title');
+    if (requiredTitle) requiredTitle.textContent = `${templateTitle} - Pflichtfelder`;
+    if (optionalTitle) optionalTitle.textContent = `${templateTitle} - Optionale Felder`;
+
+    const requiredBaseSet = updateBaseFieldRequirements(template, requiredContainer, optionalContainer);
 
     const fields = Array.isArray(template?.dynamicFields) ? template.dynamicFields : [];
     fields.forEach((field) => {
@@ -472,14 +462,10 @@ function createTaskController({
       optionalContainer.innerHTML = '<small class="hint span-2">Keine optionalen Template-Parameter.</small>';
     }
 
-    updateBaseFieldRequirements(template);
     const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);
-    const requiredBase = Array.isArray(template?.requiredBaseFields) && template.requiredBaseFields.length
-      ? template.requiredBaseFields
-      : DEFAULT_REQUIRED_BASE_FIELDS;
-    const required = [...requiredBase, ...requiredDynamic];
+    const required = [...requiredBaseSet, ...requiredDynamic];
     el('validation-hint').textContent = required.length
-      ? `Pflichtfelder fuer ${state.selectedSubcategory}: ${required.join(', ')}`
+      ? `Pflichtfelder fuer ${templateTitle}: ${required.join(', ')}`
       : '';
   }
 
@@ -509,12 +495,6 @@ function createTaskController({
       return false;
     }
     return true;
-  }
-
-  function updateSelectedSubcategory() {
-    state.selectedSubcategory = el('unterkategorie-select').value;
-    el('form-subcategory-title').textContent = state.selectedSubcategory;
-    renderDynamicFields();
   }
 
   function collectOneOffOverridePayload() {
@@ -550,7 +530,6 @@ function createTaskController({
     const dynamicValues = collectDynamicValues();
     if (validate && !validateDynamicValues(dynamicValues)) return null;
 
-    updateSelectedSubcategory();
     const template = getTemplateConfig();
     const baseFields = {
       fach: el('fach').value.trim(),
@@ -651,9 +630,30 @@ function createTaskController({
     el('form-category-title').textContent = cfg.title;
     el('form-subcategory-title').textContent = subcategoryName;
 
-    populateSubcategorySelect(categoryName, subcategoryName);
     renderDynamicFields();
     showScreen('form');
+  }
+
+  function syncAdvancedSectionUi() {
+    const area = el('advanced-fields');
+    const button = el('toggle-advanced');
+    const hint = el('advanced-section-hint');
+    if (!area || !button) return;
+    const expanded = !area.classList.contains('is-hidden');
+    button.textContent = expanded ? '▲ Optionen ausblenden' : '▼ Optionen einblenden';
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (hint) {
+      hint.textContent = expanded
+        ? 'Diese Sektion ist aktuell eingeblendet.'
+        : 'Diese Sektion ist aktuell ausgeblendet. Klicke auf "Optionen einblenden".';
+    }
+  }
+
+  function toggleAdvancedSection() {
+    const area = el('advanced-fields');
+    if (!area) return;
+    area.classList.toggle('is-hidden');
+    syncAdvancedSectionUi();
   }
 
   async function generatePrompt(event) {
@@ -778,11 +778,12 @@ function createTaskController({
   }
 
   function bindEvents() {
-    el('unterkategorie-select').addEventListener('change', updateSelectedSubcategory);
-
     el('oneoff-enable').addEventListener('change', () => {
       el('oneoff-fields').classList.toggle('is-hidden', !el('oneoff-enable').checked);
     });
+
+    el('toggle-advanced').addEventListener('click', toggleAdvancedSection);
+    syncAdvancedSectionUi();
 
     el('btn-preview-metaprompt').addEventListener('click', () => previewMetaprompt().catch((error) => {
       setPreviewStatus(`Fehler: ${error.message}`, 'error');
@@ -814,7 +815,6 @@ function createTaskController({
     renderCategoryGrid,
     refreshTemplateDiscovery,
     resetTaskState,
-    updateSelectedSubcategory,
     generatePrompt,
     previewMetaprompt,
     copyPromptClean,
@@ -822,6 +822,7 @@ function createTaskController({
     toggleComparePanel,
     exportPrompt,
     setupAdvancedPresets,
+    syncAdvancedSectionUi,
   };
 }
 

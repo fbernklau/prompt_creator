@@ -167,10 +167,6 @@ function bindEvents() {
   el('provider-reset').addEventListener('click', providerController.clearProviderForm);
 
   el('prompt-form').addEventListener('submit', (event) => taskController.generatePrompt(event).catch((error) => alert(error.message)));
-  el('toggle-advanced').addEventListener('click', () => {
-    const area = el('advanced-fields');
-    area.classList.toggle('is-hidden');
-  });
 
   el('export-txt').addEventListener('click', () => taskController.exportPrompt('txt'));
   el('export-md').addEventListener('click', () => taskController.exportPrompt('md'));
@@ -204,6 +200,7 @@ function bindEvents() {
       advancedOpen: el('setting-advanced-open').checked,
       showCommunityTemplates: el('setting-show-community').checked,
     });
+    taskController.syncAdvancedSectionUi();
     const catalog = await loadTemplateCatalog(api);
     categoryConfig = catalog.categories;
     presetOptions = catalog.presetOptions;
@@ -262,6 +259,7 @@ async function init() {
     libraryController.prepareLibraryFilters();
     taskController.setupAdvancedPresets();
     settingsController.applySettingsToUi();
+    taskController.syncAdvancedSectionUi();
     providerController.renderProviders();
     historyController.renderHistory();
     adminController.ensureAdminVisible();

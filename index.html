@@ -71,7 +71,7 @@
 
       <section id="screen-form" class="screen is-hidden">
         <div class="step-nav">
-          <button id="btn-back-subcat" type="button" class="link-btn">&larr; Andere Unterkategorie w&auml;hlen</button>
+          <button id="btn-back-subcat" type="button" class="secondary back-nav-btn">&larr; Zur&uuml;ck zur Unterkategorie-Auswahl</button>
           <button id="btn-back-home-from-form" type="button" class="link-btn">Zur &Uuml;bersicht</button>
         </div>
 
@@ -82,20 +82,17 @@
 
         <form id="prompt-form" class="stack-form">
           <div class="panel panel-soft">
-            <h3>Basisdaten</h3>
-            <div class="grid-2 compact-grid">
-              <label class="span-2">Unterkategorie
-                <select id="unterkategorie-select"></select>
-              </label>
-            </div>
-            <div class="field-section top-space">
-              <h4>Pflichtfelder</h4>
-              <div id="base-required-fields" class="grid-2 compact-grid"></div>
-            </div>
-            <div class="field-section top-space">
-              <h4>Optionale Felder</h4>
-              <div id="base-optional-fields" class="grid-2 compact-grid"></div>
-            </div>
+            <h3 id="required-panel-title">Template - Pflichtfelder</h3>
+            <small id="validation-hint" class="hint"></small>
+            <div id="required-fields-grid" class="grid-2 compact-grid top-space"></div>
+          </div>
+
+          <div class="panel">
+            <h3 id="optional-panel-title">Template - Optionale Felder</h3>
+            <div id="optional-fields-grid" class="grid-2 compact-grid top-space"></div>
+          </div>
+
+          <div id="field-pool" class="is-hidden">
             <div id="base-fields-pool" class="is-hidden">
               <label id="wrap-fach"><span id="label-fach">Fach *</span>
                 <input id="fach" placeholder="z. B. Digitale Grundbildung" />
@@ -110,28 +107,17 @@
                 <small id="hint-ziel" class="hint">Formuliere den Zielzustand klar, nicht nur das Thema.</small>
               </label>
             </div>
-          </div>
-
-          <div class="panel">
-            <h3>Template-spezifische Parameter</h3>
-            <small id="validation-hint" class="hint"></small>
-            <div class="field-section top-space">
-              <h4>Pflichtfelder</h4>
-              <div id="dynamic-required-fields" class="grid-2 compact-grid"></div>
-            </div>
-            <div class="field-section top-space">
-              <h4>Optionale Felder</h4>
-              <div id="dynamic-optional-fields" class="grid-2 compact-grid"></div>
-            </div>
+            <div id="dynamic-fields-pool" class="is-hidden"></div>
           </div>
 
           <div class="panel">
             <div class="panel-title-row">
               <h3>Erweiterte Optionen</h3>
-              <button id="toggle-advanced" type="button" class="text-btn small">Ein-/Ausblenden</button>
+              <button id="toggle-advanced" type="button" class="text-btn small">▼ Optionen einblenden</button>
             </div>
+            <small id="advanced-section-hint" class="hint">Diese Sektion ist ein-/ausklappbar.</small>
 
-            <div id="advanced-fields" class="grid-2">
+            <div id="advanced-fields" class="grid-2 top-space">
               <label>Zeitraum
                 <select id="zeitrahmen-select"></select>
               </label>
