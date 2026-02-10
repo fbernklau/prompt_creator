@@ -1775,6 +1775,11 @@ body[data-theme='dark'] #screen-home.tw-home .tw-home-chip.tw-home-chip-active {
   gap: 12px;
 }
 
+#screen-form.tw-form .tw-form-right-rail {
+  display: grid;
+  gap: 12px;
+}
+
 #screen-form.tw-form .tw-form-card,
 #screen-form.tw-form .tw-form-preview-card {
   border: 1px solid #e2e8f0;
@@ -2344,20 +2349,25 @@ body[data-theme='dark'] #screen-home.tw-home .tw-home-chip.tw-home-chip-active {
     grid-column: 1;
   }
 
-  #screen-form.tw-form #prompt-form > .tw-form-submit-row {
+  #screen-form.tw-form #prompt-form > .tw-form-right-rail {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 1 / span 8;
     position: sticky;
     top: 78px;
+    align-self: start;
+    max-height: calc(100vh - 92px);
+    overflow: auto;
+    padding-right: 2px;
   }
 
-  #screen-form.tw-form #prompt-form > .tw-form-preview-card {
-    grid-column: 2;
-    grid-row: 2 / span 8;
-    position: sticky;
-    top: 138px;
-    max-height: calc(100vh - 154px);
-    overflow: auto;
+  #screen-form.tw-form #prompt-form > .tw-form-right-rail .tw-form-submit-row {
+    position: static;
+    top: auto;
+    bottom: auto;
+  }
+
+  #screen-form.tw-form #prompt-form > .tw-form-right-rail .tw-form-preview-card {
+    margin: 0;
   }
 
   #screen-result.tw-result .tw-result-grid {
@@ -2396,11 +2406,6 @@ body[data-theme='dark'] #screen-home.tw-home .tw-home-chip.tw-home-chip-active {
   #screen-result.tw-result .tw-result-main-head {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  #screen-form.tw-form .tw-form-submit-row {
-    position: sticky;
-    bottom: 10px;
   }
 
   #screen-form.tw-form .tw-form-submit-row .hint {

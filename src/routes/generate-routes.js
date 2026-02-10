@@ -116,6 +116,146 @@ Antwort zum Konvertieren:
 ${original}`;
 }
 
+const SENSITIVE_DATA_TERMS = [
+  'name des sch',
+  'name der sch',
+  'name des kind',
+  'voller name',
+  'vorname',
+  'nachname',
+  'adresse',
+  'anschrift',
+  'geburtsdatum',
+  'telefon',
+  'handynummer',
+  'email',
+  'e-mail',
+  'mailadresse',
+  'kontaktdaten',
+  'id-nummer',
+  'id nummer',
+  'personalausweis',
+  'svnr',
+  'sozialversicherungsnummer',
+  'gesundheitsdaten',
+  'diagnose',
+  'krankheit',
+];
+
+const PRIVACY_SAFE_MARKERS = [
+  'keine',
+  'nicht',
+  'ohne',
+  'vermeide',
+  'platzhalter',
+  'anonym',
+  '[vorname]',
+  '[nachname]',
+  '[klasse]',
+  '[schule]',
+  '[datum]',
+];
+
+const PRIVACY_POLICY_BLOCK = `Datenschutzvorgaben (verbindlich):
+- Fordere keine personenbezogenen oder sensiblen Daten an.
+- Nutze bei Personenbezug ausschliesslich Platzhalter wie [VORNAME], [NACHNAME], [KLASSE], [SCHULE], [DATUM].
+- Falls personenbezogene Angaben vorliegen, ersetze sie durch Platzhalter und verarbeite sie nicht woertlich.`;
+
+function normalizeForMatch(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function lineContainsSensitiveDataRequest(line = '') {
+  const normalized = normalizeForMatch(line);
+  if (!normalized) return false;
+  const hasSensitiveTerm = SENSITIVE_DATA_TERMS.some((term) => normalized.includes(term));
+  if (!hasSensitiveTerm) return false;
+  const hasSafeMarker = PRIVACY_SAFE_MARKERS.some((marker) => normalized.includes(marker));
+  return !hasSafeMarker;
+}
+
+function hasPrivacyRisk(prompt = '') {
+  const lines = String(prompt || '').split(/\r?\n/);
+  return lines.some((line) => lineContainsSensitiveDataRequest(line));
+}
+
+function ensurePrivacyPolicyBlock(prompt = '') {
+  const text = String(prompt || '').trim();
+  if (!text) return PRIVACY_POLICY_BLOCK;
+  if (/datenschutzvorgaben\s*\(verbindlich\)/i.test(text)) return text;
+  return `${text}\n\n${PRIVACY_POLICY_BLOCK}`;
+}
+
+function redactSensitiveTerms(prompt = '') {
+  const replacements = [
+    [/name des sch(?:u|ue)lers?/gi, '[VORNAME]'],
+    [/name der sch(?:u|ue)lerin/gi, '[VORNAME]'],
+    [/name des kindes/gi, '[VORNAME]'],
+    [/\bvorname\b/gi, '[VORNAME]'],
+    [/\bnachname\b/gi, '[NACHNAME]'],
+    [/\bgeburtsdatum\b/gi, '[DATUM]'],
+    [/\badresse\b/gi, '[ADRESSE]'],
+    [/\banschrift\b/gi, '[ADRESSE]'],
+    [/\btelefon(?:nummer)?\b/gi, '[TELEFON]'],
+    [/\bhandynummer\b/gi, '[TELEFON]'],
+    [/\be-?mail(?:adresse)?\b/gi, '[E-MAIL]'],
+    [/\bsozialversicherungsnummer\b/gi, '[ID]'],
+    [/\bsvnr\b/gi, '[ID]'],
+    [/\bid-?nummer\b/gi, '[ID]'],
+    [/\bpersonalausweis\b/gi, '[ID]'],
+  ];
+  let redacted = String(prompt || '');
+  replacements.forEach(([pattern, replacement]) => {
+    redacted = redacted.replace(pattern, replacement);
+  });
+  return redacted;
+}
+
+function sanitizePromptForPrivacy(prompt = '') {
+  const lines = String(prompt || '').split(/\r?\n/);
+  const kept = [];
+  let removedSensitiveLines = 0;
+  lines.forEach((line) => {
+    if (lineContainsSensitiveDataRequest(line)) {
+      removedSensitiveLines += 1;
+      return;
+    }
+    kept.push(line);
+  });
+  const compact = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const redacted = redactSensitiveTerms(compact || String(prompt || '').trim());
+  const withPolicy = ensurePrivacyPolicyBlock(redacted);
+  return {
+    output: withPolicy,
+    removedSensitiveLines: removedSensitiveLines > 0,
+  };
+}
+
+function buildPrivacyRepairMetaprompt(rawPrompt) {
+  const original = String(rawPrompt || '').trim() || '(leer)';
+  return `Du bist ein Prompt-Editor.
+Schreibe den folgenden Handoff-Prompt datenschutzkonform um.
+
+Regeln:
+- Erhalte Ziel, Struktur und fachlichen Kontext.
+- Entferne jede Aufforderung zur Eingabe personenbezogener oder sensibler Daten.
+- Ersetze personenbezogene Angaben konsequent durch Platzhalter (z. B. [VORNAME], [KLASSE], [SCHULE], [DATUM]).
+- Falls Rueckfragen noetig sind, frage nur nach anonymem didaktischem Kontext.
+- Der Prompt muss mit "Du bist" beginnen.
+- Gib nur JSON aus.
+
+Verbindliches Ausgabeformat:
+{
+  "handoff_prompt": "Du bist ..."
+}
+
+Zu ueberarbeitender Prompt:
+${original}`;
+}
+
 async function getProviderForUser(req, providerId) {
   const providerResult = await pool.query(
     `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta
@@ -370,6 +510,29 @@ function createGenerateRouter() {
       }
       if (!output) {
         throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
+      }
+      if (hasPrivacyRisk(output)) {
+        try {
+          const privacyRepairRaw = await callProvider({
+            kind: provider.kind,
+            baseUrl,
+            model: provider.model,
+            apiKey: providerCredential.apiKey,
+            metaprompt: buildPrivacyRepairMetaprompt(output),
+            timeoutMs: config.providerRequestTimeoutMs,
+          });
+          const privacyRepairOutput = parseHandoffPrompt(privacyRepairRaw);
+          if (privacyRepairOutput) {
+            output = privacyRepairOutput;
+          }
+        } catch (_privacyRepairError) {
+          // Fallback to local sanitization below.
+        }
+      }
+      const sanitized = sanitizePromptForPrivacy(output);
+      output = sanitized.output;
+      if (hasPrivacyRisk(output)) {
+        output = ensurePrivacyPolicyBlock(redactSensitiveTerms(output));
       }
 
       await pool.query(
