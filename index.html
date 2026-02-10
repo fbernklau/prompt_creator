@@ -44,54 +44,54 @@
     </header>
 
     <main class="main-shell">
-      <section id="screen-home" class="screen">
-        <div class="mb-12 text-left">
-          <h1 class="font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Wie kann ich dir heute helfen?</h1>
-          <p class="subline text-slate-500 dark:text-slate-400">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
+      <section id="screen-home" class="screen tw-home">
+        <div class="tw-home-hero">
+          <h1 class="tw-home-title">Wie kann ich dir heute helfen?</h1>
+          <p class="tw-home-subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
         </div>
 
-        <div class="panel home-search-panel top-space bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-          <div class="grid-3 top-space">
-            <label class="span-2">Template Suche
-              <div class="relative">
-                <span class="material-icons-round absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-                <input id="home-template-search" class="pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all" placeholder="Titel, Kategorie, Unterkategorie..." />
+        <section class="tw-home-search-card">
+          <div class="tw-home-search-row">
+            <label class="tw-home-search-label">Template Suche
+              <div class="tw-home-search-input-wrap">
+                <span class="material-icons-round tw-home-search-icon">search</span>
+                <input id="home-template-search" class="tw-home-search-input" placeholder="Titel, Kategorie, Unterkategorie..." />
               </div>
             </label>
-            <div class="inline-actions align-end">
-              <button id="home-template-search-btn" type="button" class="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-xl font-semibold shadow-lg shadow-primary/25 transition-all">Suchen</button>
-              <button id="home-template-reset-btn" type="button" class="secondary px-6 py-3 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">Zur&uuml;cksetzen</button>
+            <div class="tw-home-search-actions">
+              <button id="home-template-search-btn" type="button" class="tw-home-btn-primary">Suchen</button>
+              <button id="home-template-reset-btn" type="button" class="tw-home-btn-secondary">Zur&uuml;cksetzen</button>
             </div>
           </div>
-          <div id="home-tag-chips" class="chip-row top-space"></div>
-        </div>
+          <div id="home-tag-chips" class="tw-home-tags"></div>
+        </section>
 
-        <div id="category-grid" class="card-grid top-space grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+        <div id="category-grid" class="tw-home-category-grid"></div>
 
-        <section class="home-discovery-section top-space">
-          <div class="home-discovery-head">
+        <section class="tw-home-discovery-section">
+          <div class="tw-home-discovery-head">
             <div>
-              <h2>Template Discovery</h2>
-              <p class="subline">Schnellzugriff auf empfohlene und zuletzt genutzte Vorlagen.</p>
+              <h2 class="tw-home-discovery-title">Template Discovery</h2>
+              <p class="tw-home-subline">Schnellzugriff auf empfohlene und zuletzt genutzte Vorlagen.</p>
             </div>
-            <button id="home-show-all-templates" type="button" class="text-btn">Alle anzeigen</button>
+            <button id="home-show-all-templates" type="button" class="tw-home-show-all">Alle anzeigen</button>
           </div>
-          <div class="panel home-discovery-panel top-space bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-            <div class="grid-3 top-space">
+          <div class="tw-home-discovery-card">
+            <div class="tw-home-discovery-grid">
               <div>
-                <h4 class="section-title"><span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen</h4>
-                <div id="home-recommended-list" class="list-cards compact"></div>
+                <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen</h4>
+                <div id="home-recommended-list" class="tw-home-list"></div>
               </div>
               <div>
-                <h4 class="section-title"><span class="material-icons-round text-primary text-[18px]">history</span>Zuletzt genutzt</h4>
-                <div id="home-recent-list" class="list-cards compact"></div>
+                <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-primary text-[18px]">history</span>Zuletzt genutzt</h4>
+                <div id="home-recent-list" class="tw-home-list"></div>
               </div>
               <div>
-                <h4 class="section-title"><span class="material-icons-round text-amber-500 text-[18px]">star</span>Favoriten</h4>
-                <div id="home-favorites-list" class="list-cards compact"></div>
+                <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-amber-500 text-[18px]">star</span>Favoriten</h4>
+                <div id="home-favorites-list" class="tw-home-list"></div>
               </div>
             </div>
-            <small id="home-discovery-status" class="hint top-space"></small>
+            <small id="home-discovery-status" class="tw-home-discovery-status"></small>
           </div>
         </section>
       </section>

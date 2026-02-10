@@ -32,14 +32,14 @@ function createTaskController({
     'Schulentwicklung & Teamarbeit': 'psychology',
   };
   const CATEGORY_ICON_TONES = {
-    'Pädagogische Planung': 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
-    'Elternkontakte & Kommunikation': 'bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400',
-    Organisation: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
-    Administration: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
-    'Schulentwicklung & Teamarbeit': 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400',
-    'Leistungsbeurteilung & Feedback': 'bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400',
-    'Barrierefreiheit & Inklusion': 'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400',
-    'Individualisierung & Differenzierung': 'bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+    'Pädagogische Planung': 'bg-blue-50 text-blue-600',
+    'Elternkontakte & Kommunikation': 'bg-pink-50 text-pink-600',
+    Organisation: 'bg-amber-50 text-amber-600',
+    Administration: 'bg-emerald-50 text-emerald-600',
+    'Schulentwicklung & Teamarbeit': 'bg-indigo-50 text-indigo-600',
+    'Leistungsbeurteilung & Feedback': 'bg-violet-50 text-violet-600',
+    'Barrierefreiheit & Inklusion': 'bg-cyan-50 text-cyan-600',
+    'Individualisierung & Differenzierung': 'bg-orange-50 text-orange-600',
   };
 
   state.templateDiscovery = state.templateDiscovery || {
@@ -335,17 +335,17 @@ function createTaskController({
       .map((categoryName) => {
         const cfg = categoryConfig[categoryName];
         const icon = CATEGORY_ICONS[categoryName] || 'article';
-        const tone = CATEGORY_ICON_TONES[categoryName] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+        const tone = CATEGORY_ICON_TONES[categoryName] || 'bg-slate-100 text-slate-600';
         return `
-        <button type="button" class="category-card group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer" data-category="${categoryName}">
-          <div class="category-card-head flex items-start justify-between mb-6">
-            <span class="category-icon ${tone}" aria-hidden="true">
+        <button type="button" class="tw-home-category-card group" data-category="${categoryName}">
+          <div class="tw-home-category-head">
+            <span class="tw-home-category-icon ${tone}" aria-hidden="true">
               <span class="material-icons-round text-3xl">${icon}</span>
             </span>
-            <span class="category-kicker px-3 py-1 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">${cfg.short}</span>
+            <span class="tw-home-category-kicker">${cfg.short}</span>
           </div>
-          <strong class="group-hover:text-primary transition-colors">${cfg.title}</strong>
-          <span class="hint text-sm text-slate-500 dark:text-slate-400 leading-relaxed">${cfg.description}</span>
+          <strong class="tw-home-category-title group-hover:text-primary transition-colors">${cfg.title}</strong>
+          <span class="tw-home-category-desc">${cfg.description}</span>
         </button>
       `;
       })
@@ -377,16 +377,16 @@ function createTaskController({
           : 'Noch nicht genutzt';
         const short = getCategoryShort(template.categoryName);
         return `
-          <div class="list-card quick-template-card clickable-card bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 hover:shadow-md transition-all" data-open-template="${template.templateUid}" role="button" tabindex="0" aria-label="Template ${template.title} verwenden">
-            <div class="quick-template-head">
-              <span class="quick-template-title-wrap">
-                <span class="mini-icon">${short}</span>
+          <div class="tw-home-discovery-item" data-open-template="${template.templateUid}" role="button" tabindex="0" aria-label="Template ${template.title} verwenden">
+            <div class="tw-home-discovery-item-head">
+              <span class="tw-home-discovery-item-title-wrap">
+                <span class="tw-home-mini-badge">${short}</span>
                 <strong>${template.title}</strong>
               </span>
-              <button type="button" class="text-btn small text-slate-300 hover:text-amber-400" data-fav-template="${template.templateUid}" data-fav-state="${template.isFavorite ? '1' : '0'}">${template.isFavorite ? '★' : '☆'}</button>
+              <button type="button" class="tw-home-fav-btn" data-fav-template="${template.templateUid}" data-fav-state="${template.isFavorite ? '1' : '0'}">${template.isFavorite ? '★' : '☆'}</button>
             </div>
-            <small class="hint">${template.categoryName} -> ${template.subcategoryName}</small>
-            <small class="hint">${recentHint}</small>
+            <small class="tw-home-item-meta">${template.categoryName} -> ${template.subcategoryName}</small>
+            <small class="tw-home-item-time">${recentHint}</small>
           </div>
         `;
       })
@@ -424,8 +424,8 @@ function createTaskController({
 
     const active = state.templateDiscovery.activeTag;
     const chips = [
-      `<button type="button" class="chip px-4 py-1.5 rounded-full text-sm font-medium ${!active ? 'is-active bg-primary text-white border-primary' : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'}" data-tag-chip="">Alle</button>`,
-      ...topTags.map(([tag, count]) => `<button type="button" class="chip px-4 py-1.5 rounded-full text-sm font-medium ${active === tag ? 'is-active bg-primary text-white border-primary' : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600'}" data-tag-chip="${tag}">${tag} (${count})</button>`),
+      `<button type="button" class="tw-home-chip ${!active ? 'tw-home-chip-active' : ''}" data-tag-chip="">Alle</button>`,
+      ...topTags.map(([tag, count]) => `<button type="button" class="tw-home-chip ${active === tag ? 'tw-home-chip-active' : ''}" data-tag-chip="${tag}">${tag} (${count})</button>`),
     ];
 
     el('home-tag-chips').innerHTML = chips.join('');
