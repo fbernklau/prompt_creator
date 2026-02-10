@@ -35,6 +35,9 @@ function sanitizeSettings(input = {}) {
   if (typeof input.flowMode === 'string' && ['step', 'single'].includes(input.flowMode)) {
     output.flowMode = input.flowMode;
   }
+  if (typeof input.navLayout === 'string' && ['topbar', 'sidebar'].includes(input.navLayout)) {
+    output.navLayout = input.navLayout;
+  }
   if (typeof input.copyIncludeMetadata === 'boolean') {
     output.copyIncludeMetadata = input.copyIncludeMetadata;
   }

@@ -13,14 +13,14 @@
         <div class="brand-name">EduPrompt-AT</div>
       </div>
       <div class="topbar-actions">
-        <button id="btn-new-task" type="button" class="text-btn">Neue Aufgabe</button>
-        <button id="btn-library" type="button" class="text-btn">Bibliothek</button>
-        <button id="btn-dashboard" type="button" class="text-btn">Dashboard</button>
-        <button id="btn-templates" type="button" class="text-btn is-hidden">Templates</button>
-        <button id="btn-history" type="button" class="text-btn">Verlauf</button>
-        <button id="btn-provider" type="button" class="text-btn">API-Provider</button>
-        <button id="btn-options" type="button" class="text-btn">Optionen</button>
-        <button id="btn-admin" type="button" class="text-btn is-hidden">Admin</button>
+        <button id="btn-new-task" type="button" class="text-btn nav-btn">Neue Aufgabe</button>
+        <button id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
+        <button id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
+        <button id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
+        <button id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
+        <button id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
+        <button id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
+        <button id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
         <span class="user-chip" id="current-user">Benutzer: lade...</span>
       </div>
     </header>
@@ -30,7 +30,7 @@
         <h1>Wie kann ich dir heute helfen?</h1>
         <p class="subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
 
-        <div class="panel top-space">
+        <div class="panel home-search-panel top-space">
           <h3>Template Suche &amp; Filter</h3>
           <p class="subline">Suche nach Titel, Kategorie oder Unterkategorie und filtere per Tags.</p>
           <div class="grid-3 top-space">
@@ -47,7 +47,7 @@
 
         <div id="category-grid" class="card-grid top-space"></div>
 
-        <div class="panel top-space">
+        <div class="panel home-discovery-panel top-space">
           <h3>Template Discovery</h3>
           <p class="subline">Schnellzugriff auf empfohlene, zuletzt genutzte und favorisierte Templates.</p>
           <div class="grid-3 top-space">
@@ -87,13 +87,13 @@
         </div>
 
         <form id="prompt-form" class="stack-form">
-          <div class="panel panel-soft">
+          <div class="panel panel-soft form-required-panel">
             <h3 id="required-panel-title">Template - Pflichtfelder</h3>
             <small id="validation-hint" class="hint"></small>
             <div id="required-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel form-optional-panel">
             <h3 id="optional-panel-title">Template - Optionale Felder</h3>
             <div id="optional-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
@@ -116,7 +116,7 @@
             <div id="dynamic-fields-pool" class="is-hidden"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel form-advanced-panel">
             <div class="panel-title-row">
               <h3>Erweiterte Optionen</h3>
               <button id="toggle-advanced" type="button" class="text-btn small">▼ Optionen einblenden</button>
@@ -173,7 +173,7 @@
               <span>Kl&auml;rende R&uuml;ckfragen aktivieren</span>
             </label>
           </div>
-          <div class="panel">
+          <div class="panel form-oneoff-panel">
             <div class="panel-title-row">
               <h3>Einmaliger Template-Override (optional)</h3>
             </div>
@@ -211,7 +211,7 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel form-metaprompt-panel">
             <div class="panel-title-row">
               <h3>Metaprompt Vorschau</h3>
               <button id="btn-preview-metaprompt" type="button" class="secondary">Vorschau aktualisieren</button>
@@ -227,7 +227,7 @@
             </label>
           </div>
 
-          <div class="inline-actions">
+          <div class="inline-actions form-submit-row">
             <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
             <small id="generation-status" class="hint"></small>
           </div>
@@ -374,7 +374,7 @@
         <h2>Bibliothek</h2>
         <p class="subline">Eigene Prompts verwalten und &ouml;ffentliche Prompts durchsuchen.</p>
 
-        <div class="panel">
+        <div class="panel library-toolbar">
           <div class="inline-actions">
             <button id="lib-tab-own" type="button" class="secondary is-active">Meine Bibliothek</button>
             <button id="lib-tab-public" type="button" class="secondary">Public Library</button>
@@ -746,6 +746,13 @@
           <h3>Flow-Modus</h3>
           <label class="radio"><input type="radio" name="flow-mode" value="step" /> Schrittweise Ansicht</label>
           <label class="radio"><input type="radio" name="flow-mode" value="single" /> Kompaktansicht</label>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Navigation</h3>
+          <label class="radio"><input type="radio" name="nav-layout" value="topbar" /> Topbar (klassisch)</label>
+          <label class="radio"><input type="radio" name="nav-layout" value="sidebar" /> Sidebar (Desktop)</label>
+          <small class="hint">Auf Mobilger&auml;ten bleibt die kompakte Topbar aktiv.</small>
         </div>
 
         <div class="panel top-space">

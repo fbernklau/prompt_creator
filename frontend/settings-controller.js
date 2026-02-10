@@ -1,8 +1,12 @@
-function createSettingsController({ state, el, api, applyTheme }) {
+function createSettingsController({ state, el, api, applyTheme, applyNavLayout }) {
   function applySettingsToUi() {
     applyTheme(state.settings.theme);
+    if (typeof applyNavLayout === 'function') {
+      applyNavLayout(state.settings.navLayout || 'topbar');
+    }
     document.querySelectorAll('input[name="theme"]').forEach((node) => (node.checked = node.value === state.settings.theme));
     document.querySelectorAll('input[name="flow-mode"]').forEach((node) => (node.checked = node.value === (state.settings.flowMode || 'step')));
+    document.querySelectorAll('input[name="nav-layout"]').forEach((node) => (node.checked = node.value === (state.settings.navLayout || 'topbar')));
     el('setting-copy-metadata').checked = !!state.settings.copyIncludeMetadata;
     el('setting-advanced-open').checked = !!state.settings.advancedOpen;
     el('setting-show-community').checked = state.settings.showCommunityTemplates !== false;

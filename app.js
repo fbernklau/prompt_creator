@@ -48,6 +48,7 @@ const settingsController = createSettingsController({
   el,
   api,
   applyTheme: uiShell.applyTheme,
+  applyNavLayout: uiShell.applyNavLayout,
 });
 const historyController = createHistoryController({ state, el, api });
 const providerController = createProviderController({
@@ -193,9 +194,11 @@ function bindEvents() {
   el('save-settings').addEventListener('click', async () => {
     const theme = document.querySelector('input[name="theme"]:checked')?.value || 'system';
     const flowMode = document.querySelector('input[name="flow-mode"]:checked')?.value || 'step';
+    const navLayout = document.querySelector('input[name="nav-layout"]:checked')?.value || 'topbar';
     await settingsController.saveSettings({
       theme,
       flowMode,
+      navLayout,
       copyIncludeMetadata: el('setting-copy-metadata').checked,
       advancedOpen: el('setting-advanced-open').checked,
       showCommunityTemplates: el('setting-show-community').checked,

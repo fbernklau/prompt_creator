@@ -9,6 +9,7 @@ const DEFAULT_PRESET_OPTIONS = {
 const SETTINGS_DEFAULTS = {
   theme: 'system',
   flowMode: null,
+  navLayout: 'topbar',
   copyIncludeMetadata: false,
   advancedOpen: false,
   showCommunityTemplates: true,
