@@ -257,13 +257,24 @@
             </div>
           </div>
 
+          <div class="inline-actions form-submit-row tw-form-submit-row">
+            <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
+            <small id="generation-status" class="hint"></small>
+          </div>
+
           <div class="panel form-metaprompt-panel tw-form-preview-card">
-            <div class="panel-title-row">
-              <h3>Metaprompt Vorschau</h3>
-              <button id="btn-preview-metaprompt" type="button" class="secondary">Vorschau aktualisieren</button>
+            <div class="panel-title-row tw-form-preview-head">
+              <h3><span class="material-icons-round">visibility</span> Live Metaprompt Vorschau</h3>
+              <button id="btn-preview-metaprompt" type="button" class="secondary">Aktualisieren</button>
             </div>
             <small id="metaprompt-preview-status" class="hint"></small>
             <div class="metaprompt-preview-box top-space">
+              <div class="tw-preview-window-head">
+                <span class="tw-preview-window-dots" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </span>
+                <span class="tw-preview-window-title">SYSTEM_PROMPT.MD</span>
+              </div>
               <button id="copy-metaprompt-preview" type="button" class="secondary result-copy-inside">Kopieren</button>
               <textarea id="metaprompt-preview" rows="10" placeholder="Hier erscheint die serverseitig generierte Metaprompt-Vorschau. Du kannst sie direkt bearbeiten."></textarea>
             </div>
@@ -271,11 +282,6 @@
               <input id="use-preview-metaprompt" type="checkbox" />
               <span>Bearbeitete Metaprompt direkt fuer Generierung verwenden</span>
             </label>
-          </div>
-
-          <div class="inline-actions form-submit-row tw-form-submit-row">
-            <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
-            <small id="generation-status" class="hint"></small>
           </div>
         </form>
       </section>

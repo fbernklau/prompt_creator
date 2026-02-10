@@ -13,6 +13,48 @@ const MERGED_CATEGORY_MAP = {
   unterrichtsvorbereitung: MERGED_PLANNING_CATEGORY,
   [MERGED_PLANNING_CATEGORY.toLowerCase()]: MERGED_PLANNING_CATEGORY,
 };
+const CATEGORY_META_MAP = {
+  [MERGED_PLANNING_CATEGORY]: {
+    title: MERGED_PLANNING_CATEGORY,
+    short: 'PP',
+    description: 'Jahresplanung, Unterrichtssequenzen und Unterrichtseinheiten.',
+  },
+  'Elternkontakte & Kommunikation': {
+    title: 'Elternkontakte & Kommunikation',
+    short: 'EL',
+    description: 'Briefe, Gespraeche und strukturierter Austausch mit Erziehungsberechtigten.',
+  },
+  Organisation: {
+    title: 'Organisation',
+    short: 'OR',
+    description: 'Strukturierung des Schulalltags, Exkursionen und Projekte.',
+  },
+  Administration: {
+    title: 'Administration',
+    short: 'AD',
+    description: 'Effiziente Dokumentation und Verwaltung schulischer Ablaeufe.',
+  },
+  'Schulentwicklung & Teamarbeit': {
+    title: 'Schulentwicklung & Teamarbeit',
+    short: 'SC',
+    description: 'Konzepte fuer die Teamarbeit und strategische Schulentwicklung.',
+  },
+  'Leistungsbeurteilung & Feedback': {
+    title: 'Leistungsbeurteilung & Feedback',
+    short: 'LE',
+    description: 'Kompetenzorientiertes Feedback und transparente Bewertungssysteme.',
+  },
+  'Barrierefreiheit & Inklusion': {
+    title: 'Inklusion',
+    short: 'BA',
+    description: 'Barrierefreiheit und Unterstuetzung fuer heterogene Lerngruppen.',
+  },
+  'Individualisierung & Differenzierung': {
+    title: 'Individualisierung & Differenzierung',
+    short: 'IN',
+    description: 'Differenzierte Aufgabenstellungen fuer unterschiedliche Lernniveaus.',
+  },
+};
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -110,12 +152,8 @@ function mapCategoryDisplayName(value = '') {
 }
 
 function categoryMetaFor(categoryName = '') {
-  if (categoryName === MERGED_PLANNING_CATEGORY) {
-    return {
-      title: MERGED_PLANNING_CATEGORY,
-      short: 'PP',
-      description: 'Jahresplanung, Unterrichtssequenzen und Unterrichtseinheiten.',
-    };
+  if (CATEGORY_META_MAP[categoryName]) {
+    return CATEGORY_META_MAP[categoryName];
   }
   return {
     title: categoryName,
