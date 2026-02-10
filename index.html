@@ -26,20 +26,22 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">EP</div>
-        <div class="brand-name">EduPrompt-AT</div>
-      </div>
-      <div class="topbar-actions">
-        <button id="btn-new-task" type="button" class="text-btn nav-btn">Neue Aufgabe</button>
-        <button id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
-        <button id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
-        <button id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
-        <button id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
-        <button id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
-        <button id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
-        <button id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
-        <span class="user-chip" id="current-user">Benutzer: lade...</span>
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-mark">EP</div>
+          <div class="brand-name">EduPrompt-AT</div>
+        </div>
+        <div class="topbar-actions">
+          <button id="btn-new-task" type="button" class="text-btn nav-btn">Neue Aufgabe</button>
+          <button id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
+          <button id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
+          <button id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
+          <button id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
+          <button id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
+          <button id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
+          <button id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
+          <span class="user-chip" id="current-user">Benutzer: lade...</span>
+        </div>
       </div>
     </header>
 
@@ -96,32 +98,48 @@
         </section>
       </section>
 
-      <section id="screen-subcategory" class="screen is-hidden">
-        <button id="btn-back-home-from-subcat" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
+      <section id="screen-subcategory" class="screen is-hidden tw-subcat">
+        <div class="tw-subcat-crumb-row">
+          <button id="btn-back-home-from-subcat" type="button" class="link-btn tw-subcat-back">
+            <span class="material-icons-round">arrow_back</span>
+            Zur&uuml;ck zur &Uuml;bersicht
+          </button>
+          <div class="tw-subcat-view-toggle" aria-hidden="true">
+            <button type="button" class="tw-subcat-view-btn is-active">
+              <span class="material-icons-round">grid_view</span>
+            </button>
+            <button type="button" class="tw-subcat-view-btn">
+              <span class="material-icons-round">view_list</span>
+            </button>
+          </div>
+        </div>
         <h2 id="selected-category-title"></h2>
         <p id="selected-category-desc" class="subline"></p>
-        <div id="subcategory-list" class="subcategory-grid top-space"></div>
+        <div id="subcategory-list" class="subcategory-grid top-space tw-subcat-grid"></div>
+        <div class="tw-subcat-footer">
+          <small id="subcategory-count" class="hint"></small>
+        </div>
       </section>
 
-      <section id="screen-form" class="screen is-hidden">
-        <div class="step-nav">
+      <section id="screen-form" class="screen is-hidden tw-form">
+        <div class="step-nav tw-form-nav">
           <button id="btn-back-subcat" type="button" class="secondary back-nav-btn">&larr; Zur&uuml;ck zur Unterkategorie-Auswahl</button>
           <button id="btn-back-home-from-form" type="button" class="link-btn">Zur &Uuml;bersicht</button>
         </div>
 
-        <div class="form-header">
+        <div class="form-header tw-form-header">
           <h2 id="form-category-title"></h2>
           <p id="form-subcategory-title" class="subline"></p>
         </div>
 
         <form id="prompt-form" class="stack-form">
-          <div class="panel panel-soft form-required-panel">
+          <div class="panel panel-soft form-required-panel tw-form-card tw-form-required">
             <h3 id="required-panel-title">Template - Pflichtfelder</h3>
             <small id="validation-hint" class="hint"></small>
             <div id="required-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
 
-          <div class="panel form-optional-panel">
+          <div class="panel form-optional-panel tw-form-card">
             <h3 id="optional-panel-title">Template - Optionale Felder</h3>
             <div id="optional-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
@@ -144,7 +162,7 @@
             <div id="dynamic-fields-pool" class="is-hidden"></div>
           </div>
 
-          <div class="panel form-advanced-panel">
+          <div class="panel form-advanced-panel tw-form-card">
             <div class="panel-title-row">
               <h3>Erweiterte Optionen</h3>
               <button id="toggle-advanced" type="button" class="text-btn small">▼ Optionen einblenden</button>
@@ -201,7 +219,7 @@
               <span>Kl&auml;rende R&uuml;ckfragen aktivieren</span>
             </label>
           </div>
-          <div class="panel form-oneoff-panel">
+          <div class="panel form-oneoff-panel tw-form-card tw-form-oneoff">
             <div class="panel-title-row">
               <h3>Einmaliger Template-Override (optional)</h3>
             </div>
@@ -239,7 +257,7 @@
             </div>
           </div>
 
-          <div class="panel form-metaprompt-panel">
+          <div class="panel form-metaprompt-panel tw-form-preview-card">
             <div class="panel-title-row">
               <h3>Metaprompt Vorschau</h3>
               <button id="btn-preview-metaprompt" type="button" class="secondary">Vorschau aktualisieren</button>
@@ -255,80 +273,122 @@
             </label>
           </div>
 
-          <div class="inline-actions form-submit-row">
+          <div class="inline-actions form-submit-row tw-form-submit-row">
             <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
             <small id="generation-status" class="hint"></small>
           </div>
         </form>
       </section>
 
-      <section id="screen-result" class="screen is-hidden">
-        <div class="result-layout">
-          <div class="result-banner">Dein KI-Prompt ist bereit!</div>
+      <section id="screen-result" class="screen is-hidden tw-result">
+        <div class="result-layout tw-result-grid">
+          <aside class="tw-result-sidebar">
+            <div class="panel tw-result-details-card">
+              <h3 class="tw-result-details-title">
+                <span class="material-icons-round">tune</span>
+                Prompt Details
+              </h3>
+              <div class="tw-result-details-list">
+                <div class="tw-result-detail-item">
+                  <small>Handlungsfeld</small>
+                  <strong id="result-detail-handlungsfeld">-</strong>
+                </div>
+                <div class="tw-result-detail-item">
+                  <small>Unterkategorie</small>
+                  <strong id="result-detail-unterkategorie">-</strong>
+                </div>
+                <div class="tw-result-detail-item">
+                  <small>Fach</small>
+                  <strong id="result-detail-fach">-</strong>
+                </div>
+                <div class="tw-result-detail-item">
+                  <small>Schulstufe</small>
+                  <strong id="result-detail-schulstufe">-</strong>
+                </div>
+              </div>
+              <button id="btn-adjust" type="button" class="secondary tw-result-edit-btn">
+                <span class="material-icons-round">edit</span>
+                Parameter bearbeiten
+              </button>
+            </div>
+            <div class="panel tw-result-side-hint">
+              <strong>Hinweis</strong>
+              <small class="hint">Der generierte Prompt ist f&uuml;r den direkten Handoff an dein Ziel-LLM gedacht.</small>
+            </div>
+          </aside>
+          <div class="tw-result-main">
+            <div class="result-banner">Dein KI-Prompt ist bereit!</div>
 
-          <div class="panel top-space result-prompt-panel">
-            <div id="result-meta" class="hint"></div>
-            <div class="result-prompt-box top-space">
-              <button id="copy-prompt-clean" type="button" class="secondary result-copy-inside">Kopieren</button>
-              <textarea id="result" rows="16" readonly></textarea>
+            <div class="panel top-space result-prompt-panel">
+              <div class="tw-result-main-head">
+                <div>
+                  <h3>Generated Meta-Prompt</h3>
+                  <small id="result-meta" class="hint"></small>
+                </div>
+                <div class="inline-actions">
+                  <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
+                  <button id="copy-prompt-clean" type="button" class="secondary">Kopieren</button>
+                </div>
+              </div>
+              <div class="result-prompt-box top-space">
+                <textarea id="result" rows="16" readonly></textarea>
+              </div>
             </div>
-          </div>
 
-          <div class="panel top-space">
-            <div class="inline-actions result-actions-row">
-              <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
-              <button id="export-txt" type="button" class="secondary">Export .txt</button>
-              <button id="export-md" type="button" class="secondary">Export .md</button>
-              <button id="btn-compare-last" type="button" class="secondary">Mit vorheriger Version vergleichen</button>
+            <div class="panel top-space">
+              <div class="inline-actions result-actions-row">
+                <button id="export-txt" type="button" class="secondary">Export .txt</button>
+                <button id="export-md" type="button" class="secondary">Export .md</button>
+                <button id="btn-compare-last" type="button" class="secondary">Mit vorheriger Version vergleichen</button>
+              </div>
             </div>
-          </div>
 
-          <div id="result-compare-panel" class="panel top-space is-hidden">
-            <h3>Vergleich zur vorherigen Generation</h3>
-            <div class="grid-2 top-space">
-              <label>Aktuelle Version
-                <textarea id="result-compare-current" rows="10" readonly></textarea>
-              </label>
-              <label>Vorherige Version
-                <textarea id="result-compare-previous" rows="10" readonly></textarea>
-              </label>
+            <div id="result-compare-panel" class="panel top-space is-hidden">
+              <h3>Vergleich zur vorherigen Generation</h3>
+              <div class="grid-2 top-space">
+                <label>Aktuelle Version
+                  <textarea id="result-compare-current" rows="10" readonly></textarea>
+                </label>
+                <label>Vorherige Version
+                  <textarea id="result-compare-previous" rows="10" readonly></textarea>
+                </label>
+              </div>
             </div>
-          </div>
 
-          <div class="panel top-space">
-            <h3>In Bibliothek speichern</h3>
-            <div class="grid-2">
-              <label class="span-2">Titel
-                <input id="library-title" placeholder="z. B. Stoffverteilungsplan 9. Schulstufe" />
-              </label>
-              <label>Bewertung
-                <select id="library-rating">
-                  <option value="">Keine</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5</option>
-                </select>
-              </label>
-              <label class="checkbox">
-                <input id="library-public" type="checkbox" />
-                <span>In &ouml;ffentliche Bibliothek aufnehmen</span>
-              </label>
+            <div class="panel top-space">
+              <h3>In Bibliothek speichern</h3>
+              <div class="grid-2">
+                <label class="span-2">Titel
+                  <input id="library-title" placeholder="z. B. Stoffverteilungsplan 9. Schulstufe" />
+                </label>
+                <label>Bewertung
+                  <select id="library-rating">
+                    <option value="">Keine</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                  </select>
+                </label>
+                <label class="checkbox">
+                  <input id="library-public" type="checkbox" />
+                  <span>In &ouml;ffentliche Bibliothek aufnehmen</span>
+                </label>
+              </div>
+              <div class="inline-actions top-space">
+                <button id="save-library" type="button">Save to library</button>
+                <small id="save-library-status" class="hint"></small>
+              </div>
+              <div class="inline-actions top-space">
+                <small id="result-variant-status" class="hint"></small>
+                <button id="btn-open-templates-from-result" type="button" class="secondary is-hidden">Template Studio &ouml;ffnen</button>
+              </div>
             </div>
-            <div class="inline-actions top-space">
-              <button id="save-library" type="button">Save to library</button>
-              <small id="save-library-status" class="hint"></small>
-            </div>
-            <div class="inline-actions top-space">
-              <small id="result-variant-status" class="hint"></small>
-              <button id="btn-open-templates-from-result" type="button" class="secondary is-hidden">Template Studio &ouml;ffnen</button>
-            </div>
-          </div>
 
-          <div class="inline-actions top-space result-final-actions">
-            <button id="btn-adjust" type="button" class="secondary">Anpassungen vornehmen</button>
-            <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+            <div class="inline-actions top-space result-final-actions">
+              <button id="btn-restart-from-result" type="button" class="secondary">Neue Aufgabe starten</button>
+            </div>
           </div>
         </div>
       </section>
@@ -395,35 +455,45 @@
         </div>
       </section>
 
-      <section id="screen-library" class="screen is-hidden">
-        <div class="step-nav">
-          <button id="btn-back-home-from-library" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
-        </div>
-        <h2>Bibliothek</h2>
-        <p class="subline">Eigene Prompts verwalten und &ouml;ffentliche Prompts durchsuchen.</p>
-
-        <div class="panel library-toolbar">
-          <div class="inline-actions">
-            <button id="lib-tab-own" type="button" class="secondary is-active">Meine Bibliothek</button>
-            <button id="lib-tab-public" type="button" class="secondary">Public Library</button>
+      <section id="screen-library" class="screen is-hidden tw-library">
+        <div class="tw-library-head">
+          <div class="step-nav tw-library-nav">
+            <button id="btn-back-home-from-library" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
           </div>
-          <div class="grid-3 top-space">
-            <label>Kategorie
+          <div class="tw-library-title-row">
+            <div>
+              <h2>Prompt &amp; Template Library</h2>
+              <p class="subline">Eigene Prompts verwalten, bewerten und in der Community durchsuchen.</p>
+            </div>
+            <button id="lib-refresh" type="button" class="tw-library-primary-action">
+              <span class="material-icons-round">refresh</span>
+              Aktualisieren
+            </button>
+          </div>
+        </div>
+
+        <div class="panel library-toolbar tw-library-toolbar">
+          <div class="tw-library-toolbar-row">
+            <label class="tw-library-search-wrap">Suche
+              <span class="material-icons-round tw-library-search-icon">search</span>
+              <input id="lib-filter-search" placeholder="Titel oder Inhalt" />
+            </label>
+            <div class="tw-library-tabs">
+              <button id="lib-tab-public" type="button" class="secondary">Community Library</button>
+              <button id="lib-tab-own" type="button" class="secondary is-active">My Prompts</button>
+            </div>
+          </div>
+          <div class="tw-library-filter-row">
+            <label>Handlungsfeld
               <select id="lib-filter-category"></select>
             </label>
             <label>Unterkategorie
               <select id="lib-filter-subcategory"></select>
             </label>
-            <label>Suche
-              <input id="lib-filter-search" placeholder="Titel oder Inhalt" />
-            </label>
-          </div>
-          <div class="inline-actions top-space">
-            <button id="lib-refresh" type="button">Aktualisieren</button>
           </div>
         </div>
 
-        <div id="library-list" class="library-list top-space"></div>
+        <div id="library-list" class="library-list top-space tw-library-grid"></div>
       </section>
 
       <section id="screen-templates" class="screen is-hidden">

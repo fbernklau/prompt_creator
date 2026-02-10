@@ -565,21 +565,31 @@ function createTaskController({
             entry.categoryName === categoryName && entry.subcategoryName === subcategory
           ));
           const short = getCategoryShort(categoryName);
+          const favorite = Boolean(discoveryEntry?.isFavorite);
+          const badge = (template?.tags || [])[0] || 'template';
           return `
-            <div class="list-card subcategory-card-item clickable-card" data-subcategory="${subcategory}" role="button" tabindex="0" aria-label="${subcategory} auswaehlen">
-              <div class="quick-template-head">
-                <span class="quick-template-title-wrap">
-                  <span class="mini-icon">${short}</span>
-                  <strong>${subcategory}</strong>
+            <div class="tw-subcat-card clickable-card" data-subcategory="${subcategory}" role="button" tabindex="0" aria-label="${subcategory} auswaehlen">
+              <div class="tw-subcat-card-head">
+                <span class="tw-subcat-card-meta">
+                  <span class="tw-subcat-badge">${short}</span>
+                  <span class="tw-subcat-tag">${badge}</span>
                 </span>
-                <button type="button" class="text-btn small" data-fav-template="${discoveryEntry?.templateUid || ''}" data-fav-state="${discoveryEntry?.isFavorite ? '1' : '0'}">${discoveryEntry?.isFavorite ? '★' : '☆'}</button>
+                <button type="button" class="tw-subcat-fav" data-fav-template="${discoveryEntry?.templateUid || ''}" data-fav-state="${favorite ? '1' : '0'}">${favorite ? '★' : '☆'}</button>
               </div>
-              <span class="hint">${template?.description || cfg.description}</span>
+              <strong class="tw-subcat-card-title">${subcategory}</strong>
+              <span class="tw-subcat-card-desc">${template?.description || cfg.description}</span>
+              <div class="tw-subcat-card-cta">
+                Konfigurieren
+                <span class="material-icons-round">chevron_right</span>
+              </div>
             </div>
           `;
         }
       )
       .join('');
+    if (el('subcategory-count')) {
+      el('subcategory-count').textContent = `${cfg.unterkategorien.length} Vorlagen in dieser Kategorie gefunden.`;
+    }
 
     el('subcategory-list').querySelectorAll('[data-subcategory]').forEach((card) => {
       const openSubcategory = () => openForm(categoryName, card.dataset.subcategory);
@@ -1000,6 +1010,10 @@ function createTaskController({
     el('result-compare-panel').classList.add('is-hidden');
     el('result-variant-status').textContent = '';
     el('btn-open-templates-from-result').classList.add('is-hidden');
+    if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = '-';
+    if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = '-';
+    if (el('result-detail-fach')) el('result-detail-fach').textContent = '-';
+    if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = '-';
     showScreen('home');
   }
 
@@ -1093,10 +1107,16 @@ function createTaskController({
         fach: context.baseFields.fach,
         handlungsfeld: context.baseFields.handlungsfeld,
         unterkategorie: context.baseFields.unterkategorie,
+        schulstufe: context.baseFields.schulstufe,
+        ziel: context.baseFields.ziel,
       };
 
       el('result').value = generation.output;
       el('result-meta').textContent = providerMeta;
+      if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
+      if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
+      if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
+      if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = context.baseFields.schulstufe || '-';
       el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
       el('save-library-status').textContent = '';
       el('result-compare-panel').classList.add('is-hidden');

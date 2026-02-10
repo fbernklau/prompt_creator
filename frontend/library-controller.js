@@ -22,26 +22,51 @@ function createLibraryController({ state, el, api, getCategoryConfig }) {
     const list = el('library-list');
     const items = state.libraryMode === 'own' ? state.libraryOwn : state.libraryPublic;
     if (!items.length) {
-      list.innerHTML = '<div class="panel"><span class="hint">Keine Eintraege gefunden.</span></div>';
+      list.innerHTML = '<div class="panel tw-library-empty"><span class="hint">Keine Eintraege gefunden.</span></div>';
       return;
     }
+
+    const renderStars = (score = 0) => {
+      const rating = Math.max(0, Math.min(5, Number(score) || 0));
+      const full = Math.floor(rating);
+      const half = rating - full >= 0.5 ? 1 : 0;
+      const empty = 5 - full - half;
+      return `${'★'.repeat(full)}${half ? '☆' : ''}${'·'.repeat(Math.max(0, empty))}`;
+    };
 
     list.innerHTML = items
       .map((item) => {
         const ratingOptions = [1, 2, 3, 4, 5]
           .map((value) => `<option value="${value}" ${item.myRating === value ? 'selected' : ''}>${value}</option>`)
           .join('');
+        const modelBadge = String(item.providerKind || 'custom').toUpperCase();
+        const levelBadge = item.handlungsfeld || 'all';
+        const scopeBadge = item.isPublic ? 'Community' : 'Personal';
+        const ownerLabel = item.userId || 'unbekannt';
 
         return `
-        <article class="library-item" data-library-id="${item.id}">
-          <div class="inline-actions">
-            <strong>${item.title}</strong>
-            <span class="library-meta">${item.isPublic ? 'Public' : 'Privat'} | Bewertung: ${item.avgRating.toFixed(2)} (${item.ratingCount})</span>
+        <article class="library-item tw-library-card" data-library-id="${item.id}">
+          <div class="tw-library-card-head">
+            <div class="tw-library-card-badges">
+              <span class="tw-library-badge tw-library-badge-model">${modelBadge}</span>
+              <span class="tw-library-badge">${levelBadge}</span>
+              <span class="tw-library-badge">${scopeBadge}</span>
+            </div>
+            <button type="button" class="tw-library-card-fav" data-action="copy-lib" title="Prompt kopieren">♡</button>
           </div>
-          <span class="library-meta">${item.handlungsfeld} | ${item.unterkategorie} | ${item.fach}</span>
-          <pre class="library-text">${item.promptText}</pre>
-          <div class="inline-actions">
-            <button type="button" class="secondary small" data-action="copy-lib">Kopieren</button>
+          <h3 class="tw-library-card-title">${item.title}</h3>
+          <p class="tw-library-card-description">${item.promptText}</p>
+          <div class="tw-library-rating-row">
+            <span class="tw-library-stars">${renderStars(item.avgRating)}</span>
+            <span class="tw-library-rating-value">${item.avgRating.toFixed(2)}</span>
+            <span class="tw-library-rating-count">(${item.ratingCount || 0} reviews)</span>
+          </div>
+          <div class="tw-library-card-foot">
+            <span class="tw-library-author">${ownerLabel}</span>
+            <button type="button" class="tw-library-try-btn" data-action="copy-lib">Try Prompt</button>
+          </div>
+          <div class="tw-library-admin-row">
+            <span class="library-meta">${item.handlungsfeld} | ${item.unterkategorie} | ${item.fach}</span>
             <label class="inline-actions">Rate:
               <select data-rate-for="${item.id}">
                 <option value="">-</option>
@@ -49,15 +74,21 @@ function createLibraryController({ state, el, api, getCategoryConfig }) {
               </select>
               <button type="button" class="secondary small" data-action="rate-lib">Speichern</button>
             </label>
-            ${
-              state.libraryMode === 'own'
-                ? `
+          </div>
+          ${
+            state.libraryMode === 'own'
+              ? `
+            <div class="inline-actions tw-library-owner-actions">
               <button type="button" class="secondary small" data-action="edit-lib">Bearbeiten</button>
               <button type="button" class="secondary small" data-action="toggle-public">${item.isPublic ? 'Privat setzen' : 'Public setzen'}</button>
               <button type="button" class="secondary small" data-action="delete-lib">Loeschen</button>
-            `
-                : ''
-            }
+            </div>
+          `
+              : ''
+          }
+          <pre class="library-text">${item.promptText}</pre>
+          <div class="tw-library-tags">
+            ${(item.tags || []).slice(0, 5).map((tag) => `<span class="tw-library-tag-chip">${tag}</span>`).join('')}
           </div>
         </article>
       `;
