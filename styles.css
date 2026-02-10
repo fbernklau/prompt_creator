@@ -413,7 +413,7 @@ label {
   color: var(--text);
 }
 
-input,
+input:not([type='checkbox']):not([type='radio']),
 select,
 textarea {
   border: 1px solid var(--line);
@@ -430,12 +430,12 @@ textarea {
   resize: vertical;
 }
 
-input::placeholder,
+input:not([type='checkbox']):not([type='radio'])::placeholder,
 textarea::placeholder {
   color: var(--text-muted);
 }
 
-input:focus,
+input:not([type='checkbox']):not([type='radio']):focus,
 select:focus,
 textarea:focus,
 button:focus-visible {
@@ -481,12 +481,14 @@ button:focus-visible {
   appearance: none;
   -webkit-appearance: none;
   margin: 0;
+  padding: 0;
+  line-height: 1;
   min-height: 0;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   border: 2px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--surface);
   display: grid;
   place-content: center;
@@ -496,8 +498,8 @@ button:focus-visible {
 
 .checkbox input[type='checkbox']::after {
   content: '';
-  width: 5px;
-  height: 9px;
+  width: 4px;
+  height: 8px;
   border: 2px solid #fff;
   border-top: 0;
   border-left: 0;
@@ -513,6 +515,10 @@ button:focus-visible {
 
 .checkbox input[type='checkbox']:checked::after {
   transform: rotate(45deg) scale(1);
+}
+
+.checkbox input[type='checkbox']:checked + span {
+  font-weight: 700;
 }
 
 .checkbox input[type='checkbox']:focus-visible {
@@ -2006,7 +2012,7 @@ body[data-theme='dark'] #screen-home.tw-home .tw-home-chip.tw-home-chip-active {
   font-weight: 600;
 }
 
-#screen-form.tw-form input,
+#screen-form.tw-form input:not([type='checkbox']):not([type='radio']),
 #screen-form.tw-form select,
 #screen-form.tw-form textarea {
   min-height: 40px;
@@ -2514,7 +2520,7 @@ body[data-theme='dark'] #screen-library.tw-library .tw-library-author {
   color: #9fb2d9;
 }
 
-body[data-theme='dark'] #screen-form.tw-form input,
+body[data-theme='dark'] #screen-form.tw-form input:not([type='checkbox']):not([type='radio']),
 body[data-theme='dark'] #screen-form.tw-form select,
 body[data-theme='dark'] #screen-form.tw-form textarea,
 body[data-theme='dark'] #screen-library.tw-library #lib-filter-search,
