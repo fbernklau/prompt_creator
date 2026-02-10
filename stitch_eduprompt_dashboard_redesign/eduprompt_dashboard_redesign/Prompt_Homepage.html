@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>EduPrompt Dashboard - Modern Design</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#4F46E5",
+                        "background-light": "#F8FAFC",
+                        "background-dark": "#0F172A",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.75rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-card {
+            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        .dark .glass-card {
+            background-color: rgba(30, 41, 59, 0.7);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
+<nav class="sticky top-0 z-50 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex justify-between items-center h-16">
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-primary/20">
+                        EP
+                    </div>
+<span class="text-xl font-bold tracking-tight">EduPrompt-AT</span>
+</div>
+<div class="hidden md:flex items-center space-x-6">
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Neue Aufgabe</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Bibliothek</a>
+<a class="text-sm font-medium text-primary" href="#">Dashboard</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Vorlagen</a>
+<div class="h-6 w-px bg-slate-200 dark:bg-slate-700"></div>
+<div class="flex items-center gap-3 pl-2">
+<div class="text-right hidden lg:block">
+<p class="text-xs font-semibold">fbernklau</p>
+<p class="text-[10px] text-slate-500 uppercase">Rolle: Teacher</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center">
+<span class="material-icons-round text-slate-400">person</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</nav>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+<div class="mb-12 text-center md:text-left">
+<h1 class="text-4xl font-extrabold tracking-tight mb-3">Wie kann ich dir heute helfen?</h1>
+<p class="text-slate-500 dark:text-slate-400 text-lg">Wähle ein Handlungsfeld aus dem Schulalltag, um einen maßgeschneiderten KI-Prompt zu erstellen.</p>
+</div>
+<section class="mb-12">
+<div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+<div class="flex flex-col md:flex-row gap-4 mb-6">
+<div class="relative flex-grow">
+<span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400">
+<span class="material-icons-round">search</span>
+</span>
+<input class="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all" placeholder="Titel, Kategorie, Unterkategorie..." type="text"/>
+</div>
+<button class="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-xl font-semibold shadow-lg shadow-primary/25 transition-all flex items-center justify-center gap-2">
+<span>Suchen</span>
+</button>
+<button class="px-6 py-3 border border-slate-200 dark:border-slate-700 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all">
+                        Zurücksetzen
+                    </button>
+</div>
+<div class="flex flex-wrap gap-2">
+<button class="px-4 py-1.5 rounded-full bg-primary text-white text-sm font-medium">Alle</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Planung (6)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Organisation (5)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Unterricht (4)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Eltern (3)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Administration (3)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Inklusion (3)</button>
+<button class="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">Bewertung (2)</button>
+</div>
+</div>
+</section>
+<section class="mb-16">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">auto_stories</span>
+</div>
+<span class="px-3 py-1 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">PP</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Pädagogische Planung</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Jahresplanung, Unterrichtssequenzen und Unterrichtseinheiten.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">forum</span>
+</div>
+<span class="px-3 py-1 bg-pink-50 dark:bg-pink-900/40 text-pink-600 dark:text-pink-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">EL</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Elternkontakte &amp; Kommunikation</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Briefe, Gespräche und strukturierter Austausch mit Erziehungsberechtigten.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">hub</span>
+</div>
+<span class="px-3 py-1 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">OR</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Organisation</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Strukturierung des Schulalltags, Exkursionen und Projekte.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">edit_document</span>
+</div>
+<span class="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">AD</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Administration</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Effiziente Dokumentation und Verwaltung schulischer Abläufe.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">psychology</span>
+</div>
+<span class="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">SC</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Schulentwicklung</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Konzepte für die Teamarbeit und strategische Schulentwicklung.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">assignment_turned_in</span>
+</div>
+<span class="px-3 py-1 bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">LE</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Leistungsbeurteilung</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Kompetenzorientiertes Feedback und transparente Bewertungssysteme.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">diversity_3</span>
+</div>
+<span class="px-3 py-1 bg-cyan-50 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">BA</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Inklusion</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Barrierefreiheit und Unterstützung für heterogene Lerngruppen.</p>
+</div>
+<div class="group bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-primary/50 dark:hover:border-primary/50 hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer">
+<div class="flex items-start justify-between mb-6">
+<div class="w-14 h-14 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-2xl flex items-center justify-center">
+<span class="material-icons-round text-3xl">track_changes</span>
+</div>
+<span class="px-3 py-1 bg-orange-50 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 text-[10px] font-bold uppercase tracking-wider rounded-lg">IN</span>
+</div>
+<h3 class="text-xl font-bold mb-2 group-hover:text-primary transition-colors">Individualisierung</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Differenzierte Aufgabenstellungen für unterschiedliche Lernniveaus.</p>
+</div>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between mb-8">
+<div>
+<h2 class="text-2xl font-bold">Template Discovery</h2>
+<p class="text-sm text-slate-500 dark:text-slate-400">Schnellzugriff auf empfohlene und zuletzt genutzte Vorlagen.</p>
+</div>
+<button class="text-sm font-semibold text-primary hover:underline">Alle anzeigen</button>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-icons-round text-primary text-xl">recommend</span>
+<h3 class="font-bold text-slate-700 dark:text-slate-300">Empfohlen</h3>
+</div>
+<div class="space-y-4">
+<div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer relative group">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center text-[10px] font-bold">PP</span>
+<h4 class="font-semibold text-sm">Semesterplanung</h4>
+<span class="material-icons-round text-slate-300 group-hover:text-amber-400 ml-auto transition-colors">star</span>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">Strukturierter Überblick über das kommende Halbjahr.</p>
+</div>
+<div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer relative group">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-900/40 text-pink-600 flex items-center justify-center text-[10px] font-bold">EL</span>
+<h4 class="font-semibold text-sm">Elternbrief Vorlage</h4>
+<span class="material-icons-round text-slate-300 group-hover:text-amber-400 ml-auto transition-colors">star_outline</span>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">Professionelle Vorlagen für die Elternkommunikation.</p>
+</div>
+</div>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-icons-round text-primary text-xl">history</span>
+<h3 class="font-bold text-slate-700 dark:text-slate-300">Zuletzt genutzt</h3>
+</div>
+<div class="space-y-4">
+<div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer relative">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 flex items-center justify-center text-[10px] font-bold">OR</span>
+<h4 class="font-semibold text-sm">Exkursionsplaner</h4>
+</div>
+<p class="text-[10px] text-slate-400 mt-2">Zuletzt: Heute, 14:05</p>
+</div>
+<div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer relative">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center text-[10px] font-bold">PP</span>
+<h4 class="font-semibold text-sm">Unterrichtseinheit</h4>
+</div>
+<p class="text-[10px] text-slate-400 mt-2">Zuletzt: Gestern, 09:12</p>
+</div>
+</div>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-icons-round text-amber-400 text-xl">star</span>
+<h3 class="font-bold text-slate-700 dark:text-slate-300">Favoriten</h3>
+</div>
+<div class="space-y-4">
+<div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow cursor-pointer relative border-l-4 border-l-amber-400">
+<div class="flex items-center gap-3 mb-2">
+<span class="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-600 flex items-center justify-center text-[10px] font-bold">IN</span>
+<h4 class="font-semibold text-sm">Differenzierungshilfe</h4>
+</div>
+<p class="text-xs text-slate-500 dark:text-slate-400">KI-gestützte Anpassung von Lerntexten.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<footer class="mt-20 border-t border-slate-200 dark:border-slate-800 py-10 bg-white dark:bg-slate-900/50">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+<p class="text-sm text-slate-500">© 2024 EduPrompt-AT. Alle Rechte vorbehalten.</p>
+<div class="flex gap-6">
+<a class="text-sm text-slate-500 hover:text-primary transition-colors" href="#">Datenschutz</a>
+<a class="text-sm text-slate-500 hover:text-primary transition-colors" href="#">Impressum</a>
+<a class="text-sm text-slate-500 hover:text-primary transition-colors" href="#">Support</a>
+</div>
+</div>
+</footer>
+
+</body></html>

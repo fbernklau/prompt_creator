@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Prompt Library &amp; Ratings | Educator Hub</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#256af4",
+                        "background-light": "#f5f6f8",
+                        "background-dark": "#101622",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-200 antialiased">
+<div class="flex min-h-screen">
+<!-- Sidebar Navigation -->
+<aside class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col fixed h-full">
+<div class="p-6 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white">
+<span class="material-icons-outlined">auto_awesome</span>
+</div>
+<h1 class="font-bold text-xl tracking-tight text-slate-900 dark:text-white">PromptEdu</h1>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<div class="pb-4">
+<p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 mb-2">Main</p>
+<a class="flex items-center gap-3 px-3 py-2 bg-primary/10 text-primary rounded-lg font-medium group" href="#">
+<span class="material-icons-outlined text-[20px]">dashboard</span>
+<span>Library</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors group" href="#">
+<span class="material-icons-outlined text-[20px]">history</span>
+<span>Recent Logs</span>
+</a>
+</div>
+<div class="pt-4 border-t border-slate-100 dark:border-slate-800">
+<p class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 mb-2">Categories</p>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors" href="#">
+<span class="material-icons-outlined text-[20px]">menu_book</span>
+<span>Lesson Plans</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors" href="#">
+<span class="material-icons-outlined text-[20px]">assignment_turned_in</span>
+<span>Assessments</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors" href="#">
+<span class="material-icons-outlined text-[20px]">mail</span>
+<span>Emails &amp; Comms</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors" href="#">
+<span class="material-icons-outlined text-[20px]">groups</span>
+<span>Classroom Mgmt</span>
+</a>
+</div>
+</nav>
+<div class="p-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
+<img alt="User" class="w-10 h-10 rounded-full border-2 border-white dark:border-slate-700" data-alt="Profile picture of a female teacher smiling" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrUVWurYusJL8b8v37UfdL70E2XHHUS0cFM5Rg2WYpEIrhntUzVablGkVmnQT6R2MiBJPSdNjhnuZ72QreFKgZugELwFFDimDq8oPOT8lHbfcR6pWphDkU75TP478OHvb17KW_w3KFZw8siUx5RkXC9JjRNizT1xjLGIPXjf2PMuID7K7emOVvWdJq6pPTafxywomBUP2jeqDmmH5HfL3OjDsEIa9u8IHw-uNNLIWgb7xzXNiVRhCzmK9VahED3Weqz7PXbWaj9ioM"/>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-slate-900 dark:text-white truncate">Ms. Sarah Jenkins</p>
+<p class="text-xs text-slate-500 dark:text-slate-400 truncate">Pro Account</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 flex flex-col min-h-screen">
+<!-- Header / Top Bar -->
+<header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 px-8 py-4">
+<div class="flex flex-col gap-6 max-w-7xl mx-auto">
+<div class="flex items-center justify-between">
+<div>
+<h2 class="text-2xl font-bold text-slate-900 dark:text-white">Prompt &amp; Template Library</h2>
+<p class="text-slate-500 dark:text-slate-400">Discover and share AI prompts tailored for the classroom.</p>
+</div>
+<button class="bg-primary hover:bg-primary/90 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-all shadow-lg shadow-primary/20">
+<span class="material-icons-outlined">add</span>
+<span>Create New Prompt</span>
+</button>
+</div>
+<div class="flex flex-col md:flex-row gap-4 items-center justify-between">
+<!-- Search & Toggle -->
+<div class="flex flex-1 w-full gap-4">
+<div class="relative flex-1 max-w-md">
+<span class="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+<input class="w-full pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-800 border-transparent rounded-xl focus:bg-white focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none" placeholder="Search templates..." type="text"/>
+</div>
+<!-- Library Toggle -->
+<div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+<button class="px-5 py-1.5 rounded-lg text-sm font-medium transition-all bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm">
+                                    Community Library
+                                </button>
+<button class="px-5 py-1.5 rounded-lg text-sm font-medium transition-all text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+                                    My Prompts
+                                </button>
+</div>
+</div>
+<!-- Filters -->
+<div class="flex gap-3 items-center">
+<div class="flex -space-x-1">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-1 rounded-l-lg border border-primary/20 border-r-0">MODEL:</span>
+<select class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-r-lg text-xs font-semibold py-1 pl-2 pr-8 focus:ring-primary focus:border-primary">
+<option>All Models</option>
+<option>GPT-4</option>
+<option>Claude 3.5</option>
+<option>Gemini Pro</option>
+</select>
+</div>
+<div class="flex -space-x-1">
+<span class="bg-slate-100 dark:bg-slate-700 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-l-lg border border-slate-200 dark:border-slate-600 border-r-0 uppercase">Level:</span>
+<select class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-r-lg text-xs font-semibold py-1 pl-2 pr-8 focus:ring-primary focus:border-primary">
+<option>All Levels</option>
+<option>Elementary</option>
+<option>Middle School</option>
+<option>High School</option>
+<option>University</option>
+</select>
+</div>
+</div>
+</div>
+</div>
+</header>
+<!-- Template Grid -->
+<section class="p-8 max-w-7xl mx-auto w-full">
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Card 1 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">GPT-4</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">Middle School</span>
+</div>
+<button class="text-slate-300 hover:text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite_border</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Differentiated Reading Comprehension Generator</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Generate multiple reading passages and questions based on a single topic, automatically leveled for Lexile ranges from 600L to 1200L.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star_half</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">4.8</span>
+<span class="text-xs text-slate-400">(124 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<img class="w-6 h-6 rounded-full" data-alt="Small headshot of Sarah J." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBnl6CgsiyVwKB4AMxOpx5Q6Wnd06rZJQDNNB9ZdCdumlYjOIOjQt7Rzh-Faw3Vwd9WX_wu7WFKUEpPd86AUKYCUPtdi1jE5A1PHxYBySoAw6ZeSNiDvrVJXn-5EEE-tke3XEkd6EPLxOZuROJikVEc4ihYb3eMYkfORbVQgJa4dzGmDwn3GKaXGP0CfpSS1VUz4B_D0A4ZDLHcVOuNdA4heP59mraaQkXQ5BYLYBUvb1wFUP6HmqKDZPvpHXxGcGqcweVExouUBsyz"/>
+<span>Sarah J.</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">Claude 3.5</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">All Levels</span>
+</div>
+<button class="text-slate-300 hover:text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite_border</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Tone-Adjusting Parent Email Drafts</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Quickly draft sensitive emails to parents regarding behavior or academic progress. Choose from 'Supportive', 'Direct', or 'Celebratory' tones.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">5.0</span>
+<span class="text-xs text-slate-400">(89 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<img class="w-6 h-6 rounded-full" data-alt="Small headshot of Marcus L." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMMwINf1Vf51KKrp6jE9KjKhuilVLhRHc7ARBlfXNfeEkyhmi5oFmQz_QXbumKIQQCHFUgHNeas-SDWVU99BbLBvOfqiiK9IPHCGq_z0rXPlTMuaZLBkyuHc0uM_5vN-qUID21F6oayVTNIZAq9L9p9rV54YdW5zrmoDchUv7Ce1rJl7V0pwlbKDEnWrSaSBdkm6Iftiki70vvdXbsxJtqydd9ZRmShyfxPSME6iE7GZDzVK6DxVx8Lrrimkb6ZI_h8KYV8gt1VG2e"/>
+<span>Marcus L.</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group border-primary/30 ring-1 ring-primary/10">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">GPT-4</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">STEM</span>
+</div>
+<button class="text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Step-by-Step Lab Manual Creator</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Input your science objectives and materials list to receive a fully formatted lab experiment guide for students, including safety warnings.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-slate-200 text-sm">star</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">4.2</span>
+<span class="text-xs text-slate-400">(210 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<div class="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px]">ED</div>
+<span>EduDesign</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">GPT-4</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">History</span>
+</div>
+<button class="text-slate-300 hover:text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite_border</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Interactive Historical Roleplay Prompts</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Prompts designed to set the AI as a historical figure for classroom Q&amp;A sessions. Includes constraints to prevent hallucinations.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star_half</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">4.7</span>
+<span class="text-xs text-slate-400">(45 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<img class="w-6 h-6 rounded-full" data-alt="Small headshot of James K." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsCDlqYOArU0pFyG-2TKlEix5W7InIkDSy2LjJzH8G7j_1rpmU7PpbFEbWiPMYOtEKQ7FIBXfJIHo3BLsNTpyQxpQRNlBuprDHYy3f1VtzVJf80ZpUq-OTsmZbTrmz_e-DW9E3lTKj1IDfnVVuR8l0L-jAlhlhOqY3B7FVZmRNMe-MkDPMiXv8quHsORpRFuLmYk-Dbscz4XPj5MEB3xeIgTCZFYbp6RrhLXXuGtI_WfrHswKBBYt2ieH4xyWcvXVNsR8MHWcMuKp6"/>
+<span>James K.</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Card 5 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">Gemini Pro</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">Math</span>
+</div>
+<button class="text-slate-300 hover:text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite_border</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Infinite Word Problem Generator (Algebra I)</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Creates endless variations of linear equation word problems based on real-world scenarios like sports or business.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-slate-200 text-sm">star</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">4.0</span>
+<span class="text-xs text-slate-400">(32 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<img class="w-6 h-6 rounded-full" data-alt="Small headshot of Elena R." src="https://lh3.googleusercontent.com/aida-public/AB6AXuADbAFMIZ_M1BDWrVTJwN7PTBLQDNpREHv-AzFVAuu_BNmBClLiLo_6Iafg2bG25lf4zxg7c-xKSYEGsgal0HRnemekYboRGu8R2rW61BlT58nZYezjsuwjZyUsk0UTR9-WrZMt49qfFvhDUUa-_xqcbfmCUb_Dfwf7HWdcT7PYxwVg2MgKltXePoFr9D9NG-pu2XbHxq9nlIHarl_83TtrGmOPLZpZg0rSX5BbgDKYX4XixNaKlMHHAKIAkdxyMH2Gz5YpNs1rPmHh"/>
+<span>Elena R.</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Card 6 -->
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none transition-all flex flex-col group">
+<div class="flex justify-between items-start mb-4">
+<div class="flex gap-2">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">GPT-4</span>
+<span class="bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight">Admin</span>
+</div>
+<button class="text-slate-300 hover:text-red-500 transition-colors">
+<span class="material-icons-outlined">favorite_border</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors leading-tight">Meeting Agenda &amp; Minutes Summarizer</h3>
+<p class="text-sm text-slate-500 dark:text-slate-400 line-clamp-3 mb-4 flex-1">
+                            Paste your rough meeting notes and get a professionally formatted PDF-ready agenda and summary with action items.
+                        </p>
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center">
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star</span>
+<span class="material-icons-outlined text-yellow-400 text-sm">star_half</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">4.9</span>
+<span class="text-xs text-slate-400">(67 reviews)</span>
+</div>
+<div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+<div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+<img class="w-6 h-6 rounded-full" data-alt="Small headshot of David W." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiit62PfpQVuuyou-OaG0P4zW0xAY1DbUrr8MJumIFcKYHbwPkZ1YKZ4-21MmWwkS-2O0FVq9geDDSG2hCqkKAIUYqKnT7n0TyRTHVfdwp55LKWpxT8IzUn0pskcGHACBDz2Rr_y70HKxKbLCQOfjfISpymL0d1ptxe6eBojxq24Ozutln6GNnEVk-fndNMVyYD6U1DncW_-hrqnGSTDvdHtYXn02apcYWUcwj8SPjrbZqFEqeRRZh4gvFbHMGJn4DQzoDntEW1zcl"/>
+<span>David W.</span>
+</div>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                Try Prompt <span class="material-icons-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Pagination -->
+<div class="mt-12 flex justify-center items-center gap-4">
+<button class="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary transition-all">
+<span class="material-icons-outlined">chevron_left</span>
+</button>
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded-lg bg-primary text-white font-bold">1</button>
+<button class="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-medium">2</button>
+<button class="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-medium">3</button>
+<span class="w-10 h-10 flex items-center justify-center text-slate-400">...</span>
+<button class="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-medium">12</button>
+</div>
+<button class="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400 hover:text-primary hover:border-primary transition-all">
+<span class="material-icons-outlined">chevron_right</span>
+</button>
+</div>
+</section>
+</main>
+</div>
+</body></html>

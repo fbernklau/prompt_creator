@@ -155,6 +155,11 @@ function bindEvents() {
   el('btn-back-home-from-form').addEventListener('click', () => uiShell.showScreen('home'));
   el('btn-back-subcat').addEventListener('click', () => uiShell.showScreen((state.settings.flowMode || 'step') === 'step' ? 'subcategory' : 'home'));
   el('btn-back-home-from-library').addEventListener('click', () => uiShell.showScreen('home'));
+  if (el('home-show-all-templates')) {
+    el('home-show-all-templates').addEventListener('click', () => {
+      el('btn-templates').click();
+    });
+  }
 
   el('close-provider-drawer').addEventListener('click', uiShell.closeDrawers);
   el('close-history-drawer').addEventListener('click', uiShell.closeDrawers);

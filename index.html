@@ -31,8 +31,6 @@
         <p class="subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
 
         <div class="panel home-search-panel top-space">
-          <h3>Template Suche &amp; Filter</h3>
-          <p class="subline">Suche nach Titel, Kategorie oder Unterkategorie und filtere per Tags.</p>
           <div class="grid-3 top-space">
             <label class="span-2">Template Suche
               <input id="home-template-search" placeholder="Titel, Kategorie, Unterkategorie..." />
@@ -47,25 +45,32 @@
 
         <div id="category-grid" class="card-grid top-space"></div>
 
-        <div class="panel home-discovery-panel top-space">
-          <h3>Template Discovery</h3>
-          <p class="subline">Schnellzugriff auf empfohlene, zuletzt genutzte und favorisierte Templates.</p>
-          <div class="grid-3 top-space">
+        <section class="home-discovery-section top-space">
+          <div class="home-discovery-head">
             <div>
-              <h4 class="section-title"><span class="mini-icon">TOP</span>Empfohlen</h4>
-              <div id="home-recommended-list" class="list-cards compact"></div>
+              <h2>Template Discovery</h2>
+              <p class="subline">Schnellzugriff auf empfohlene und zuletzt genutzte Vorlagen.</p>
             </div>
-            <div>
-              <h4 class="section-title"><span class="mini-icon">REC</span>Zuletzt genutzt</h4>
-              <div id="home-recent-list" class="list-cards compact"></div>
-            </div>
-            <div>
-              <h4 class="section-title"><span class="mini-icon">FAV</span>Favoriten</h4>
-              <div id="home-favorites-list" class="list-cards compact"></div>
-            </div>
+            <button id="home-show-all-templates" type="button" class="text-btn">Alle anzeigen</button>
           </div>
-          <small id="home-discovery-status" class="hint top-space"></small>
-        </div>
+          <div class="panel home-discovery-panel top-space">
+            <div class="grid-3 top-space">
+              <div>
+                <h4 class="section-title"><span class="mini-icon">TOP</span>Empfohlen</h4>
+                <div id="home-recommended-list" class="list-cards compact"></div>
+              </div>
+              <div>
+                <h4 class="section-title"><span class="mini-icon">REC</span>Zuletzt genutzt</h4>
+                <div id="home-recent-list" class="list-cards compact"></div>
+              </div>
+              <div>
+                <h4 class="section-title"><span class="mini-icon">FAV</span>Favoriten</h4>
+                <div id="home-favorites-list" class="list-cards compact"></div>
+              </div>
+            </div>
+            <small id="home-discovery-status" class="hint top-space"></small>
+          </div>
+        </section>
       </section>
 
       <section id="screen-subcategory" class="screen is-hidden">
@@ -654,6 +659,17 @@
         </div>
       </section>
     </main>
+
+    <footer class="app-footer">
+      <div class="app-footer-inner">
+        <span>&copy; 2024 EduPrompt-AT. Alle Rechte vorbehalten.</span>
+        <div class="app-footer-links">
+          <button type="button" class="text-btn">Datenschutz</button>
+          <button type="button" class="text-btn">Impressum</button>
+          <button type="button" class="text-btn">Support</button>
+        </div>
+      </div>
+    </footer>
 
     <aside id="provider-drawer" class="drawer is-hidden">
       <div class="drawer-head">

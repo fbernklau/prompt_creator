@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html class="light" lang="de"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>EduPrompt-AT | Pädagogische Planung</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#3b82f6",
+                        "background-light": "#f8fafc",
+                        "background-dark": "#0f172a",
+                    },
+                    fontFamily: {
+                        sans: ["Inter", "sans-serif"],
+                        display: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.75rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        }
+        .card-hover:hover {
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-200">
+<header class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+<div class="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
+<div class="flex items-center space-x-3">
+<div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold">EP</div>
+<span class="font-bold text-lg tracking-tight">EduPrompt-AT</span>
+</div>
+<nav class="hidden md:flex items-center space-x-6 text-sm font-medium text-slate-600 dark:text-slate-400">
+<a class="hover:text-primary transition-colors" href="#">Neue Aufgabe</a>
+<a class="hover:text-primary transition-colors" href="#">Bibliothek</a>
+<a class="hover:text-primary transition-colors" href="#">Dashboard</a>
+<a class="hover:text-primary transition-colors text-primary" href="#">Templates</a>
+<a class="hover:text-primary transition-colors" href="#">Verlauf</a>
+<a class="hover:text-primary transition-colors" href="#">API-Provider</a>
+<a class="hover:text-primary transition-colors" href="#">Optionen</a>
+</nav>
+<div class="flex items-center space-x-4">
+<div class="hidden lg:block text-right">
+<div class="text-xs font-semibold text-slate-500">Benutzer: fbernerklau</div>
+<div class="text-[10px] text-slate-400 uppercase tracking-wider">Rollen: teachers</div>
+</div>
+<button class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-icons-round text-xl block dark:hidden">dark_mode</span>
+<span class="material-icons-round text-xl hidden dark:block">light_mode</span>
+</button>
+</div>
+</div>
+</header>
+<main class="max-w-[1400px] mx-auto px-6 py-8">
+<div class="mb-10">
+<nav class="flex items-center space-x-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
+<a class="hover:text-primary flex items-center transition-colors" href="#">
+<span class="material-icons-round text-base mr-1">arrow_back</span>
+                    Zurück zur Übersicht
+                </a>
+</nav>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">Pädagogische Planung</h1>
+<p class="text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+                        Hier finden Sie spezialisierte Generatoren für die Unterrichtsvorbereitung – von der Semesterplanung bis hin zur detaillierten Materialerstellung.
+                    </p>
+</div>
+<div class="flex items-center space-x-3">
+<div class="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1">
+<button class="p-1.5 bg-slate-100 dark:bg-slate-700 rounded-md shadow-sm">
+<span class="material-icons-round text-sm">grid_view</span>
+</button>
+<button class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+<span class="material-icons-round text-sm">view_list</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Planung</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Arbeitsaufträge</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Erstellt differenzierte Arbeitsaufträge mit klaren Kriterien und verständlichen Formulierungen für verschiedene Leistungsniveaus.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover border-l-4 border-l-primary">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Planung</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors uppercase">Semesterplanung</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Erstellt eine strukturierte Semesterplanung mit Kompetenzbezug, Zeitfenstern und Meilensteinen für das gesamte Schuljahr.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Methodik</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Einstiegsphasen</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Entwirft kreative Einstiegs- oder Abschlussimpulse zur Aktivierung der Lernenden oder zur Sicherung der Ergebnisse.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Diagnose</span>
+</div>
+<button class="text-yellow-400 transition-colors">
+<span class="material-icons-round">star</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Kompetenzraster</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Erstellt ein detailliertes Kompetenzraster mit Niveaustufen und klaren Kriterien für die Leistungsbewertung.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Ressourcen</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Materialerstellung</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Generiert Materialentwürfe passend zum Lernziel, inklusive Texten, Fragestellungen und Lösungshinweisen.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Prüfung</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Leistungsfenster</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Plant Leistungsnachweise mit Pufferzeiten, Vorbereitungsphasen und Nachhollogik für Ihre Lerngruppe.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Design</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Stundendesign</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Plant eine didaktisch strukturierte Unterrichtsstunde mit klarem Phasenmodell und Zeitangaben.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+<div class="group relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 card-shadow transition-all duration-300 cursor-pointer card-hover">
+<div class="flex justify-between items-start mb-4">
+<div class="flex items-center space-x-2">
+<span class="px-2 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 rounded uppercase tracking-wider">PP</span>
+<span class="text-xs text-slate-400 font-medium">Curriculum</span>
+</div>
+<button class="text-slate-300 hover:text-yellow-400 transition-colors">
+<span class="material-icons-round">star_outline</span>
+</button>
+</div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-primary transition-colors">Themenverteilung</h3>
+<p class="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    Verteilt komplexe Jahresthemen über das Schuljahr inklusive Priorisierung und Querverweisen.
+                </p>
+<div class="mt-6 flex items-center text-primary text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                    Konfigurieren <span class="material-icons-round text-base ml-1">chevron_right</span>
+</div>
+</div>
+</div>
+<div class="mt-12 flex flex-col sm:flex-row items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-8 gap-4">
+<p class="text-sm text-slate-500 dark:text-slate-400">
+                8 Vorlagen in dieser Kategorie gefunden.
+            </p>
+<div class="flex items-center space-x-2">
+<button class="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Abbrechen
+                </button>
+<button class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors shadow-sm">
+                    Alle Vorlagen anzeigen
+                </button>
+</div>
+</div>
+</main>
+<footer class="mt-20 py-10 border-t border-slate-200 dark:border-slate-800">
+<div class="max-w-[1400px] mx-auto px-6 text-center">
+<p class="text-xs text-slate-400">
+                © 2024 EduPrompt-AT. Entwickelt für Lehrende zur Unterstützung des digitalen Schulalltags.
+            </p>
+</div>
+</footer>
+
+</body></html>
