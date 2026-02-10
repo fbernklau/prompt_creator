@@ -62,7 +62,11 @@ function createUiShell({ el }) {
   }
 
   function applyTheme(theme) {
-    document.body.setAttribute('data-theme', theme || 'system');
+    const normalized = theme || 'system';
+    document.body.setAttribute('data-theme', normalized);
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const darkActive = normalized === 'dark' || (normalized === 'system' && prefersDark);
+    document.documentElement.classList.toggle('dark', darkActive);
   }
 
   function applyNavLayout(layout) {
