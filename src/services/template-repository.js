@@ -86,6 +86,14 @@ function normalizeTagKeys(values = []) {
     .filter(Boolean));
 }
 
+function parseTagFilterInput(input) {
+  if (input === undefined || input === null) return [];
+  if (Array.isArray(input)) {
+    return input.flatMap((entry) => String(entry || '').split(','));
+  }
+  return String(input || '').split(',');
+}
+
 function normalizeCategoryLookup(value = '') {
   return String(value || '')
     .normalize('NFKD')
@@ -545,9 +553,12 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
     filtered = filtered.filter((entry) => entry.ownerUserId === filters.ownerUserId.trim());
   }
 
-  const tag = normalizeTagKey(filters.tag || '');
-  if (tag) {
-    filtered = filtered.filter((entry) => entry.tags.includes(tag));
+  const requestedTags = normalizeTagKeys([
+    ...parseTagFilterInput(filters.tags),
+    ...parseTagFilterInput(filters.tag),
+  ]);
+  if (requestedTags.length) {
+    filtered = filtered.filter((entry) => requestedTags.every((tag) => entry.tags.includes(tag)));
   }
 
   const search = asText(filters.search || '').trim().toLowerCase();
@@ -570,7 +581,9 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
       else if (lowerTitle.includes(search)) score += 5;
       else if (lowerDescription.includes(search)) score += 2;
     }
-    if (tag && entry.tags.includes(tag)) score += 4;
+    if (requestedTags.length) {
+      score += requestedTags.reduce((sum, tag) => (entry.tags.includes(tag) ? sum + 4 : sum), 0);
+    }
     score += Math.min(entry.avgRating, 5) * 0.35;
     score += Math.min(entry.usageCount, 200) * 0.01;
     if (entry.isFavorite) score += 2;
@@ -586,6 +599,7 @@ async function getVisibleTemplatesForUser({ userId, access, filters = {} }) {
   return {
     templates: withScore,
     showCommunityTemplates,
+    activeTags: requestedTags,
   };
 }
 
@@ -683,6 +697,7 @@ async function getTemplateCatalogForUser({ userId, access, filters = {} }) {
     meta: {
       count: visible.templates.length,
       showCommunityTemplates: visible.showCommunityTemplates,
+      activeTags: visible.activeTags || [],
     },
   };
 }

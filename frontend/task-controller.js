@@ -45,8 +45,16 @@ function createTaskController({
   state.templateDiscovery = state.templateDiscovery || {
     templates: [],
     search: '',
-    activeTag: '',
+    activeTags: [],
+    tagPickerOpen: false,
   };
+  if (!Array.isArray(state.templateDiscovery.activeTags)) {
+    const legacyTag = typeof state.templateDiscovery.activeTag === 'string'
+      ? state.templateDiscovery.activeTag.trim()
+      : '';
+    state.templateDiscovery.activeTags = legacyTag ? [legacyTag] : [];
+  }
+  state.templateDiscovery.tagPickerOpen = Boolean(state.templateDiscovery.tagPickerOpen);
   state.templateCoverageAudit = state.templateCoverageAudit || { issues: [] };
   state.previousGeneratedPrompt = state.previousGeneratedPrompt || '';
 
@@ -55,6 +63,16 @@ function createTaskController({
       .split(',')
       .map((entry) => entry.trim())
       .filter(Boolean);
+  }
+
+  function normalizeTagList(values = []) {
+    const source = Array.isArray(values) ? values : [values];
+    return [...new Set(
+      source
+        .flatMap((entry) => String(entry || '').split(','))
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean)
+    )];
   }
 
   function getTemplateConfig(categoryName = state.selectedCategory, subcategoryName = state.selectedSubcategory) {
@@ -340,7 +358,7 @@ function createTaskController({
         <button type="button" class="tw-home-category-card group" data-category="${categoryName}">
           <div class="tw-home-category-head">
             <span class="tw-home-category-icon ${tone}" aria-hidden="true">
-              <span class="material-icons-round text-3xl">${icon}</span>
+              <span class="material-icons-round text-2xl">${icon}</span>
             </span>
             <span class="tw-home-category-kicker">${cfg.short}</span>
           </div>
@@ -418,23 +436,53 @@ function createTaskController({
         counts.set(tag, (counts.get(tag) || 0) + 1);
       });
     });
+    const selectedTags = normalizeTagList(state.templateDiscovery.activeTags || []);
     const topTags = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 14);
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0], 'de');
+      })
+      .map(([tag]) => tag);
 
-    const active = state.templateDiscovery.activeTag;
+    selectedTags.forEach((tag) => {
+      if (!topTags.includes(tag)) topTags.unshift(tag);
+    });
+
+    const visibleTags = selectedTags.length ? topTags : topTags.slice(0, 20);
     const chips = [
-      `<button type="button" class="tw-home-chip ${!active ? 'tw-home-chip-active' : ''}" data-tag-chip="">Alle</button>`,
-      ...topTags.map(([tag, count]) => `<button type="button" class="tw-home-chip ${active === tag ? 'tw-home-chip-active' : ''}" data-tag-chip="${tag}">${tag} (${count})</button>`),
+      `<button type="button" class="tw-home-chip ${!selectedTags.length ? 'tw-home-chip-active' : ''}" data-tag-chip="">Alle</button>`,
+      ...visibleTags.map((tag) => `<button type="button" class="tw-home-chip ${selectedTags.includes(tag) ? 'tw-home-chip-active' : ''}" data-tag-chip="${tag}">${tag} (${counts.get(tag) || 0})</button>`),
     ];
 
     el('home-tag-chips').innerHTML = chips.join('');
+    syncTagChipVisibility();
     el('home-tag-chips').querySelectorAll('[data-tag-chip]').forEach((button) => {
+      button.addEventListener('mousedown', (event) => event.preventDefault());
       button.addEventListener('click', () => {
         const tag = button.dataset.tagChip || '';
-        refreshTemplateDiscovery({ tag }).catch((error) => alert(error.message));
+        if (!tag) {
+          refreshTemplateDiscovery({ tags: [] }).catch((error) => alert(error.message));
+          return;
+        }
+        const nextTags = new Set(selectedTags);
+        if (nextTags.has(tag)) nextTags.delete(tag);
+        else nextTags.add(tag);
+        refreshTemplateDiscovery({ tags: [...nextTags] }).catch((error) => alert(error.message));
       });
     });
+  }
+
+  function shouldShowTagChips() {
+    const inputFocused = document.activeElement === el('home-template-search');
+    const chipWrap = el('home-tag-chips');
+    const chipsFocused = chipWrap?.contains(document.activeElement);
+    const selectedTagCount = normalizeTagList(state.templateDiscovery.activeTags || []).length;
+    return inputFocused || chipsFocused || state.templateDiscovery.tagPickerOpen || selectedTagCount > 0;
+  }
+
+  function syncTagChipVisibility() {
+    const chipWrap = el('home-tag-chips');
+    chipWrap.classList.toggle('is-hidden', !shouldShowTagChips());
   }
 
   function renderTemplateDiscovery() {
@@ -459,24 +507,27 @@ function createTaskController({
     renderQuickTemplateList('home-recommended-list', recommended, 'Noch keine Empfehlungen verfuegbar.');
     renderQuickTemplateList('home-recent-list', recent, 'Noch keine zuletzt genutzten Templates.');
     renderQuickTemplateList('home-favorites-list', favorites, 'Noch keine Favoriten markiert.');
-    setHomeDiscoveryStatus(`${templates.length} sichtbare Templates geladen.`);
+    const selectedTags = normalizeTagList(state.templateDiscovery.activeTags || []);
+    const tagSuffix = selectedTags.length ? ` | Tags: ${selectedTags.join(', ')}` : '';
+    setHomeDiscoveryStatus(`${templates.length} sichtbare Templates geladen${tagSuffix}.`);
   }
 
   async function refreshTemplateDiscovery({
     search = state.templateDiscovery.search,
-    tag = state.templateDiscovery.activeTag,
+    tags = state.templateDiscovery.activeTags,
   } = {}) {
     const params = new URLSearchParams();
     const normalizedSearch = String(search || '').trim();
-    const normalizedTag = String(tag || '').trim();
+    const normalizedTags = normalizeTagList(tags || []);
     if (normalizedSearch) params.set('search', normalizedSearch);
-    if (normalizedTag) params.set('tag', normalizedTag);
+    if (normalizedTags.length) params.set('tags', normalizedTags.join(','));
 
     setHomeDiscoveryStatus('Lade Template-Discovery...');
     const payload = await api(`/api/templates${params.toString() ? `?${params.toString()}` : ''}`);
     state.templateDiscovery.templates = Array.isArray(payload.templates) ? payload.templates : [];
     state.templateDiscovery.search = normalizedSearch;
-    state.templateDiscovery.activeTag = normalizedTag;
+    state.templateDiscovery.activeTags = normalizedTags;
+    state.templateDiscovery.activeTag = normalizedTags[0] || '';
     renderTemplateDiscovery();
   }
 
@@ -1156,7 +1207,17 @@ function createTaskController({
     });
     el('home-template-reset-btn').addEventListener('click', () => {
       el('home-template-search').value = '';
-      refreshTemplateDiscovery({ search: '', tag: '' }).catch((error) => alert(error.message));
+      refreshTemplateDiscovery({ search: '', tags: [] }).catch((error) => alert(error.message));
+    });
+    el('home-template-search').addEventListener('focus', () => {
+      state.templateDiscovery.tagPickerOpen = true;
+      syncTagChipVisibility();
+    });
+    el('home-template-search').addEventListener('blur', () => {
+      window.setTimeout(() => {
+        state.templateDiscovery.tagPickerOpen = false;
+        syncTagChipVisibility();
+      }, 100);
     });
     el('home-template-search').addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;

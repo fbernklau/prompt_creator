@@ -267,7 +267,7 @@ button.cta {
 .main-shell {
   width: min(1280px, 100%);
   margin: 0 auto;
-  padding: 34px clamp(16px, 2.4vw, 28px) 76px;
+  padding: 22px clamp(16px, 2.4vw, 28px) 64px;
 }
 
 .screen {
@@ -1347,7 +1347,7 @@ button.is-active,
 }
 
 #screen-home.tw-home .tw-home-hero {
-  margin-bottom: 48px;
+  margin-bottom: 28px;
 }
 
 #screen-home.tw-home h1.tw-home-title {
@@ -1369,14 +1369,14 @@ button.is-active,
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
-  padding: 24px;
+  padding: 16px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 #screen-home.tw-home .tw-home-search-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 #screen-home.tw-home .tw-home-search-label {
@@ -1426,10 +1426,10 @@ button.is-active,
 
 #screen-home.tw-home .tw-home-btn-primary,
 #screen-home.tw-home .tw-home-btn-secondary {
-  min-height: 50px;
+  min-height: 44px;
   border-radius: 12px;
-  padding: 0 24px;
-  font-size: 16px;
+  padding: 0 18px;
+  font-size: 15px;
   font-weight: 600;
   border: 1px solid transparent;
 }
@@ -1482,18 +1482,18 @@ button.is-active,
 }
 
 #screen-home.tw-home .tw-home-category-grid {
-  margin-top: 24px;
+  margin-top: 18px;
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
-  gap: 24px;
+  gap: 14px;
 }
 
 #screen-home.tw-home .tw-home-category-card {
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
-  padding: 32px;
-  min-height: 248px;
+  padding: 18px;
+  min-height: 184px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1513,23 +1513,23 @@ button.is-active,
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
 }
 
 #screen-home.tw-home .tw-home-category-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
 }
 
 #screen-home.tw-home .tw-home-category-kicker {
-  padding: 4px 10px;
-  border-radius: 9px;
+  padding: 3px 8px;
+  border-radius: 8px;
   background: #eef2ff;
   color: #4f46e5;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1537,8 +1537,8 @@ button.is-active,
 
 #screen-home.tw-home .tw-home-category-title {
   margin: 0;
-  font-size: 1.8rem;
-  line-height: 1.14;
+  font-size: 1.95rem;
+  line-height: 1.08;
   letter-spacing: -0.016em;
   color: #0f172a;
 }
@@ -1546,12 +1546,12 @@ button.is-active,
 #screen-home.tw-home .tw-home-category-desc {
   margin-top: 4px;
   color: #64748b;
-  font-size: 1rem;
-  line-height: 1.55;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 #screen-home.tw-home .tw-home-discovery-section {
-  margin-top: 52px;
+  margin-top: 30px;
 }
 
 #screen-home.tw-home .tw-home-discovery-head {
@@ -1559,12 +1559,12 @@ button.is-active,
   justify-content: space-between;
   align-items: flex-end;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 #screen-home.tw-home .tw-home-discovery-title {
   margin: 0;
-  font-size: clamp(2rem, 2.2vw, 2.4rem);
+  font-size: clamp(1.9rem, 2.1vw, 2.2rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
   color: #0f172a;
@@ -1587,18 +1587,18 @@ button.is-active,
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
-  padding: 18px;
+  padding: 12px;
 }
 
 #screen-home.tw-home .tw-home-discovery-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 20px;
+  gap: 12px;
 }
 
 #screen-home.tw-home .tw-home-discovery-col-title {
-  margin: 0 0 10px 0;
-  font-size: 1.24rem;
+  margin: 0 0 6px 0;
+  font-size: 1.16rem;
   color: #1e293b;
   display: inline-flex;
   align-items: center;
@@ -1607,14 +1607,14 @@ button.is-active,
 
 #screen-home.tw-home .tw-home-list {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 #screen-home.tw-home .tw-home-discovery-item {
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #fff;
-  padding: 14px;
+  padding: 10px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -1665,14 +1665,14 @@ button.is-active,
 
 #screen-home.tw-home .tw-home-item-meta {
   display: block;
-  margin-top: 7px;
+  margin-top: 5px;
   color: #64748b;
   font-size: 12px;
 }
 
 #screen-home.tw-home .tw-home-item-time {
   display: block;
-  margin-top: 3px;
+  margin-top: 1px;
   color: #94a3b8;
   font-size: 12px;
 }
@@ -1711,7 +1711,7 @@ button.is-active,
 
 @media (max-width: 759px) {
   #screen-home.tw-home .tw-home-hero {
-    margin-bottom: 28px;
+    margin-bottom: 22px;
   }
 
   #screen-home.tw-home h1.tw-home-title {
@@ -1724,7 +1724,7 @@ button.is-active,
   }
 
   #screen-home.tw-home .tw-home-search-card {
-    padding: 16px;
+    padding: 14px;
   }
 
   #screen-home.tw-home .tw-home-search-actions {
@@ -1739,8 +1739,8 @@ button.is-active,
   }
 
   #screen-home.tw-home .tw-home-category-card {
-    min-height: 190px;
-    padding: 20px;
+    min-height: 170px;
+    padding: 16px;
   }
 
   #screen-home.tw-home .tw-home-category-title {
@@ -1758,7 +1758,7 @@ button.is-active,
   }
 
   #screen-home.tw-home .tw-home-discovery-title {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
   }
 }
 
