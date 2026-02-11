@@ -1,4 +1,4 @@
-import { PROVIDER_BASE_URLS, PROVIDER_MODEL_CATALOG } from './config.js';
+import { PROVIDER_BASE_URLS } from './config.js';
 
 const CUSTOM_MODEL_VALUE = '__custom__';
 const PROVIDER_LABELS = {
@@ -16,7 +16,7 @@ function createProviderController({
   uid,
   setVaultStatus,
 }) {
-  state.providerModelCatalog = state.providerModelCatalog || { ...PROVIDER_MODEL_CATALOG };
+  state.providerModelCatalog = state.providerModelCatalog || {};
   state.providerPricingCatalog = state.providerPricingCatalog || [];
 
   function redactKeyState(provider) {
@@ -39,8 +39,7 @@ function createProviderController({
 
   function getCatalogModels(kind) {
     const fromApi = state.providerModelCatalog?.[kind];
-    if (Array.isArray(fromApi) && fromApi.length > 0) return fromApi;
-    return Array.isArray(PROVIDER_MODEL_CATALOG[kind]) ? PROVIDER_MODEL_CATALOG[kind] : [];
+    return Array.isArray(fromApi) ? fromApi : [];
   }
 
   function parseNonNegativeNumberOrNull(value) {
@@ -82,7 +81,11 @@ function createProviderController({
 
     const catalogEntry = findCatalogPricing(kind, model);
     if (catalogEntry) {
-      hint.textContent = `Katalog aktiv: ${catalogEntry.inputPricePerMillion} / ${catalogEntry.outputPricePerMillion} ${catalogEntry.currency} pro 1M Tokens.`;
+      if (catalogEntry.hasPricing) {
+        hint.textContent = `Katalog aktiv: ${catalogEntry.inputPricePerMillion} / ${catalogEntry.outputPricePerMillion} ${catalogEntry.currency} pro 1M Tokens.`;
+      } else {
+        hint.textContent = 'Katalog aktiv: Modell vorhanden, aber noch ohne gepflegte Preiswerte.';
+      }
     } else {
       hint.textContent = 'Katalog aktiv: Fuer dieses Modell ist aktuell kein Preis hinterlegt.';
     }
@@ -92,11 +95,11 @@ function createProviderController({
     try {
       const payload = await api('/api/providers/model-catalog');
       if (payload && typeof payload === 'object') {
-        state.providerModelCatalog = payload.catalog || { ...PROVIDER_MODEL_CATALOG };
+        state.providerModelCatalog = payload.catalog || {};
         state.providerPricingCatalog = Array.isArray(payload.pricing) ? payload.pricing : [];
       }
     } catch (_error) {
-      state.providerModelCatalog = { ...PROVIDER_MODEL_CATALOG };
+      state.providerModelCatalog = {};
       state.providerPricingCatalog = [];
     }
   }

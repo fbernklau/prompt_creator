@@ -186,6 +186,45 @@ const LEGACY_GROUP_NAME_RENAMES = [
   { oldGroup: 'platform_admins', newGroup: 'prompt_creator_platform_admins' },
 ];
 
+const DEFAULT_PROVIDER_MODEL_CATALOG = {
+  openai: [
+    'gpt-5.2',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4.1-nano',
+    'gpt-5.2-codex',
+    'gpt-5.2-pro',
+  ],
+  anthropic: [
+    'claude-sonnet-4-5-20250929',
+    'claude-haiku-4-5-20251001',
+    'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+    'claude-opus-4-5',
+  ],
+  google: [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview',
+  ],
+  mistral: [
+    'mistral-large-2512',
+    'mistral-medium-2508',
+    'mistral-small-2506',
+    'ministral-14b-2512',
+    'ministral-8b-2512',
+    'ministral-3b-2512',
+    'codestral-2508',
+    'devstral-2512',
+  ],
+  custom: [],
+};
+
 async function migrateLegacyRoleKeys() {
   for (const { oldKey, newKey } of LEGACY_ROLE_KEY_RENAMES) {
     const oldRoleResult = await pool.query('SELECT id FROM rbac_roles WHERE role_key = $1', [oldKey]);
@@ -249,6 +288,21 @@ async function migrateLegacyGroupBindings() {
        WHERE LOWER(group_name) = LOWER($1)`,
       [oldGroup]
     );
+  }
+}
+
+async function seedProviderModelCatalogDefaults() {
+  for (const [providerKind, models] of Object.entries(DEFAULT_PROVIDER_MODEL_CATALOG)) {
+    for (const model of models) {
+      await pool.query(
+        `INSERT INTO provider_model_pricing_catalog
+           (provider_kind, model, input_price_per_million, output_price_per_million, currency, is_active, created_by, updated_by)
+         VALUES ($1,$2,NULL,NULL,'USD',TRUE,'system_seed','system_seed')
+         ON CONFLICT (provider_kind, model)
+         DO NOTHING`,
+        [providerKind, model]
+      );
+    }
   }
 }
 
@@ -434,8 +488,8 @@ async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       provider_kind TEXT NOT NULL,
       model TEXT NOT NULL,
-      input_price_per_million NUMERIC(14,8) NOT NULL CHECK (input_price_per_million >= 0),
-      output_price_per_million NUMERIC(14,8) NOT NULL CHECK (output_price_per_million >= 0),
+      input_price_per_million NUMERIC(14,8) CHECK (input_price_per_million >= 0),
+      output_price_per_million NUMERIC(14,8) CHECK (output_price_per_million >= 0),
       currency TEXT NOT NULL DEFAULT 'USD',
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
       created_by TEXT NOT NULL DEFAULT 'system',
@@ -444,6 +498,14 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(provider_kind, model)
     );
+  `);
+  await pool.query(`
+    ALTER TABLE provider_model_pricing_catalog
+    ALTER COLUMN input_price_per_million DROP NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE provider_model_pricing_catalog
+    ALTER COLUMN output_price_per_million DROP NOT NULL
   `);
 
   await pool.query(`
@@ -693,6 +755,7 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_versions_template ON template_versions(template_id, version_no DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_tags_active ON template_tag_catalog(is_active, tag_key)');
 
+  await seedProviderModelCatalogDefaults();
   await seedRbacDefaults();
   await seedTemplateCatalogDefaults();
 }

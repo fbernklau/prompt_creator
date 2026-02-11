@@ -1,3 +1,33 @@
+const DEFAULT_MODEL_PROVIDER_ORDER = ['openai', 'anthropic', 'google', 'mistral', 'custom'];
+
+const PERMISSION_GROUPS = [
+  {
+    id: 'core',
+    title: 'Core & Security',
+    match: (key) => key === '*' || key.startsWith('app.') || key.startsWith('admin.') || key.startsWith('rbac.'),
+  },
+  {
+    id: 'prompts',
+    title: 'Prompts & Provider',
+    match: (key) => key.startsWith('prompts.') || key.startsWith('providers.') || key.startsWith('history.') || key.startsWith('settings.') || key.startsWith('library.'),
+  },
+  {
+    id: 'templates',
+    title: 'Templates & Tags',
+    match: (key) => key.startsWith('templates.') || key.startsWith('tags.'),
+  },
+  {
+    id: 'pricing',
+    title: 'Model Administration',
+    match: (key) => key.startsWith('pricing.'),
+  },
+  {
+    id: 'other',
+    title: 'Weitere',
+    match: () => true,
+  },
+];
+
 function createAdminController({
   state,
   el,
@@ -11,11 +41,83 @@ function createAdminController({
     selectedRoleId: null,
     pricingEntries: [],
     selectedPricingId: null,
+    activeTab: 'roles',
+    activeModelProvider: 'openai',
   };
 
   function hasPermission(key) {
     const permissions = state.access?.permissions || [];
     return permissions.includes('*') || permissions.includes(key);
+  }
+
+  function escapeHtml(value = '') {
+    return String(value || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function getPermissionGroup(permissionKey = '') {
+    const key = String(permissionKey || '');
+    const group = PERMISSION_GROUPS.find((entry) => entry.match(key));
+    return group?.id || 'other';
+  }
+
+  function formatPrice(value) {
+    if (value === null || value === undefined || value === '') return '-';
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '-';
+    return numeric.toFixed(6);
+  }
+
+  function parseOptionalNonNegativeNumber(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric) || numeric < 0) return Number.NaN;
+    return numeric;
+  }
+
+  function getModelProviders() {
+    const providers = new Set(DEFAULT_MODEL_PROVIDER_ORDER);
+    adminState.pricingEntries.forEach((entry) => {
+      providers.add(String(entry.providerKind || '').trim().toLowerCase());
+    });
+    return [...providers].filter(Boolean);
+  }
+
+  function setStatus(message = '', { pricing = false } = {}) {
+    if (pricing) {
+      const node = el('admin-pricing-status');
+      if (node) node.textContent = message;
+      return;
+    }
+    el('admin-status').textContent = message;
+  }
+
+  function setActiveAdminTab(tabKey) {
+    const canManagePricing = hasPermission('pricing.manage');
+    const requested = String(tabKey || '').trim();
+    const nextTab = (!canManagePricing && requested === 'models') ? 'roles' : (requested || 'roles');
+    adminState.activeTab = nextTab;
+
+    const tabs = {
+      roles: el('admin-tab-roles'),
+      groups: el('admin-tab-groups'),
+      models: el('admin-tab-models'),
+    };
+
+    Object.entries(tabs).forEach(([key, node]) => {
+      if (!node) return;
+      node.classList.toggle('is-hidden', key !== nextTab);
+    });
+
+    document.querySelectorAll('#admin-tab-nav [data-admin-tab]').forEach((button) => {
+      const isActive = button.dataset.adminTab === nextTab;
+      button.classList.toggle('is-active', isActive);
+    });
   }
 
   function ensureAdminVisible() {
@@ -24,28 +126,76 @@ function createAdminController({
     if (!visible && !el('screen-admin').classList.contains('is-hidden')) {
       showScreen('home');
     }
-    if (el('admin-pricing-panel')) {
-      el('admin-pricing-panel').classList.toggle('is-hidden', !hasPermission('pricing.manage'));
+
+    const pricingVisible = hasPermission('pricing.manage');
+    document.querySelectorAll('#admin-tab-nav [data-admin-tab="models"]').forEach((button) => {
+      button.classList.toggle('is-hidden', !pricingVisible);
+    });
+    if (!pricingVisible && adminState.activeTab === 'models') {
+      setActiveAdminTab('roles');
     }
+  }
+
+  function togglePermissionGroup(groupId, checked) {
+    const container = el('admin-role-permissions');
+    container
+      .querySelectorAll(`input[type="checkbox"][data-permission-group="${groupId}"]`)
+      .forEach((node) => {
+        node.checked = checked;
+      });
   }
 
   function renderPermissionChecklist(selected = []) {
     const selectedSet = new Set(selected);
+    const grouped = {};
+    PERMISSION_GROUPS.forEach((group) => {
+      grouped[group.id] = [];
+    });
+    adminState.permissions.forEach((permission) => {
+      const groupId = getPermissionGroup(permission.key);
+      if (!grouped[groupId]) grouped[groupId] = [];
+      grouped[groupId].push(permission);
+    });
+
     const container = el('admin-role-permissions');
-    container.innerHTML = adminState.permissions
-      .map((permission) => `
-        <label class="checkbox">
-          <input type="checkbox" value="${permission.key}" ${selectedSet.has(permission.key) ? 'checked' : ''} />
-          <span><strong>${permission.key}</strong> - ${permission.description || ''}</span>
-        </label>
-      `)
+    container.innerHTML = PERMISSION_GROUPS
+      .map((group) => {
+        const items = grouped[group.id] || [];
+        if (!items.length) return '';
+        return `
+          <div class="admin-permission-group">
+            <div class="admin-permission-group-head">
+              <h4>${escapeHtml(group.title)}</h4>
+              <span class="inline-actions">
+                <button type="button" class="secondary small" data-admin-perm-group-all="${group.id}">Alle</button>
+                <button type="button" class="secondary small" data-admin-perm-group-none="${group.id}">Keine</button>
+              </span>
+            </div>
+            <div class="admin-permissions-grid">
+              ${items.map((permission) => `
+                <label class="checkbox">
+                  <input type="checkbox" data-permission-group="${group.id}" value="${escapeHtml(permission.key)}" ${selectedSet.has(permission.key) ? 'checked' : ''} />
+                  <span><strong>${escapeHtml(permission.key)}</strong> - ${escapeHtml(permission.description || '')}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      })
       .join('');
+
+    container.querySelectorAll('[data-admin-perm-group-all]').forEach((button) => {
+      button.onclick = () => togglePermissionGroup(button.dataset.adminPermGroupAll, true);
+    });
+    container.querySelectorAll('[data-admin-perm-group-none]').forEach((button) => {
+      button.onclick = () => togglePermissionGroup(button.dataset.adminPermGroupNone, false);
+    });
   }
 
   function renderRoleSelect() {
     const select = el('admin-role-select');
     select.innerHTML = adminState.roles
-      .map((role) => `<option value="${role.id}" ${role.id === adminState.selectedRoleId ? 'selected' : ''}>${role.roleKey}</option>`)
+      .map((role) => `<option value="${role.id}" ${role.id === adminState.selectedRoleId ? 'selected' : ''}>${escapeHtml(role.roleKey)}</option>`)
       .join('');
 
     if (!adminState.selectedRoleId && adminState.roles.length) {
@@ -70,7 +220,7 @@ function createAdminController({
 
   function renderBindings() {
     const roleOptions = adminState.roles
-      .map((role) => `<option value="${role.id}">${role.roleKey}</option>`)
+      .map((role) => `<option value="${role.id}">${escapeHtml(role.roleKey)}</option>`)
       .join('');
     el('admin-binding-role').innerHTML = roleOptions;
 
@@ -78,7 +228,7 @@ function createAdminController({
     list.innerHTML = adminState.bindings
       .map((binding) => `
         <li>
-          <span><strong>${binding.groupName}</strong> -> ${binding.roleKey}</span>
+          <span><strong>${escapeHtml(binding.groupName)}</strong> -> ${escapeHtml(binding.roleKey)}</span>
           <button type="button" class="secondary small" data-delete-binding="${binding.id}">Loeschen</button>
         </li>
       `)
@@ -91,7 +241,8 @@ function createAdminController({
 
   function clearPricingForm() {
     adminState.selectedPricingId = null;
-    el('admin-pricing-provider-kind').value = 'openai';
+    const provider = adminState.activeModelProvider || 'openai';
+    el('admin-pricing-provider-kind').value = provider;
     el('admin-pricing-model').value = '';
     el('admin-pricing-currency').value = 'USD';
     el('admin-pricing-input').value = '';
@@ -99,32 +250,100 @@ function createAdminController({
     el('admin-pricing-active').value = 'true';
   }
 
+  function renderModelProviderTabs() {
+    const container = el('admin-model-provider-tabs');
+    if (!container) return;
+
+    const providers = getModelProviders();
+    if (!providers.includes(adminState.activeModelProvider)) {
+      adminState.activeModelProvider = providers[0] || 'openai';
+    }
+
+    container.innerHTML = providers
+      .map((providerKind) => `
+        <button type="button" class="chip ${providerKind === adminState.activeModelProvider ? 'is-active' : ''}" data-admin-model-provider="${providerKind}">
+          ${escapeHtml(providerKind)}
+        </button>
+      `)
+      .join('');
+
+    container.querySelectorAll('[data-admin-model-provider]').forEach((button) => {
+      button.onclick = () => {
+        adminState.activeModelProvider = button.dataset.adminModelProvider;
+        el('admin-pricing-provider-kind').value = adminState.activeModelProvider;
+        clearPricingForm();
+        renderModelProviderTabs();
+        renderPricingList();
+      };
+    });
+  }
+
   function renderPricingList() {
-    const list = el('admin-pricing-list');
+    const container = el('admin-model-provider-groups');
+    if (!container) return;
     if (!hasPermission('pricing.manage')) {
-      list.innerHTML = '<li><span>Keine Berechtigung fuer Preisverwaltung.</span></li>';
+      container.innerHTML = '<p class="hint">Keine Berechtigung fuer Model Administration.</p>';
       return;
     }
 
-    const rows = Array.isArray(adminState.pricingEntries) ? adminState.pricingEntries : [];
-    list.innerHTML = rows.length
-      ? rows
-        .map((entry) => `
-          <li>
-            <span>
-              <strong>${entry.providerKind} | ${entry.model}</strong><br/>
-              <small>Input: ${Number(entry.inputPricePerMillion).toFixed(6)} | Output: ${Number(entry.outputPricePerMillion).toFixed(6)} ${entry.currency} | ${entry.isActive ? 'aktiv' : 'inaktiv'}</small>
-            </span>
-            <span class="inline-actions">
-              <button type="button" class="secondary small" data-edit-pricing="${entry.id}">Bearbeiten</button>
-              <button type="button" class="secondary small" data-delete-pricing="${entry.id}">Deaktivieren</button>
-            </span>
-          </li>
-        `)
-        .join('')
-      : '<li><span>Noch keine Pricing-Eintraege vorhanden.</span></li>';
+    const provider = adminState.activeModelProvider || 'openai';
+    const rows = adminState.pricingEntries
+      .filter((entry) => String(entry.providerKind || '').trim().toLowerCase() === provider)
+      .sort((a, b) => String(a.model || '').localeCompare(String(b.model || '')));
 
-    list.querySelectorAll('[data-edit-pricing]').forEach((button) => {
+    container.innerHTML = `
+      <div class="admin-model-provider-card">
+        <div class="admin-model-provider-head">
+          <h4>${escapeHtml(provider)} (${rows.length})</h4>
+          <button type="button" class="secondary small" id="admin-model-new-for-provider">Neues Modell fuer ${escapeHtml(provider)}</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Modell</th>
+                <th>Input USD / 1M</th>
+                <th>Output USD / 1M</th>
+                <th>Waehrung</th>
+                <th>Status</th>
+                <th>Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.length
+    ? rows.map((entry) => `
+                    <tr>
+                      <td><strong>${escapeHtml(entry.model)}</strong></td>
+                      <td>${formatPrice(entry.inputPricePerMillion)}</td>
+                      <td>${formatPrice(entry.outputPricePerMillion)}</td>
+                      <td>${escapeHtml(entry.currency || 'USD')}</td>
+                      <td>${entry.isActive ? 'aktiv' : 'inaktiv'}</td>
+                      <td>
+                        <div class="inline-actions">
+                          <button type="button" class="secondary small" data-edit-pricing="${entry.id}">Bearbeiten</button>
+                          <button type="button" class="secondary small" data-toggle-pricing="${entry.id}">${entry.isActive ? 'Deaktivieren' : 'Aktivieren'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')
+    : '<tr><td colspan="6">Noch keine Modelle fuer diesen Provider.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const createButton = el('admin-model-new-for-provider');
+    if (createButton) {
+      createButton.onclick = () => {
+        adminState.selectedPricingId = null;
+        el('admin-pricing-provider-kind').value = provider;
+        el('admin-pricing-model').focus();
+        setStatus('Neues Modell erfassen.', { pricing: true });
+      };
+    }
+
+    container.querySelectorAll('[data-edit-pricing]').forEach((button) => {
       button.onclick = () => {
         const pricingId = Number(button.dataset.editPricing);
         const entry = adminState.pricingEntries.find((item) => item.id === pricingId);
@@ -133,13 +352,15 @@ function createAdminController({
         el('admin-pricing-provider-kind').value = entry.providerKind;
         el('admin-pricing-model').value = entry.model;
         el('admin-pricing-currency').value = entry.currency || 'USD';
-        el('admin-pricing-input').value = entry.inputPricePerMillion;
-        el('admin-pricing-output').value = entry.outputPricePerMillion;
+        el('admin-pricing-input').value = entry.inputPricePerMillion ?? '';
+        el('admin-pricing-output').value = entry.outputPricePerMillion ?? '';
         el('admin-pricing-active').value = entry.isActive ? 'true' : 'false';
+        setStatus(`Bearbeite: ${entry.providerKind}/${entry.model}`, { pricing: true });
       };
     });
-    list.querySelectorAll('[data-delete-pricing]').forEach((button) => {
-      button.onclick = () => deletePricingEntry(button.dataset.deletePricing).catch((error) => alert(error.message));
+
+    container.querySelectorAll('[data-toggle-pricing]').forEach((button) => {
+      button.onclick = () => togglePricingActive(button.dataset.togglePricing).catch((error) => alert(error.message));
     });
   }
 
@@ -161,11 +382,17 @@ function createAdminController({
       selectedRoleId: adminState.selectedRoleId || roles[0]?.id || null,
       pricingEntries,
       selectedPricingId: adminState.selectedPricingId,
+      activeTab: adminState.activeTab || 'roles',
+      activeModelProvider: adminState.activeModelProvider || 'openai',
     };
     renderRoleSelect();
     renderRoleDetails();
     renderBindings();
+    renderModelProviderTabs();
     renderPricingList();
+    clearPricingForm();
+    ensureAdminVisible();
+    setActiveAdminTab(adminState.activeTab);
   }
 
   async function openAdminScreen() {
@@ -193,7 +420,7 @@ function createAdminController({
     el('admin-new-role-name').value = '';
     el('admin-new-role-description').value = '';
     await loadAdminData();
-    el('admin-status').textContent = 'Rolle angelegt.';
+    setStatus('Rolle angelegt.');
   }
 
   async function createPermission() {
@@ -210,7 +437,7 @@ function createAdminController({
     el('admin-new-permission-key').value = '';
     el('admin-new-permission-description').value = '';
     await loadAdminData();
-    el('admin-status').textContent = 'Berechtigung angelegt.';
+    setStatus('Berechtigung angelegt.');
   }
 
   async function saveRoleMeta() {
@@ -222,7 +449,7 @@ function createAdminController({
       body: JSON.stringify({ roleName, description }),
     });
     await loadAdminData();
-    el('admin-status').textContent = 'Rolle aktualisiert.';
+    setStatus('Rolle aktualisiert.');
   }
 
   async function saveRolePermissions() {
@@ -234,7 +461,7 @@ function createAdminController({
       body: JSON.stringify({ permissionKeys: keys }),
     });
     await loadAdminData();
-    el('admin-status').textContent = 'Berechtigungen gespeichert.';
+    setStatus('Berechtigungen gespeichert.');
   }
 
   async function deleteSelectedRole() {
@@ -243,7 +470,7 @@ function createAdminController({
     await api(`/api/admin/roles/${roleId}`, { method: 'DELETE' });
     adminState.selectedRoleId = null;
     await loadAdminData();
-    el('admin-status').textContent = 'Rolle geloescht.';
+    setStatus('Rolle geloescht.');
   }
 
   async function addBinding() {
@@ -259,18 +486,25 @@ function createAdminController({
     });
     el('admin-binding-group').value = '';
     await loadAdminData();
-    el('admin-status').textContent = 'Gruppenbindung gespeichert.';
+    setStatus('Gruppenbindung gespeichert.');
   }
 
   async function removeBinding(bindingId) {
     await api(`/api/admin/group-role-bindings/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
     await loadAdminData();
-    el('admin-status').textContent = 'Gruppenbindung geloescht.';
+    setStatus('Gruppenbindung geloescht.');
   }
 
   async function savePricingEntry() {
     if (!hasPermission('pricing.manage')) {
-      alert('Keine Berechtigung fuer Preisverwaltung.');
+      alert('Keine Berechtigung fuer Model Administration.');
+      return;
+    }
+
+    const inputPrice = parseOptionalNonNegativeNumber(el('admin-pricing-input').value);
+    const outputPrice = parseOptionalNonNegativeNumber(el('admin-pricing-output').value);
+    if (Number.isNaN(inputPrice) || Number.isNaN(outputPrice)) {
+      alert('Input/Output Preis muss leer oder >= 0 sein.');
       return;
     }
 
@@ -278,17 +512,12 @@ function createAdminController({
       providerKind: el('admin-pricing-provider-kind').value,
       model: el('admin-pricing-model').value.trim(),
       currency: el('admin-pricing-currency').value.trim() || 'USD',
-      inputPricePerMillion: Number(el('admin-pricing-input').value),
-      outputPricePerMillion: Number(el('admin-pricing-output').value),
+      inputPricePerMillion: inputPrice,
+      outputPricePerMillion: outputPrice,
       isActive: el('admin-pricing-active').value === 'true',
     };
     if (!payload.model) {
       alert('Modell ist erforderlich.');
-      return;
-    }
-    if (!Number.isFinite(payload.inputPricePerMillion) || payload.inputPricePerMillion < 0
-      || !Number.isFinite(payload.outputPricePerMillion) || payload.outputPricePerMillion < 0) {
-      alert('Input/Output Preis muessen >= 0 sein.');
       return;
     }
 
@@ -297,31 +526,46 @@ function createAdminController({
         method: 'PUT',
         body: JSON.stringify(payload),
       });
-      el('admin-pricing-status').textContent = 'Pricing-Eintrag aktualisiert.';
+      setStatus('Modelleintrag aktualisiert.', { pricing: true });
     } else {
       await api('/api/admin/model-pricing', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      el('admin-pricing-status').textContent = 'Pricing-Eintrag gespeichert.';
+      setStatus('Modelleintrag gespeichert.', { pricing: true });
     }
     clearPricingForm();
     await loadAdminData();
   }
 
-  async function deletePricingEntry(pricingId) {
+  async function togglePricingActive(pricingId) {
     if (!hasPermission('pricing.manage')) return;
-    await api(`/api/admin/model-pricing/${encodeURIComponent(pricingId)}`, { method: 'DELETE' });
-    if (Number(pricingId) === adminState.selectedPricingId) {
-      clearPricingForm();
-    }
+    const targetId = Number(pricingId);
+    const entry = adminState.pricingEntries.find((row) => row.id === targetId);
+    if (!entry) return;
+    await api(`/api/admin/model-pricing/${encodeURIComponent(pricingId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        inputPricePerMillion: entry.inputPricePerMillion,
+        outputPricePerMillion: entry.outputPricePerMillion,
+        currency: entry.currency || 'USD',
+        isActive: !entry.isActive,
+      }),
+    });
     await loadAdminData();
-    el('admin-pricing-status').textContent = 'Pricing-Eintrag deaktiviert.';
+    setStatus(`Modelleintrag ${!entry.isActive ? 'aktiviert' : 'deaktiviert'}.`, { pricing: true });
   }
 
   function bindEvents() {
     el('btn-admin').addEventListener('click', () => openAdminScreen().catch((error) => alert(error.message)));
     el('btn-back-home-from-admin').addEventListener('click', () => showScreen('home'));
+
+    document.querySelectorAll('#admin-tab-nav [data-admin-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        setActiveAdminTab(button.dataset.adminTab);
+      });
+    });
+
     el('admin-role-select').addEventListener('change', () => {
       adminState.selectedRoleId = Number(el('admin-role-select').value);
       renderRoleDetails();
@@ -332,6 +576,14 @@ function createAdminController({
     el('admin-save-permissions').addEventListener('click', () => saveRolePermissions().catch((error) => alert(error.message)));
     el('admin-delete-role').addEventListener('click', () => deleteSelectedRole().catch((error) => alert(error.message)));
     el('admin-add-binding').addEventListener('click', () => addBinding().catch((error) => alert(error.message)));
+
+    if (el('admin-pricing-provider-kind')) {
+      el('admin-pricing-provider-kind').addEventListener('change', () => {
+        adminState.activeModelProvider = el('admin-pricing-provider-kind').value;
+        renderModelProviderTabs();
+        renderPricingList();
+      });
+    }
     if (el('admin-pricing-save')) {
       el('admin-pricing-save').addEventListener('click', () => savePricingEntry().catch((error) => alert(error.message)));
     }

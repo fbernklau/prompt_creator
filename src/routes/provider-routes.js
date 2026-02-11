@@ -8,45 +8,6 @@ const { encryptApiKey, hasServerEncryptedKey, decryptApiKey } = require('../secu
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const { callProvider } = require('../services/provider-clients');
 
-const BUILTIN_PROVIDER_MODEL_CATALOG = {
-  openai: [
-    'gpt-5.2',
-    'gpt-5-mini',
-    'gpt-5-nano',
-    'gpt-4.1',
-    'gpt-4.1-mini',
-    'gpt-4.1-nano',
-    'gpt-5.2-codex',
-    'gpt-5.2-pro',
-  ],
-  anthropic: [
-    'claude-sonnet-4-5-20250929',
-    'claude-haiku-4-5-20251001',
-    'claude-opus-4-5-20251101',
-    'claude-sonnet-4-5',
-    'claude-haiku-4-5',
-    'claude-opus-4-5',
-  ],
-  google: [
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-3-flash-preview',
-    'gemini-3-pro-preview',
-  ],
-  mistral: [
-    'mistral-large-2512',
-    'mistral-medium-2508',
-    'mistral-small-2506',
-    'ministral-14b-2512',
-    'ministral-8b-2512',
-    'ministral-3b-2512',
-    'codestral-2508',
-    'devstral-2512',
-  ],
-  custom: [],
-};
-
 function normalizeSet(values = []) {
   return new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
 }
@@ -58,12 +19,14 @@ function parseNonNegativeNumberOrNull(value) {
   return normalized;
 }
 
-function mergeModelCatalogWithPricingRows(rows = []) {
-  const merged = {};
-  Object.entries(BUILTIN_PROVIDER_MODEL_CATALOG).forEach(([kind, models]) => {
-    merged[kind] = new Set(models);
-  });
-
+function groupModelCatalogRows(rows = []) {
+  const merged = {
+    openai: new Set(),
+    anthropic: new Set(),
+    google: new Set(),
+    mistral: new Set(),
+    custom: new Set(),
+  };
   rows.forEach((row) => {
     const kind = String(row.provider_kind || '').trim().toLowerCase();
     const model = String(row.model || '').trim();
@@ -123,13 +86,14 @@ function createProviderRouter() {
     );
 
     res.json({
-      catalog: mergeModelCatalogWithPricingRows(pricingRows.rows),
+      catalog: groupModelCatalogRows(pricingRows.rows),
       pricing: pricingRows.rows.map((row) => ({
         providerKind: row.provider_kind,
         model: row.model,
-        inputPricePerMillion: Number(row.input_price_per_million),
-        outputPricePerMillion: Number(row.output_price_per_million),
+        inputPricePerMillion: row.input_price_per_million === null ? null : Number(row.input_price_per_million),
+        outputPricePerMillion: row.output_price_per_million === null ? null : Number(row.output_price_per_million),
         currency: String(row.currency || 'USD').trim().toUpperCase() || 'USD',
+        hasPricing: row.input_price_per_million !== null && row.output_price_per_million !== null,
       })),
     });
   }));

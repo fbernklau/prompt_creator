@@ -58,6 +58,8 @@ Owner: Team + Codex
 ### Pricing + cost analytics
 - [x] DB schema extended for provider pricing mode (`catalog`/`custom`) and per-provider custom input/output pricing.
 - [x] Admin pricing catalog implemented (CRUD + active/inactive) for provider/model input+output cost per 1M tokens.
+- [x] Admin area restructured with tabs (`Rollen & Berechtigungen`, `Authentik Zuordnung`, `Model Administration`) to reduce overload.
+- [x] Model Administration now acts as master record for provider model selection in API-Provider sidebar.
 - [x] Provider form supports pricing mode switch + custom input/output prices.
 - [x] Usage dashboard extended with total tokens, total cost, per-provider cost/tokens and key-fingerprint usage overview.
 

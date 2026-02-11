@@ -752,127 +752,146 @@
         </div>
         <h2>Administration</h2>
         <p class="subline">Rollen, Berechtigungen und Authentik-Gruppenzuordnungen verwalten.</p>
+        <small id="admin-status" class="hint"></small>
 
-        <div class="grid-2 top-space">
-          <div class="panel">
-            <h3>Neue Rolle</h3>
-            <label>Role Key
-              <input id="admin-new-role-key" placeholder="z. B. content_editors" />
-            </label>
-            <label class="top-space">Role Name
-              <input id="admin-new-role-name" placeholder="z. B. Content Editors" />
-            </label>
-            <label class="top-space">Beschreibung
-              <textarea id="admin-new-role-description" rows="2"></textarea>
-            </label>
-            <div class="inline-actions top-space">
-              <button id="admin-create-role" type="button">Rolle anlegen</button>
+        <div id="admin-tab-nav" class="chip-row top-space admin-tab-nav">
+          <button type="button" class="secondary is-active" data-admin-tab="roles">Rollen &amp; Berechtigungen</button>
+          <button type="button" class="secondary" data-admin-tab="groups">Authentik Zuordnung</button>
+          <button type="button" class="secondary" data-admin-tab="models">Model Administration</button>
+        </div>
+
+        <div id="admin-tab-roles" class="admin-tab-panel top-space">
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Neue Rolle</h3>
+              <label>Role Key
+                <input id="admin-new-role-key" placeholder="z. B. content_editors" />
+              </label>
+              <label class="top-space">Role Name
+                <input id="admin-new-role-name" placeholder="z. B. Content Editors" />
+              </label>
+              <label class="top-space">Beschreibung
+                <textarea id="admin-new-role-description" rows="2"></textarea>
+              </label>
+              <div class="inline-actions top-space">
+                <button id="admin-create-role" type="button">Rolle anlegen</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Rolle bearbeiten</h3>
+              <label>Rolle
+                <select id="admin-role-select"></select>
+              </label>
+              <label class="top-space">Role Name
+                <input id="admin-role-name" />
+              </label>
+              <label class="top-space">Beschreibung
+                <textarea id="admin-role-description" rows="2"></textarea>
+              </label>
+              <small id="admin-role-system" class="hint"></small>
+              <div class="inline-actions top-space">
+                <button id="admin-save-role" type="button">Rolle speichern</button>
+                <button id="admin-delete-role" type="button" class="secondary">Rolle loeschen</button>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h3>Rolle bearbeiten</h3>
-            <label>Rolle
-              <select id="admin-role-select"></select>
-            </label>
-            <label class="top-space">Role Name
-              <input id="admin-role-name" />
-            </label>
-            <label class="top-space">Beschreibung
-              <textarea id="admin-role-description" rows="2"></textarea>
-            </label>
-            <small id="admin-role-system" class="hint"></small>
+          <div class="panel top-space">
+            <h3>Neue Berechtigung</h3>
+            <div class="grid-2">
+              <label>Permission Key
+                <input id="admin-new-permission-key" placeholder="z. B. templates.publish" />
+              </label>
+              <label>Beschreibung
+                <input id="admin-new-permission-description" placeholder="Kurze Beschreibung" />
+              </label>
+            </div>
             <div class="inline-actions top-space">
-              <button id="admin-save-role" type="button">Rolle speichern</button>
-              <button id="admin-delete-role" type="button" class="secondary">Rolle loeschen</button>
+              <button id="admin-create-permission" type="button">Berechtigung anlegen</button>
+            </div>
+          </div>
+
+          <div class="panel top-space">
+            <div class="panel-title-row">
+              <h3>Berechtigungen der Rolle</h3>
+              <small class="hint">Nach Dom&auml;nen gruppiert</small>
+            </div>
+            <div id="admin-role-permissions" class="admin-permissions-grid top-space"></div>
+            <div class="inline-actions top-space">
+              <button id="admin-save-permissions" type="button">Berechtigungen speichern</button>
             </div>
           </div>
         </div>
 
-        <div class="panel top-space">
-          <h3>Neue Berechtigung</h3>
-          <div class="grid-2">
-            <label>Permission Key
-              <input id="admin-new-permission-key" placeholder="z. B. templates.publish" />
-            </label>
-            <label>Beschreibung
-              <input id="admin-new-permission-description" placeholder="Kurze Beschreibung" />
-            </label>
-          </div>
-          <div class="inline-actions top-space">
-            <button id="admin-create-permission" type="button">Berechtigung anlegen</button>
-          </div>
-        </div>
-
-        <div class="panel top-space">
-          <h3>Berechtigungen der Rolle</h3>
-          <div id="admin-role-permissions" class="admin-permissions-grid top-space"></div>
-          <div class="inline-actions top-space">
-            <button id="admin-save-permissions" type="button">Berechtigungen speichern</button>
+        <div id="admin-tab-groups" class="admin-tab-panel top-space is-hidden">
+          <div class="panel">
+            <h3>Authentik Gruppen - Rollen</h3>
+            <div class="grid-2">
+              <label>Authentik Gruppe
+                <input id="admin-binding-group" placeholder="z. B. prompt_creator_template_reviewers" />
+              </label>
+              <label>Rolle
+                <select id="admin-binding-role"></select>
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="admin-add-binding" type="button">Zuordnung speichern</button>
+            </div>
+            <ul id="admin-binding-list" class="provider-list top-space"></ul>
           </div>
         </div>
 
-        <div class="panel top-space">
-          <h3>Authentik Gruppen -> Rollen</h3>
-          <div class="grid-2">
-            <label>Authentik Gruppe
-              <input id="admin-binding-group" placeholder="z. B. prompt_creator_template_reviewers" />
-            </label>
-            <label>Rolle
-              <select id="admin-binding-role"></select>
-            </label>
+        <div id="admin-tab-models" class="admin-tab-panel top-space is-hidden">
+          <div id="admin-pricing-panel" class="panel">
+            <div class="panel-title-row">
+              <h3>Model Administration</h3>
+              <small class="hint">Master-Record f&uuml;r Provider-Modellauswahl</small>
+            </div>
+            <div id="admin-model-provider-tabs" class="chip-row admin-provider-tabs"></div>
+            <div class="grid-3 top-space">
+              <label>Provider
+                <select id="admin-pricing-provider-kind">
+                  <option value="openai">openai</option>
+                  <option value="anthropic">anthropic</option>
+                  <option value="google">google</option>
+                  <option value="mistral">mistral</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label>Modell
+                <input id="admin-pricing-model" placeholder="z. B. gpt-5-mini" />
+              </label>
+              <label>Waehrung
+                <input id="admin-pricing-currency" value="USD" />
+              </label>
+              <label>Input USD / 1M
+                <input id="admin-pricing-input" type="number" min="0" step="0.000001" placeholder="optional" />
+              </label>
+              <label>Output USD / 1M
+                <input id="admin-pricing-output" type="number" min="0" step="0.000001" placeholder="optional" />
+              </label>
+              <label>Aktiv
+                <select id="admin-pricing-active">
+                  <option value="true" selected>Ja</option>
+                  <option value="false">Nein</option>
+                </select>
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="admin-pricing-save" type="button">Eintrag speichern</button>
+              <button id="admin-pricing-clear" type="button" class="secondary">Form leeren</button>
+              <small id="admin-pricing-status" class="hint"></small>
+            </div>
+            <div id="admin-model-provider-groups" class="top-space"></div>
           </div>
-          <div class="inline-actions top-space">
-            <button id="admin-add-binding" type="button">Zuordnung speichern</button>
-          </div>
-          <ul id="admin-binding-list" class="provider-list top-space"></ul>
-          <small id="admin-status" class="hint"></small>
-        </div>
-
-        <div id="admin-pricing-panel" class="panel top-space">
-          <h3>Modell-Pricing (Input/Output je 1M Tokens)</h3>
-          <div class="grid-3">
-            <label>Provider
-              <select id="admin-pricing-provider-kind">
-                <option value="openai">openai</option>
-                <option value="anthropic">anthropic</option>
-                <option value="google">google</option>
-                <option value="mistral">mistral</option>
-                <option value="custom">custom</option>
-              </select>
-            </label>
-            <label>Modell
-              <input id="admin-pricing-model" placeholder="z. B. gpt-5-mini" />
-            </label>
-            <label>Waehrung
-              <input id="admin-pricing-currency" value="USD" />
-            </label>
-            <label>Input USD / 1M
-              <input id="admin-pricing-input" type="number" min="0" step="0.000001" />
-            </label>
-            <label>Output USD / 1M
-              <input id="admin-pricing-output" type="number" min="0" step="0.000001" />
-            </label>
-            <label>Aktiv
-              <select id="admin-pricing-active">
-                <option value="true" selected>Ja</option>
-                <option value="false">Nein</option>
-              </select>
-            </label>
-          </div>
-          <div class="inline-actions top-space">
-            <button id="admin-pricing-save" type="button">Preis speichern</button>
-            <button id="admin-pricing-clear" type="button" class="secondary">Form leeren</button>
-            <small id="admin-pricing-status" class="hint"></small>
-          </div>
-          <ul id="admin-pricing-list" class="provider-list top-space"></ul>
         </div>
       </section>
     </main>
 
     <footer class="app-footer">
       <div class="app-footer-inner">
-        <span>&copy; 2024 EduPrompt-AT. Alle Rechte vorbehalten.</span>
+        <span>&copy; 2026 EduPrompt-AT. Alle Rechte vorbehalten.</span>
         <div class="app-footer-links">
           <button type="button" class="text-btn">Datenschutz</button>
           <button type="button" class="text-btn">Impressum</button>

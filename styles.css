@@ -450,6 +450,83 @@ button.cta {
   gap: 8px;
 }
 
+.admin-tab-nav {
+  margin-top: 10px;
+}
+
+.admin-tab-nav .secondary {
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.admin-tab-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-permission-group {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--surface), var(--surface-soft));
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-permission-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-permission-group-head h4 {
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: var(--text-soft);
+  text-transform: uppercase;
+}
+
+.admin-provider-tabs {
+  margin-top: 8px;
+}
+
+.admin-provider-tabs .chip {
+  font-weight: 700;
+}
+
+.admin-model-provider-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-model-provider-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-model-provider-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-model-provider-head h4 {
+  font-size: 16px;
+}
+
+.admin-model-provider-card .data-table th,
+.admin-model-provider-card .data-table td {
+  font-size: 13px;
+  padding: 8px 6px;
+}
+
 .span-2 {
   grid-column: span 1;
 }

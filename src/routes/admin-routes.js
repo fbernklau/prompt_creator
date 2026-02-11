@@ -224,10 +224,11 @@ function createAdminRouter() {
       id: row.id,
       providerKind: row.provider_kind,
       model: row.model,
-      inputPricePerMillion: Number(row.input_price_per_million),
-      outputPricePerMillion: Number(row.output_price_per_million),
+      inputPricePerMillion: row.input_price_per_million === null ? null : Number(row.input_price_per_million),
+      outputPricePerMillion: row.output_price_per_million === null ? null : Number(row.output_price_per_million),
       currency: String(row.currency || 'USD').trim().toUpperCase() || 'USD',
       isActive: Boolean(row.is_active),
+      hasPricing: row.input_price_per_million !== null && row.output_price_per_million !== null,
       updatedAt: row.updated_at,
     })));
   }));
@@ -242,24 +243,20 @@ function createAdminRouter() {
     if (!providerKind || !model) {
       return res.status(400).json({ error: 'providerKind and model are required.' });
     }
-    if (inputPricePerMillion === null || outputPricePerMillion === null) {
-      return res.status(400).json({ error: 'inputPricePerMillion and outputPricePerMillion are required.' });
-    }
-
     const result = await pool.query(
       `INSERT INTO provider_model_pricing_catalog
          (provider_kind, model, input_price_per_million, output_price_per_million, currency, is_active, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,TRUE,$6,$6)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
        ON CONFLICT (provider_kind, model)
        DO UPDATE SET
          input_price_per_million = EXCLUDED.input_price_per_million,
          output_price_per_million = EXCLUDED.output_price_per_million,
          currency = EXCLUDED.currency,
-         is_active = TRUE,
+         is_active = EXCLUDED.is_active,
          updated_by = EXCLUDED.updated_by,
          updated_at = NOW()
        RETURNING id`,
-      [providerKind, model, inputPricePerMillion, outputPricePerMillion, currency, req.userId]
+      [providerKind, model, inputPricePerMillion, outputPricePerMillion, currency, req.body?.isActive === undefined ? true : Boolean(req.body.isActive), req.userId]
     );
 
     res.json({ ok: true, id: result.rows[0].id });
@@ -273,10 +270,6 @@ function createAdminRouter() {
     const outputPricePerMillion = parseNonNegativeNumberOrNull(req.body?.outputPricePerMillion);
     const currency = String(req.body?.currency || 'USD').trim().toUpperCase() || 'USD';
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
-    if (inputPricePerMillion === null || outputPricePerMillion === null) {
-      return res.status(400).json({ error: 'inputPricePerMillion and outputPricePerMillion are required.' });
-    }
-
     const result = await pool.query(
       `UPDATE provider_model_pricing_catalog
        SET input_price_per_million = $1,
