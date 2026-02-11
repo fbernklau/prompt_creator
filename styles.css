@@ -525,6 +525,7 @@ button.cta {
 .admin-model-provider-card .data-table td {
   font-size: 13px;
   padding: 8px 6px;
+  vertical-align: middle;
 }
 
 .admin-row-price-input,
@@ -592,6 +593,10 @@ button.cta {
   font-weight: 700;
   color: var(--text-soft);
   min-width: 54px;
+}
+
+[data-save-pricing-row]:disabled {
+  opacity: 0.65;
 }
 
 .span-2 {

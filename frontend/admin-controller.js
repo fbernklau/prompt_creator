@@ -72,8 +72,15 @@ function createAdminController({
     return numeric.toFixed(6);
   }
 
+  function formatDateTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('de-AT');
+  }
+
   function parseOptionalNonNegativeNumber(value) {
-    const raw = String(value ?? '').trim();
+    const raw = String(value ?? '').trim().replace(',', '.');
     if (!raw) return null;
     const numeric = Number(raw);
     if (!Number.isFinite(numeric) || numeric < 0) return Number.NaN;
@@ -306,6 +313,7 @@ function createAdminController({
                 <th>Output USD / 1M</th>
                 <th>Waehrung</th>
                 <th>Status</th>
+                <th>Aktualisiert</th>
                 <th>Aktionen</th>
               </tr>
             </thead>
@@ -355,14 +363,16 @@ function createAdminController({
                           <span class="admin-toggle-text" data-pricing-row-active-text="${entry.id}">${entry.isActive ? 'Aktiv' : 'Inaktiv'}</span>
                         </label>
                       </td>
+                      <td><small class="hint">${formatDateTime(entry.updatedAt)}</small></td>
                       <td>
                         <div class="inline-actions">
                           <button type="button" class="secondary small" data-save-pricing-row="${entry.id}">Speichern</button>
                         </div>
+                        <small class="hint" data-pricing-row-status="${entry.id}"></small>
                       </td>
                     </tr>
                   `).join('')
-    : '<tr><td colspan="6">Noch keine Modelle fuer diesen Provider.</td></tr>'}
+    : '<tr><td colspan="7">Noch keine Modelle fuer diesen Provider.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -399,11 +409,13 @@ function createAdminController({
     if (!entry) return;
 
     const scope = el('admin-model-provider-groups');
+    const saveButton = scope.querySelector(`[data-save-pricing-row="${rowId}"]`);
+    const rowStatus = scope.querySelector(`[data-pricing-row-status="${rowId}"]`);
     const inputNode = scope.querySelector(`[data-pricing-row-input="${rowId}"]`);
     const outputNode = scope.querySelector(`[data-pricing-row-output="${rowId}"]`);
     const currencyNode = scope.querySelector(`[data-pricing-row-currency="${rowId}"]`);
     const activeNode = scope.querySelector(`[data-pricing-row-active="${rowId}"]`);
-    if (!inputNode || !outputNode || !currencyNode || !activeNode) return;
+    if (!inputNode || !outputNode || !currencyNode || !activeNode || !saveButton) return;
 
     const inputPrice = parseOptionalNonNegativeNumber(inputNode.value);
     const outputPrice = parseOptionalNonNegativeNumber(outputNode.value);
@@ -412,17 +424,24 @@ function createAdminController({
       return;
     }
 
-    await api(`/api/admin/model-pricing/${encodeURIComponent(rowId)}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        inputPricePerMillion: inputPrice,
-        outputPricePerMillion: outputPrice,
-        currency: (currencyNode.value || 'USD').trim() || 'USD',
-        isActive: activeNode.checked,
-      }),
-    });
-    await loadAdminData();
-    setStatus(`Modelleintrag ${entry.providerKind}/${entry.model} gespeichert.`, { pricing: true });
+    saveButton.disabled = true;
+    if (rowStatus) rowStatus.textContent = 'Speichere...';
+    try {
+      await api(`/api/admin/model-pricing/${encodeURIComponent(rowId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          inputPricePerMillion: inputPrice,
+          outputPricePerMillion: outputPrice,
+          currency: (currencyNode.value || 'USD').trim() || 'USD',
+          isActive: activeNode.checked,
+        }),
+      });
+      await loadAdminData();
+      setStatus(`Modelleintrag ${entry.providerKind}/${entry.model} gespeichert.`, { pricing: true });
+    } finally {
+      saveButton.disabled = false;
+      if (rowStatus) rowStatus.textContent = '';
+    }
   }
 
   async function loadAdminData() {

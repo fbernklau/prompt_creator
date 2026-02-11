@@ -24,7 +24,7 @@ function normalizePermissionKey(value = '') {
 
 function parseNonNegativeNumberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
-  const normalized = Number(value);
+  const normalized = Number(String(value).trim().replace(',', '.'));
   if (!Number.isFinite(normalized) || normalized < 0) return null;
   return normalized;
 }
