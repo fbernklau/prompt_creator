@@ -385,6 +385,65 @@ function createTaskController({
     setGenerationStatus(text, isGenerating ? 'info' : 'ok');
   }
 
+  function formatTokenCount(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return '-';
+    return Math.round(numeric).toLocaleString('de-AT');
+  }
+
+  function formatCost(value, currency = 'USD') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return '-';
+    const safeCurrency = String(currency || 'USD').trim().toUpperCase() || 'USD';
+    try {
+      return new Intl.NumberFormat('de-AT', {
+        style: 'currency',
+        currency: safeCurrency,
+        minimumFractionDigits: 6,
+        maximumFractionDigits: 6,
+      }).format(numeric);
+    } catch (_error) {
+      return `${numeric.toFixed(6)} ${safeCurrency}`;
+    }
+  }
+
+  function setResultUsageSummary(usage = null) {
+    const summaryNode = el('result-usage-summary');
+    const inputNode = el('result-usage-input');
+    const outputNode = el('result-usage-output');
+    const totalNode = el('result-usage-total');
+    if (!summaryNode || !inputNode || !outputNode || !totalNode) return;
+
+    const promptTokens = Number(usage?.promptTokens);
+    const completionTokens = Number(usage?.completionTokens);
+    const totalTokens = Number(usage?.totalTokens);
+    const hasUsage = Number.isFinite(promptTokens) || Number.isFinite(completionTokens) || Number.isFinite(totalTokens);
+
+    inputNode.textContent = formatTokenCount(promptTokens);
+    outputNode.textContent = formatTokenCount(completionTokens);
+    totalNode.textContent = formatTokenCount(totalTokens);
+    summaryNode.classList.toggle('is-hidden', !hasUsage);
+  }
+
+  function setResultCostSummary(cost = null) {
+    const summaryNode = el('result-cost-summary');
+    const inputNode = el('result-cost-input');
+    const outputNode = el('result-cost-output');
+    const totalNode = el('result-cost-total');
+    if (!summaryNode || !inputNode || !outputNode || !totalNode) return;
+
+    const inputCost = Number(cost?.inputCostUsd);
+    const outputCost = Number(cost?.outputCostUsd);
+    const totalCost = Number(cost?.totalCostUsd);
+    const currency = String(cost?.pricingCurrency || 'USD').trim().toUpperCase() || 'USD';
+    const hasCost = Number.isFinite(inputCost) || Number.isFinite(outputCost) || Number.isFinite(totalCost);
+
+    inputNode.textContent = formatCost(inputCost, currency);
+    outputNode.textContent = formatCost(outputCost, currency);
+    totalNode.textContent = formatCost(totalCost, currency);
+    summaryNode.classList.toggle('is-hidden', !hasCost);
+  }
+
   function setPreviewStatus(text = '', type = 'info') {
     const node = el('metaprompt-preview-status');
     node.textContent = text;
@@ -1271,6 +1330,8 @@ function createTaskController({
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = '-';
     if (el('result-detail-fach')) el('result-detail-fach').textContent = '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = '-';
+    setResultUsageSummary(null);
+    setResultCostSummary(null);
     renderCompactFlowPanel();
     showScreen('home');
   }
@@ -1377,6 +1438,8 @@ function createTaskController({
 
       el('result').value = generation.output;
       el('result-meta').textContent = providerMeta;
+      setResultUsageSummary(generation.usage || null);
+      setResultCostSummary(generation.cost || null);
       if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
       if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
       if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';

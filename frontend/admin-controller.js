@@ -401,6 +401,20 @@ function createAdminController({
     container.querySelectorAll('[data-save-pricing-row]').forEach((button) => {
       button.onclick = () => savePricingRow(button.dataset.savePricingRow).catch((error) => alert(error.message));
     });
+
+    container
+      .querySelectorAll('[data-pricing-row-input], [data-pricing-row-output], [data-pricing-row-currency]')
+      .forEach((input) => {
+        input.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          const rowId = input.getAttribute('data-pricing-row-input')
+            || input.getAttribute('data-pricing-row-output')
+            || input.getAttribute('data-pricing-row-currency');
+          if (!rowId) return;
+          savePricingRow(rowId).catch((error) => alert(error.message));
+        });
+      });
   }
 
   async function savePricingRow(pricingId) {

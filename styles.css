@@ -1016,6 +1016,23 @@ button.is-active,
   letter-spacing: 0.02em;
 }
 
+.result-usage-summary {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.result-usage-summary strong {
+  color: var(--text);
+}
+
+.result-cost-summary {
+  margin-top: 4px;
+}
+
 .result-actions-row,
 .result-final-actions {
   justify-content: center;
@@ -2363,6 +2380,15 @@ button.is-active,
   font-size: 1.2rem;
 }
 
+#screen-result.tw-result .result-usage-summary {
+  margin-top: 6px;
+  color: #4b5f84;
+}
+
+#screen-result.tw-result .result-usage-summary strong {
+  color: #112548;
+}
+
 #screen-result.tw-result .result-prompt-box {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -2766,8 +2792,13 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .subline,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .subline,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-card-description,
-:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-author {
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-author,
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-usage-summary {
   color: #9fb2d9;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-usage-summary strong {
+  color: #e5ecfb;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form input:not([type='checkbox']):not([type='radio']),

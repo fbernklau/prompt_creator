@@ -385,6 +385,16 @@
                 <div>
                   <h3>Generated Meta-Prompt</h3>
                   <small id="result-meta" class="hint"></small>
+                  <div id="result-usage-summary" class="result-usage-summary is-hidden" aria-live="polite">
+                    <span>Input: <strong id="result-usage-input">-</strong></span>
+                    <span>Output: <strong id="result-usage-output">-</strong></span>
+                    <span>Total: <strong id="result-usage-total">-</strong></span>
+                  </div>
+                  <div id="result-cost-summary" class="result-usage-summary result-cost-summary is-hidden" aria-live="polite">
+                    <span>Input-Kosten: <strong id="result-cost-input">-</strong></span>
+                    <span>Output-Kosten: <strong id="result-cost-output">-</strong></span>
+                    <span>Total-Kosten: <strong id="result-cost-total">-</strong></span>
+                  </div>
                 </div>
                 <div class="inline-actions">
                   <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
