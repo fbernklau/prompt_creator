@@ -527,6 +527,73 @@ button.cta {
   padding: 8px 6px;
 }
 
+.admin-row-price-input,
+.admin-row-currency-input {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.admin-row-currency-input {
+  max-width: 92px;
+}
+
+.admin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.admin-toggle input[type='checkbox'] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-toggle-track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: #9ca8bf;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  transition: background-color 0.15s ease;
+}
+
+.admin-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.admin-toggle input[type='checkbox']:checked + .admin-toggle-track {
+  background: #16a34a;
+  border-color: #15803d;
+}
+
+.admin-toggle input[type='checkbox']:checked + .admin-toggle-track .admin-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.admin-toggle input[type='checkbox']:focus-visible + .admin-toggle-track {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+.admin-toggle-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-soft);
+  min-width: 54px;
+}
+
 .span-2 {
   grid-column: span 1;
 }

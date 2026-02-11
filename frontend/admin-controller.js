@@ -314,14 +314,50 @@ function createAdminController({
     ? rows.map((entry) => `
                     <tr>
                       <td><strong>${escapeHtml(entry.model)}</strong></td>
-                      <td>${formatPrice(entry.inputPricePerMillion)}</td>
-                      <td>${formatPrice(entry.outputPricePerMillion)}</td>
-                      <td>${escapeHtml(entry.currency || 'USD')}</td>
-                      <td>${entry.isActive ? 'aktiv' : 'inaktiv'}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.000001"
+                          class="admin-row-price-input"
+                          data-pricing-row-input="${entry.id}"
+                          value="${entry.inputPricePerMillion ?? ''}"
+                          placeholder="optional"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.000001"
+                          class="admin-row-price-input"
+                          data-pricing-row-output="${entry.id}"
+                          value="${entry.outputPricePerMillion ?? ''}"
+                          placeholder="optional"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          class="admin-row-currency-input"
+                          data-pricing-row-currency="${entry.id}"
+                          value="${escapeHtml(entry.currency || 'USD')}"
+                        />
+                      </td>
+                      <td>
+                        <label class="admin-toggle">
+                          <input
+                            type="checkbox"
+                            data-pricing-row-active="${entry.id}"
+                            ${entry.isActive ? 'checked' : ''}
+                          />
+                          <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                          <span class="admin-toggle-text" data-pricing-row-active-text="${entry.id}">${entry.isActive ? 'Aktiv' : 'Inaktiv'}</span>
+                        </label>
+                      </td>
                       <td>
                         <div class="inline-actions">
-                          <button type="button" class="secondary small" data-edit-pricing="${entry.id}">Bearbeiten</button>
-                          <button type="button" class="secondary small" data-toggle-pricing="${entry.id}">${entry.isActive ? 'Deaktivieren' : 'Aktivieren'}</button>
+                          <button type="button" class="secondary small" data-save-pricing-row="${entry.id}">Speichern</button>
                         </div>
                       </td>
                     </tr>
@@ -343,25 +379,50 @@ function createAdminController({
       };
     }
 
-    container.querySelectorAll('[data-edit-pricing]').forEach((button) => {
-      button.onclick = () => {
-        const pricingId = Number(button.dataset.editPricing);
-        const entry = adminState.pricingEntries.find((item) => item.id === pricingId);
-        if (!entry) return;
-        adminState.selectedPricingId = pricingId;
-        el('admin-pricing-provider-kind').value = entry.providerKind;
-        el('admin-pricing-model').value = entry.model;
-        el('admin-pricing-currency').value = entry.currency || 'USD';
-        el('admin-pricing-input').value = entry.inputPricePerMillion ?? '';
-        el('admin-pricing-output').value = entry.outputPricePerMillion ?? '';
-        el('admin-pricing-active').value = entry.isActive ? 'true' : 'false';
-        setStatus(`Bearbeite: ${entry.providerKind}/${entry.model}`, { pricing: true });
-      };
+    container.querySelectorAll('[data-pricing-row-active]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const rowId = input.dataset.pricingRowActive;
+        const textNode = container.querySelector(`[data-pricing-row-active-text="${rowId}"]`);
+        if (textNode) {
+          textNode.textContent = input.checked ? 'Aktiv' : 'Inaktiv';
+        }
+      });
     });
+    container.querySelectorAll('[data-save-pricing-row]').forEach((button) => {
+      button.onclick = () => savePricingRow(button.dataset.savePricingRow).catch((error) => alert(error.message));
+    });
+  }
 
-    container.querySelectorAll('[data-toggle-pricing]').forEach((button) => {
-      button.onclick = () => togglePricingActive(button.dataset.togglePricing).catch((error) => alert(error.message));
+  async function savePricingRow(pricingId) {
+    const rowId = Number(pricingId);
+    const entry = adminState.pricingEntries.find((row) => row.id === rowId);
+    if (!entry) return;
+
+    const scope = el('admin-model-provider-groups');
+    const inputNode = scope.querySelector(`[data-pricing-row-input="${rowId}"]`);
+    const outputNode = scope.querySelector(`[data-pricing-row-output="${rowId}"]`);
+    const currencyNode = scope.querySelector(`[data-pricing-row-currency="${rowId}"]`);
+    const activeNode = scope.querySelector(`[data-pricing-row-active="${rowId}"]`);
+    if (!inputNode || !outputNode || !currencyNode || !activeNode) return;
+
+    const inputPrice = parseOptionalNonNegativeNumber(inputNode.value);
+    const outputPrice = parseOptionalNonNegativeNumber(outputNode.value);
+    if (Number.isNaN(inputPrice) || Number.isNaN(outputPrice)) {
+      alert('Input/Output Preis muss leer oder >= 0 sein.');
+      return;
+    }
+
+    await api(`/api/admin/model-pricing/${encodeURIComponent(rowId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        inputPricePerMillion: inputPrice,
+        outputPricePerMillion: outputPrice,
+        currency: (currencyNode.value || 'USD').trim() || 'USD',
+        isActive: activeNode.checked,
+      }),
     });
+    await loadAdminData();
+    setStatus(`Modelleintrag ${entry.providerKind}/${entry.model} gespeichert.`, { pricing: true });
   }
 
   async function loadAdminData() {
@@ -521,39 +582,13 @@ function createAdminController({
       return;
     }
 
-    if (adminState.selectedPricingId) {
-      await api(`/api/admin/model-pricing/${adminState.selectedPricingId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-      setStatus('Modelleintrag aktualisiert.', { pricing: true });
-    } else {
-      await api('/api/admin/model-pricing', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      setStatus('Modelleintrag gespeichert.', { pricing: true });
-    }
+    await api('/api/admin/model-pricing', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    setStatus('Modelleintrag gespeichert.', { pricing: true });
     clearPricingForm();
     await loadAdminData();
-  }
-
-  async function togglePricingActive(pricingId) {
-    if (!hasPermission('pricing.manage')) return;
-    const targetId = Number(pricingId);
-    const entry = adminState.pricingEntries.find((row) => row.id === targetId);
-    if (!entry) return;
-    await api(`/api/admin/model-pricing/${encodeURIComponent(pricingId)}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        inputPricePerMillion: entry.inputPricePerMillion,
-        outputPricePerMillion: entry.outputPricePerMillion,
-        currency: entry.currency || 'USD',
-        isActive: !entry.isActive,
-      }),
-    });
-    await loadAdminData();
-    setStatus(`Modelleintrag ${!entry.isActive ? 'aktiviert' : 'deaktiviert'}.`, { pricing: true });
   }
 
   function bindEvents() {
