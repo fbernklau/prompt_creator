@@ -61,6 +61,7 @@ function createTaskController({
     editingCategory: false,
     editingTemplate: false,
   };
+  state.subcategoryViewMode = state.subcategoryViewMode || 'grid';
 
   function getFlowMode() {
     return state.settings.flowMode || 'step';
@@ -450,11 +451,19 @@ function createTaskController({
     node.dataset.type = type;
   }
 
-  function renderCategoryGrid() {
+  function renderCategoryGrid(filteredTemplates = null) {
     auditTemplateCoverageOnce();
     const categoryConfig = getCategoryConfig();
     const grid = el('category-grid');
-    const categoryNames = Object.keys(categoryConfig);
+    const visibleCategorySet = Array.isArray(filteredTemplates)
+      ? new Set(filteredTemplates.map((entry) => String(entry?.categoryName || '').trim()).filter(Boolean))
+      : null;
+    const categoryNames = Object.keys(categoryConfig)
+      .filter((categoryName) => !visibleCategorySet || visibleCategorySet.has(categoryName));
+    if (!categoryNames.length) {
+      grid.innerHTML = '<div class="hint panel panel-soft">Keine passenden Kategorien fuer die aktuelle Suche/Tag-Auswahl.</div>';
+      return;
+    }
     grid.innerHTML = categoryNames
       .map((categoryName) => {
         const cfg = categoryConfig[categoryName];
@@ -595,8 +604,10 @@ function createTaskController({
     const templates = Array.isArray(state.templateDiscovery.templates)
       ? state.templateDiscovery.templates
       : [];
+    const selectedTags = normalizeTagList(state.templateDiscovery.activeTags || []);
+    const hasFilterMode = Boolean(state.templateDiscovery.search) || selectedTags.length > 0;
 
-    const recommended = templates.slice(0, 3);
+    const recommended = hasFilterMode ? templates.slice(0, 24) : templates.slice(0, 3);
     const recent = templates
       .filter((template) => template.isRecent)
       .sort((a, b) => {
@@ -610,12 +621,30 @@ function createTaskController({
       .slice(0, 3);
 
     renderTagChips(templates);
-    renderQuickTemplateList('home-recommended-list', recommended, 'Noch keine Empfehlungen verfuegbar.');
+    renderQuickTemplateList(
+      'home-recommended-list',
+      recommended,
+      hasFilterMode ? 'Keine Treffer fuer Suche/Tags.' : 'Noch keine Empfehlungen verfuegbar.'
+    );
     renderQuickTemplateList('home-recent-list', recent, 'Noch keine zuletzt genutzten Templates.');
     renderQuickTemplateList('home-favorites-list', favorites, 'Noch keine Favoriten markiert.');
-    const selectedTags = normalizeTagList(state.templateDiscovery.activeTags || []);
+
+    const recommendedTitle = el('home-discovery-title-recommended');
+    if (recommendedTitle) {
+      recommendedTitle.innerHTML = hasFilterMode
+        ? '<span class="material-icons-round text-primary text-[18px]">search</span>Suchergebnisse'
+        : '<span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen';
+    }
+    const recentColumn = el('home-discovery-col-recent');
+    const favoritesColumn = el('home-discovery-col-favorites');
+    if (recentColumn) recentColumn.classList.toggle('is-hidden', hasFilterMode);
+    if (favoritesColumn) favoritesColumn.classList.toggle('is-hidden', hasFilterMode);
+
+    renderCategoryGrid(hasFilterMode ? templates : null);
+
     const tagSuffix = selectedTags.length ? ` | Tags: ${selectedTags.join(', ')}` : '';
-    setHomeDiscoveryStatus(`${templates.length} sichtbare Templates geladen${tagSuffix}.`);
+    const searchSuffix = state.templateDiscovery.search ? ` | Suche: "${state.templateDiscovery.search}"` : '';
+    setHomeDiscoveryStatus(`${templates.length} sichtbare Templates geladen${searchSuffix}${tagSuffix}.`);
   }
 
   async function refreshTemplateDiscovery({
@@ -696,6 +725,7 @@ function createTaskController({
     if (el('subcategory-count')) {
       el('subcategory-count').textContent = `${cfg.unterkategorien.length} Vorlagen in dieser Kategorie gefunden.`;
     }
+    applySubcategoryViewMode();
 
     el('subcategory-list').querySelectorAll('[data-subcategory]').forEach((card) => {
       const openSubcategory = () => openForm(categoryName, card.dataset.subcategory);
@@ -721,6 +751,21 @@ function createTaskController({
     });
   }
 
+  function applySubcategoryViewMode() {
+    const mode = state.subcategoryViewMode === 'list' ? 'list' : 'grid';
+    const listNode = el('subcategory-list');
+    const gridButton = el('subcat-view-grid');
+    const listButton = el('subcat-view-list');
+    if (listNode) listNode.classList.toggle('is-list', mode === 'list');
+    if (gridButton) gridButton.classList.toggle('is-active', mode === 'grid');
+    if (listButton) listButton.classList.toggle('is-active', mode === 'list');
+  }
+
+  function setSubcategoryViewMode(mode) {
+    state.subcategoryViewMode = mode === 'list' ? 'list' : 'grid';
+    applySubcategoryViewMode();
+  }
+
   function setFormSectionsVisibility(visible) {
     ['form-required-panel', 'form-optional-panel', 'form-advanced-panel', 'form-oneoff-panel', 'form-right-rail']
       .forEach((id) => {
@@ -735,6 +780,12 @@ function createTaskController({
     const cfg = categoryConfig[state.selectedCategory];
     el('form-category-title').textContent = cfg?.title || '';
     el('form-subcategory-title').textContent = state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template waehlen' : '');
+    const template = state.selectedCategory && state.selectedSubcategory
+      ? getTemplateConfig(state.selectedCategory, state.selectedSubcategory)
+      : null;
+    const description = (template?.description || '').trim();
+    const descriptionNode = el('form-template-description');
+    if (descriptionNode) descriptionNode.textContent = description;
   }
 
   function setCompactStepCollapsed(stepNode, collapsed) {
@@ -1330,6 +1381,7 @@ function createTaskController({
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = '-';
     if (el('result-detail-fach')) el('result-detail-fach').textContent = '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = '-';
+    if (el('form-template-description')) el('form-template-description').textContent = '';
     setResultUsageSummary(null);
     setResultCostSummary(null);
     renderCompactFlowPanel();
@@ -1352,15 +1404,10 @@ function createTaskController({
   }
 
   function openForm(categoryName, subcategoryName) {
-    const categoryConfig = getCategoryConfig();
     state.selectedCategory = categoryName;
     state.selectedSubcategory = subcategoryName;
     state.compactFlow.editingCategory = false;
     state.compactFlow.editingTemplate = false;
-
-    const cfg = categoryConfig[categoryName];
-    el('form-category-title').textContent = cfg.title;
-    el('form-subcategory-title').textContent = subcategoryName;
 
     renderCompactFlowPanel();
     renderDynamicFields();
@@ -1605,8 +1652,15 @@ function createTaskController({
       const search = el('home-template-search').value.trim();
       refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
     });
+    if (el('subcat-view-grid')) {
+      el('subcat-view-grid').addEventListener('click', () => setSubcategoryViewMode('grid'));
+    }
+    if (el('subcat-view-list')) {
+      el('subcat-view-list').addEventListener('click', () => setSubcategoryViewMode('list'));
+    }
 
     syncFlowModeUi();
+    applySubcategoryViewMode();
   }
 
   return {

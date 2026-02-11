@@ -103,15 +103,15 @@
           </div>
           <div class="tw-home-discovery-card">
             <div class="tw-home-discovery-grid">
-              <div>
-                <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen</h4>
+              <div id="home-discovery-col-recommended">
+                <h4 id="home-discovery-title-recommended" class="tw-home-discovery-col-title"><span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen</h4>
                 <div id="home-recommended-list" class="tw-home-list"></div>
               </div>
-              <div>
+              <div id="home-discovery-col-recent">
                 <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-primary text-[18px]">history</span>Zuletzt genutzt</h4>
                 <div id="home-recent-list" class="tw-home-list"></div>
               </div>
-              <div>
+              <div id="home-discovery-col-favorites">
                 <h4 class="tw-home-discovery-col-title"><span class="material-icons-round text-amber-500 text-[18px]">star</span>Favoriten</h4>
                 <div id="home-favorites-list" class="tw-home-list"></div>
               </div>
@@ -127,11 +127,11 @@
             <span class="material-icons-round">arrow_back</span>
             Zur&uuml;ck zur &Uuml;bersicht
           </button>
-          <div class="tw-subcat-view-toggle" aria-hidden="true">
-            <button type="button" class="tw-subcat-view-btn is-active">
+          <div class="tw-subcat-view-toggle">
+            <button id="subcat-view-grid" type="button" class="tw-subcat-view-btn is-active" aria-label="Grid-Ansicht">
               <span class="material-icons-round">grid_view</span>
             </button>
-            <button type="button" class="tw-subcat-view-btn">
+            <button id="subcat-view-list" type="button" class="tw-subcat-view-btn" aria-label="Listen-Ansicht">
               <span class="material-icons-round">view_list</span>
             </button>
           </div>
@@ -153,6 +153,7 @@
         <div class="form-header tw-form-header">
           <h2 id="form-category-title"></h2>
           <p id="form-subcategory-title" class="subline"></p>
+          <p id="form-template-description" class="subline"></p>
         </div>
 
         <form id="prompt-form" class="stack-form">

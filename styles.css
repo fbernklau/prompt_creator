@@ -1960,6 +1960,11 @@ button.is-active,
   gap: 16px;
 }
 
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
 #screen-subcategory.tw-subcat .tw-subcat-card {
   border: 1px solid #dbe3ef;
   border-radius: 16px;
@@ -1969,6 +1974,18 @@ button.is-active,
   display: grid;
   align-content: start;
   gap: 6px;
+}
+
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list .tw-subcat-card {
+  min-height: 0;
+  padding: 14px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'head head'
+    'title cta'
+    'desc desc';
+  row-gap: 4px;
+  align-items: center;
 }
 
 #screen-subcategory.tw-subcat .tw-subcat-card:hover {
@@ -1981,6 +1998,10 @@ button.is-active,
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list .tw-subcat-card-head {
+  grid-area: head;
 }
 
 #screen-subcategory.tw-subcat .tw-subcat-card-meta {
@@ -2029,10 +2050,19 @@ button.is-active,
   color: #0f172a;
 }
 
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list .tw-subcat-card-title {
+  grid-area: title;
+  font-size: 1.02rem;
+}
+
 #screen-subcategory.tw-subcat .tw-subcat-card-desc {
   font-size: 0.88rem;
   line-height: 1.45;
   color: #64748b;
+}
+
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list .tw-subcat-card-desc {
+  grid-area: desc;
 }
 
 #screen-subcategory.tw-subcat .tw-subcat-card-cta {
@@ -2045,6 +2075,13 @@ button.is-active,
   font-weight: 700;
   opacity: 0;
   transition: opacity 0.15s ease;
+}
+
+#screen-subcategory.tw-subcat .tw-subcat-grid.is-list .tw-subcat-card-cta {
+  grid-area: cta;
+  margin-top: 0;
+  align-self: center;
+  opacity: 1;
 }
 
 #screen-subcategory.tw-subcat .tw-subcat-card:hover .tw-subcat-card-cta {
@@ -2067,6 +2104,11 @@ button.is-active,
 
 #screen-form.tw-form .tw-form-header {
   margin-bottom: 12px;
+}
+
+#screen-form.tw-form #form-template-description {
+  margin-top: 6px;
+  max-width: 78ch;
 }
 
 #screen-form.tw-form .tw-compact-flow {
