@@ -10,10 +10,10 @@ Owner: Team + Codex
 
 ## Current Snapshot
 - Branch: `main`
-- HEAD commit: `8fae7d10fe1af89c558eb7650852aa4c538d0cd6`
-- HEAD message: `updated todo`
-- Stable fallback tag: `0.1-stableish` -> `acee376`
-- Working tree: dirty (ongoing UX refactor in progress)
+- HEAD commit: `7b6b0af1da6c4627a883208548bfd36d4179b9bb`
+- HEAD message: `Description visibility fix`
+- Stable tags: `0.1-stableish` -> `acee376`, `stable-0.3` -> current mainline snapshot
+- Working tree: clean
 
 ## Environment Status (checked in this session)
 - [x] `node` available (`v24.13.0`)
@@ -62,6 +62,9 @@ Owner: Team + Codex
 - [x] Model Administration now acts as master record for provider model selection in API-Provider sidebar.
 - [x] Provider form supports pricing mode switch + custom input/output prices.
 - [x] Usage dashboard extended with total tokens, total cost, per-provider cost/tokens and key-fingerprint usage overview.
+- [x] Pricing row save now persists correctly to DB and survives reload.
+- [x] Inline pricing rows support fast save flow (incl. keyboard/Enter path and visible save feedback).
+- [x] Usage view includes input/output token split (instead of only aggregate totals).
 
 ### Privacy / safety hardening
 - [x] Metaprompt envelope now includes explicit privacy rules (no personal/sensitive data requests, placeholders only).
@@ -95,6 +98,15 @@ Owner: Team + Codex
 - [x] Metaprompt preview restyled and made visually distinct.
 - [x] Generate button and metaprompt preview now move together in one right rail.
 - [x] Checkbox UX improved (clear checked state, better hit area, fixed style conflicts).
+- [x] Home search and tag-result rendering fixed (results now actually filter/show).
+- [x] Additive tag intersection filter working in discovery flow.
+- [x] Subcategory view toggle now supports both grid and list mode.
+- [x] Template form header now shows template description/long description reliably.
+
+### Template content refresh
+- [x] First-category content refresh applied (Paedagogische Planung family).
+- [x] New template added: `Unterrichtssequenz` (with required/optional field model and helper texts).
+- [x] Category/subcategory short descriptions aligned with mockup-style discovery cards.
 
 ## Partially Done / Needs Follow-up
 - [ ] Full Docker + Authentik + provider smoke test against real `.env` on VPS still pending.
@@ -102,6 +114,7 @@ Owner: Team + Codex
 - [ ] Template Studio UX still needs extra guardrails (validation clarity, safer official edit flow, clearer review transitions).
 - [ ] Pricing accuracy depends on maintained catalog values (admin needs to keep model prices current).
 - [ ] Token accounting currently uses provider usage metadata, with local fallback estimation if provider usage is missing.
+- [ ] Full per-template content QA still pending for all remaining categories (required/optional fields + placeholder/help text quality).
 
 ## Not Done Yet (high-value backlog)
 - [ ] Introduce explicit DB migrations (current schema evolves in bootstrap).
@@ -118,13 +131,13 @@ Owner: Team + Codex
 - [x] Product output stays prompt-only (no final task solution output from this app).
 
 ## Immediate Next Steps (recommended order)
-- [ ] Step 1: Deploy current `main` to VPS and run full smoke test with real `.env`.
-- [ ] Step 2: Run provider sanity matrix (OpenAI/Google/Anthropic/Mistral where available) with at least one template per category.
-- [ ] Step 3: Seed/verify pricing catalog values for all actively used models; validate one real request per provider with cost output.
-- [ ] Step 4: Add privacy hard-fail switch (optional): reject output if personal-data requests still detected after repair.
-- [ ] Step 5: Add migration baseline (schema version table + first migration).
-- [ ] Step 6: Add integration/regression tests (especially privacy + generation parser + cost accounting).
-- [ ] Step 7: Final Template Studio UX pass (review/approval flow clarity + form validation).
+- [ ] Step 1: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).
+- [ ] Step 2: Dark mode polish pass vs mockups (contrast, spacing, panel hierarchy, legacy style cleanup).
+- [ ] Step 3: Deploy current `main` to VPS and run full smoke test with real `.env`.
+- [ ] Step 4: Run provider sanity matrix (OpenAI/Google/Anthropic/Mistral where available) with at least one template per category.
+- [ ] Step 5: Seed/verify pricing catalog values for all actively used models; validate one real request per provider with cost output.
+- [ ] Step 6: Add privacy hard-fail switch (optional): reject output if personal-data requests still detected after repair.
+- [ ] Step 7: Add migration baseline (schema version table + first migration) + integration/regression tests.
 
 ## New Intake (2026-02-11)
 - [x] Rebuild compact flow mode as cascading selection flow (category -> template -> fields) with no forced first-template auto-selection.
@@ -136,10 +149,10 @@ Owner: Team + Codex
 
 ## In Progress Now (UI/UX cycle)
 - [ ] Visual QA pass for compact flow across all templates (desktop + mobile).
-- [ ] Dark mode polish pass against latest mockups (contrast, spacing, panel hierarchy).
+- [ ] Per-template content consistency pass (field semantics + UX text quality).
 - [ ] End-to-end smoke test: compact flow + generation + preview + placeholder mode.
 
 ## Notes for Tomorrow
-- The current UI is in a good state for supervisor testing.
-- Highest risk right now is not functionality, but deployment/runtime verification and missing automated tests.
-- If anything breaks after deploy, compare against tag `0.1-stableish` and roll back quickly.
+- Current UX baseline is stable and much closer to mockups; main open work is content quality + dark mode finish.
+- Highest risk remains deployment/runtime verification and missing automated regression tests.
+- Rollback anchors available: `stable-0.3` (newer) and `0.1-stableish` (older fallback).
