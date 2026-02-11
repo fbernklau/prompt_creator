@@ -404,9 +404,14 @@ function createAdminController({
   }
 
   async function savePricingRow(pricingId) {
-    const rowId = Number(pricingId);
-    const entry = adminState.pricingEntries.find((row) => row.id === rowId);
-    if (!entry) return;
+    const rowId = String(pricingId ?? '').trim();
+    if (!rowId) return;
+
+    const entry = adminState.pricingEntries.find((row) => String(row.id) === rowId);
+    if (!entry) {
+      setStatus('Modelleintrag konnte nicht geladen werden.', { pricing: true });
+      return;
+    }
 
     const scope = el('admin-model-provider-groups');
     const saveButton = scope.querySelector(`[data-save-pricing-row="${rowId}"]`);
@@ -460,7 +465,9 @@ function createAdminController({
       roles,
       bindings,
       selectedRoleId: adminState.selectedRoleId || roles[0]?.id || null,
-      pricingEntries,
+      pricingEntries: Array.isArray(pricingEntries)
+        ? pricingEntries.map((entry) => ({ ...entry, id: String(entry.id) }))
+        : [],
       selectedPricingId: adminState.selectedPricingId,
       activeTab: adminState.activeTab || 'roles',
       activeModelProvider: adminState.activeModelProvider || 'openai',
