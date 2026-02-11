@@ -783,7 +783,7 @@ function createTaskController({
     const template = state.selectedCategory && state.selectedSubcategory
       ? getTemplateConfig(state.selectedCategory, state.selectedSubcategory)
       : null;
-    const description = (template?.description || '').trim();
+    const description = (template?.longDescription || template?.description || '').trim();
     const descriptionNode = el('form-template-description');
     if (descriptionNode) descriptionNode.textContent = description;
   }
@@ -801,6 +801,7 @@ function createTaskController({
     panel.classList.toggle('is-hidden', !compact);
     if (!compact) {
       setFormSectionsVisibility(true);
+      updateFormHeaderForSelection();
       return;
     }
 
@@ -909,6 +910,7 @@ function createTaskController({
     if (isCompactFlowMode() && !state.selectedSubcategory) {
       return;
     }
+    updateFormHeaderForSelection();
     const template = getTemplateConfig();
     const requiredContainer = el('required-fields-grid');
     const optionalContainer = el('optional-fields-grid');
@@ -1410,6 +1412,7 @@ function createTaskController({
     state.compactFlow.editingTemplate = false;
 
     renderCompactFlowPanel();
+    updateFormHeaderForSelection();
     renderDynamicFields();
     showScreen('form');
   }
