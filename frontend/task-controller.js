@@ -57,6 +57,18 @@ function createTaskController({
   state.templateDiscovery.tagPickerOpen = Boolean(state.templateDiscovery.tagPickerOpen);
   state.templateCoverageAudit = state.templateCoverageAudit || { issues: [] };
   state.previousGeneratedPrompt = state.previousGeneratedPrompt || '';
+  state.compactFlow = state.compactFlow || {
+    editingCategory: false,
+    editingTemplate: false,
+  };
+
+  function getFlowMode() {
+    return state.settings.flowMode || 'step';
+  }
+
+  function isCompactFlowMode() {
+    return getFlowMode() === 'single';
+  }
 
   function csvToArray(value = '') {
     return String(value || '')
@@ -319,6 +331,41 @@ function createTaskController({
     if (type !== 'select' && type !== 'multiselect') return false;
     if (field.allowCustom === false) return false;
     return true;
+  }
+
+  function supportsPlaceholderMode(field = {}) {
+    const type = String(field.type || '').toLowerCase();
+    if (type !== 'text' && type !== 'textarea') return false;
+    if (field.allowPlaceholder === false) return false;
+    if (field.allowPlaceholder === true) return true;
+    const haystack = `${field.id || ''} ${field.label || ''}`.toLowerCase();
+    const keywords = [
+      'ausgangstext',
+      'originaltext',
+      'rohtext',
+      'quelltext',
+      'vorlagetext',
+      'textvorlage',
+      'textpassage',
+      'textausschnitt',
+      'umformulieren',
+      'umschreiben',
+      'rewrite',
+    ];
+    return keywords.some((keyword) => haystack.includes(keyword));
+  }
+
+  function placeholderTokenForField(fieldId = '') {
+    const raw = String(fieldId || 'text')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    return `[${raw || 'TEXT'}]`;
+  }
+
+  function placeholderPromptHint(token = '[TEXT]') {
+    return `${token} (Platzhalter verwenden. Den echten Inhalt erst im finalen Handoff direkt einsetzen.)`;
   }
 
   function setHomeDiscoveryStatus(text = '') {
@@ -615,7 +662,143 @@ function createTaskController({
     });
   }
 
+  function setFormSectionsVisibility(visible) {
+    ['form-required-panel', 'form-optional-panel', 'form-advanced-panel', 'form-oneoff-panel', 'form-right-rail']
+      .forEach((id) => {
+        const node = el(id);
+        if (!node) return;
+        node.classList.toggle('is-hidden', !visible);
+      });
+  }
+
+  function updateFormHeaderForSelection() {
+    const categoryConfig = getCategoryConfig();
+    const cfg = categoryConfig[state.selectedCategory];
+    el('form-category-title').textContent = cfg?.title || '';
+    el('form-subcategory-title').textContent = state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template waehlen' : '');
+  }
+
+  function setCompactStepCollapsed(stepNode, collapsed) {
+    if (!stepNode) return;
+    stepNode.classList.toggle('is-collapsed', !!collapsed);
+  }
+
+  function renderCompactFlowPanel() {
+    const panel = el('compact-flow-panel');
+    if (!panel) return;
+
+    const compact = isCompactFlowMode();
+    panel.classList.toggle('is-hidden', !compact);
+    if (!compact) {
+      setFormSectionsVisibility(true);
+      return;
+    }
+
+    const categoryConfig = getCategoryConfig();
+    const categorySelect = el('flow-category-select');
+    const templateSelect = el('flow-template-select');
+    const categoryStep = el('flow-step-category');
+    const templateStep = el('flow-step-template');
+    const editCategoryBtn = el('flow-edit-category');
+    const editTemplateBtn = el('flow-edit-template');
+    const categorySummary = el('flow-category-summary');
+    const templateSummary = el('flow-template-summary');
+
+    const categories = Object.entries(categoryConfig);
+    categorySelect.innerHTML = [
+      '<option value="">Bitte Handlungsfeld waehlen...</option>',
+      ...categories.map(([categoryName, cfg]) => `<option value="${categoryName}">${cfg.title}</option>`),
+    ].join('');
+    categorySelect.value = state.selectedCategory || '';
+
+    const categorySelected = !!state.selectedCategory && !!categoryConfig[state.selectedCategory];
+    if (categorySelected) {
+      const category = categoryConfig[state.selectedCategory];
+      templateStep.classList.remove('is-hidden');
+      templateSelect.innerHTML = [
+        '<option value="">Bitte Template waehlen...</option>',
+        ...(category.unterkategorien || []).map((entry) => `<option value="${entry}">${entry}</option>`),
+      ].join('');
+      templateSelect.value = state.selectedSubcategory || '';
+    } else {
+      templateStep.classList.add('is-hidden');
+      templateSelect.innerHTML = '<option value="">Bitte Template waehlen...</option>';
+      state.selectedSubcategory = null;
+    }
+
+    const categoryCollapsed = categorySelected && !state.compactFlow.editingCategory;
+    setCompactStepCollapsed(categoryStep, categoryCollapsed);
+    editCategoryBtn.classList.toggle('is-hidden', !categoryCollapsed);
+    categorySummary.classList.toggle('is-hidden', !categoryCollapsed);
+    categorySummary.textContent = categoryCollapsed
+      ? `Ausgewaehlt: ${categoryConfig[state.selectedCategory]?.title || state.selectedCategory}`
+      : '';
+
+    const templateSelected = !!state.selectedSubcategory;
+    const templateCollapsed = templateSelected && !state.compactFlow.editingTemplate;
+    setCompactStepCollapsed(templateStep, templateCollapsed);
+    editTemplateBtn.classList.toggle('is-hidden', !templateCollapsed);
+    templateSummary.classList.toggle('is-hidden', !templateCollapsed);
+    templateSummary.textContent = templateCollapsed ? `Ausgewaehlt: ${state.selectedSubcategory}` : '';
+
+    const formReady = templateSelected;
+    setFormSectionsVisibility(formReady);
+    if (!formReady) {
+      setGenerationStatus('Bitte zuerst ein Template in der Kompaktansicht waehlen.', 'info');
+    } else {
+      setGenerationStatus('', 'ok');
+    }
+    updateFormHeaderForSelection();
+  }
+
+  function setCompactCategory(categoryName, { collapseCategory = true, focusTemplate = true } = {}) {
+    const categoryConfig = getCategoryConfig();
+    if (!categoryName || !categoryConfig[categoryName]) {
+      state.selectedCategory = null;
+      state.selectedSubcategory = null;
+      state.compactFlow.editingCategory = true;
+      state.compactFlow.editingTemplate = false;
+      renderCompactFlowPanel();
+      return;
+    }
+
+    state.selectedCategory = categoryName;
+    state.selectedSubcategory = null;
+    state.compactFlow.editingCategory = !collapseCategory;
+    state.compactFlow.editingTemplate = !!focusTemplate;
+    renderCompactFlowPanel();
+    const templateSelect = el('flow-template-select');
+    if (focusTemplate && templateSelect) templateSelect.focus();
+  }
+
+  function setCompactTemplate(subcategoryName, { collapse = true } = {}) {
+    if (!state.selectedCategory) return;
+    const categoryConfig = getCategoryConfig();
+    const cfg = categoryConfig[state.selectedCategory];
+    const valid = (cfg?.unterkategorien || []).includes(subcategoryName);
+    if (!valid) {
+      state.selectedSubcategory = null;
+      state.compactFlow.editingTemplate = true;
+      renderCompactFlowPanel();
+      return;
+    }
+
+    state.selectedSubcategory = subcategoryName;
+    state.compactFlow.editingTemplate = !collapse;
+    renderCompactFlowPanel();
+    renderDynamicFields();
+  }
+
+  function syncFlowModeUi() {
+    state.compactFlow.editingCategory = false;
+    state.compactFlow.editingTemplate = false;
+    renderCompactFlowPanel();
+  }
+
   function renderDynamicFields() {
+    if (isCompactFlowMode() && !state.selectedSubcategory) {
+      return;
+    }
     const template = getTemplateConfig();
     const requiredContainer = el('required-fields-grid');
     const optionalContainer = el('optional-fields-grid');
@@ -639,6 +822,8 @@ function createTaskController({
       wrap.className = field.type === 'checkbox' ? 'checkbox span-2' : '';
       if (field.type !== 'checkbox') wrap.textContent = field.label;
       const allowCustom = allowsCustomDynamicValue(field);
+      const placeholderSupported = supportsPlaceholderMode(field);
+      let customInput = null;
 
       let input;
       if (field.type === 'select') {
@@ -702,7 +887,7 @@ function createTaskController({
       }
 
       if (allowCustom && field.type !== 'checkbox') {
-        const customInput = document.createElement('input');
+        customInput = document.createElement('input');
         customInput.type = 'text';
         customInput.id = `dyn-${field.id}-custom`;
         customInput.disabled = true;
@@ -729,6 +914,66 @@ function createTaskController({
         };
         input.addEventListener('change', syncCustomVisibility);
         syncCustomVisibility();
+      }
+
+      if (placeholderSupported && field.type !== 'checkbox') {
+        const placeholderToggleWrap = document.createElement('div');
+        placeholderToggleWrap.className = 'checkbox top-space';
+        const placeholderToggle = document.createElement('input');
+        placeholderToggle.type = 'checkbox';
+        placeholderToggle.id = `dyn-${field.id}-placeholder-use`;
+        const placeholderToggleLabel = document.createElement('span');
+        placeholderToggleLabel.textContent = 'Platzhalter statt Originaltext verwenden';
+        placeholderToggleWrap.appendChild(placeholderToggle);
+        placeholderToggleWrap.appendChild(placeholderToggleLabel);
+        placeholderToggleWrap.addEventListener('click', (event) => {
+          if (event.target === placeholderToggle) return;
+          placeholderToggle.checked = !placeholderToggle.checked;
+          placeholderToggle.dispatchEvent(new Event('change'));
+        });
+        wrap.appendChild(placeholderToggleWrap);
+
+        const placeholderTokenWrap = document.createElement('div');
+        placeholderTokenWrap.className = 'top-space is-hidden';
+        const placeholderTokenLabel = document.createElement('small');
+        placeholderTokenLabel.className = 'hint';
+        placeholderTokenLabel.textContent = 'Platzhalter-Token im finalen Handoff';
+        const placeholderTokenInput = document.createElement('input');
+        placeholderTokenInput.type = 'text';
+        placeholderTokenInput.id = `dyn-${field.id}-placeholder-token`;
+        placeholderTokenInput.value = placeholderTokenForField(field.id);
+        placeholderTokenInput.placeholder = placeholderTokenForField(field.id);
+        placeholderTokenInput.disabled = true;
+        placeholderTokenWrap.appendChild(placeholderTokenLabel);
+        placeholderTokenWrap.appendChild(placeholderTokenInput);
+        wrap.appendChild(placeholderTokenWrap);
+
+        const placeholderHint = document.createElement('small');
+        placeholderHint.className = 'hint';
+        placeholderHint.textContent = 'Empfohlen bei sensiblen Inhalten: Die KI sieht nur den Platzhalter, nicht den eigentlichen Text.';
+        wrap.appendChild(placeholderHint);
+
+        const syncPlaceholderMode = () => {
+          const active = placeholderToggle.checked;
+          placeholderTokenWrap.classList.toggle('is-hidden', !active);
+          placeholderTokenInput.disabled = !active;
+          input.disabled = active;
+          if (active) {
+            input.required = false;
+            if (customInput) {
+              customInput.disabled = true;
+              customInput.required = false;
+            }
+          } else {
+            input.required = !!field.required;
+            if (customInput && input.value === '__custom__') {
+              customInput.disabled = false;
+              customInput.required = !!field.required;
+            }
+          }
+        };
+        placeholderToggle.addEventListener('change', syncPlaceholderMode);
+        syncPlaceholderMode();
       }
 
       const target = field.required ? requiredContainer : optionalContainer;
@@ -807,7 +1052,13 @@ function createTaskController({
           values[field.id] = selectedValue;
         }
       } else {
-        values[field.id] = node.value.trim();
+        const placeholderActive = supportsPlaceholderMode(field) && readChecked(`dyn-${field.id}-placeholder-use`);
+        if (placeholderActive) {
+          const token = readValue(`dyn-${field.id}-placeholder-token`) || placeholderTokenForField(field.id);
+          values[field.id] = placeholderPromptHint(token);
+        } else {
+          values[field.id] = node.value.trim();
+        }
       }
     });
     return values;
@@ -863,6 +1114,10 @@ function createTaskController({
   }
 
   function collectGenerationContext({ validate = true } = {}) {
+    if (!state.selectedCategory || !state.selectedSubcategory) {
+      if (validate) alert('Bitte zuerst Kategorie und Template auswaehlen.');
+      return null;
+    }
     const dynamicValues = collectDynamicValues();
     const extraRequiredValues = collectExtraRequiredValues();
     const mergedDynamicValues = { ...dynamicValues, ...extraRequiredValues };
@@ -993,6 +1248,8 @@ function createTaskController({
   function resetTaskState() {
     state.selectedCategory = null;
     state.selectedSubcategory = null;
+    state.compactFlow.editingCategory = true;
+    state.compactFlow.editingTemplate = false;
     state.generatedPrompt = '';
     state.generatedMeta = '';
     state.lastPromptContext = null;
@@ -1014,15 +1271,19 @@ function createTaskController({
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = '-';
     if (el('result-detail-fach')) el('result-detail-fach').textContent = '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = '-';
+    renderCompactFlowPanel();
     showScreen('home');
   }
 
   function handleCategorySelection(categoryName) {
     const categoryConfig = getCategoryConfig();
     state.selectedCategory = categoryName;
-    if ((state.settings.flowMode || 'step') === 'single') {
-      const defaultSubcategory = categoryConfig[categoryName].unterkategorien[0];
-      openForm(categoryName, defaultSubcategory);
+    if (isCompactFlowMode()) {
+      state.selectedSubcategory = null;
+      state.compactFlow.editingCategory = false;
+      state.compactFlow.editingTemplate = true;
+      showScreen('form');
+      setCompactCategory(categoryName, { collapseCategory: true, focusTemplate: true });
       return;
     }
     renderSubcategoryList(categoryName);
@@ -1033,11 +1294,14 @@ function createTaskController({
     const categoryConfig = getCategoryConfig();
     state.selectedCategory = categoryName;
     state.selectedSubcategory = subcategoryName;
+    state.compactFlow.editingCategory = false;
+    state.compactFlow.editingTemplate = false;
 
     const cfg = categoryConfig[categoryName];
     el('form-category-title').textContent = cfg.title;
     el('form-subcategory-title').textContent = subcategoryName;
 
+    renderCompactFlowPanel();
     renderDynamicFields();
     showScreen('form');
   }
@@ -1204,6 +1468,39 @@ function createTaskController({
   }
 
   function bindEvents() {
+    const flowCategorySelect = el('flow-category-select');
+    const flowTemplateSelect = el('flow-template-select');
+    const flowEditCategory = el('flow-edit-category');
+    const flowEditTemplate = el('flow-edit-template');
+
+    if (flowCategorySelect) {
+      flowCategorySelect.addEventListener('change', () => {
+        setCompactCategory(flowCategorySelect.value, { collapseCategory: true, focusTemplate: true });
+      });
+    }
+    if (flowTemplateSelect) {
+      flowTemplateSelect.addEventListener('change', () => {
+        setCompactTemplate(flowTemplateSelect.value, { collapse: true });
+      });
+    }
+    if (flowEditCategory) {
+      flowEditCategory.addEventListener('click', () => {
+        state.compactFlow.editingCategory = true;
+        state.compactFlow.editingTemplate = false;
+        renderCompactFlowPanel();
+        const node = el('flow-category-select');
+        if (node) node.focus();
+      });
+    }
+    if (flowEditTemplate) {
+      flowEditTemplate.addEventListener('click', () => {
+        state.compactFlow.editingTemplate = true;
+        renderCompactFlowPanel();
+        const node = el('flow-template-select');
+        if (node) node.focus();
+      });
+    }
+
     el('oneoff-enable').addEventListener('change', () => {
       el('oneoff-fields').classList.toggle('is-hidden', !el('oneoff-enable').checked);
     });
@@ -1245,6 +1542,8 @@ function createTaskController({
       const search = el('home-template-search').value.trim();
       refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
     });
+
+    syncFlowModeUi();
   }
 
   return {
@@ -1260,6 +1559,7 @@ function createTaskController({
     exportPrompt,
     setupAdvancedPresets,
     syncAdvancedSectionUi,
+    syncFlowModeUi,
   };
 }
 

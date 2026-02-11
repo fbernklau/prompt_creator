@@ -1,4 +1,5 @@
 function createUiShell({ el }) {
+  const screenIds = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin', 'dashboard'];
   const screenNavMap = {
     home: 'btn-new-task',
     subcategory: 'btn-new-task',
@@ -16,10 +17,12 @@ function createUiShell({ el }) {
   };
   let currentScreen = 'home';
   let activeDrawer = null;
+  let suppressHistoryPush = false;
 
   function setActiveNav(buttonId) {
-    document.querySelectorAll('.topbar-actions .nav-btn').forEach((button) => {
-      button.classList.toggle('is-active', button.id === buttonId);
+    document.querySelectorAll('.nav-btn[data-nav-id], .nav-btn[id]').forEach((button) => {
+      const navId = button.dataset.navId || button.id;
+      button.classList.toggle('is-active', navId === buttonId);
     });
   }
 
@@ -53,11 +56,26 @@ function createUiShell({ el }) {
     syncActiveNav();
   }
 
-  function showScreen(screenName) {
-    const ids = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin', 'dashboard'];
-    ids.forEach((name) => el(`screen-${name}`).classList.toggle('is-hidden', name !== screenName));
+  function showScreen(screenName, { pushHistory = true, replaceHistory = false } = {}) {
+    if (!screenIds.includes(screenName)) return;
+    const previousScreen = currentScreen;
+    screenIds.forEach((name) => el(`screen-${name}`).classList.toggle('is-hidden', name !== screenName));
     currentScreen = screenName;
     document.body.dataset.screen = screenName;
+
+    if (typeof window !== 'undefined') {
+      const historyState = window.history.state || {};
+      const nextState = { ...historyState, appScreen: screenName };
+      if (replaceHistory) {
+        window.history.replaceState(nextState, '');
+      } else if (!suppressHistoryPush && pushHistory && previousScreen !== screenName) {
+        if (!historyState.appScreen) window.history.replaceState(nextState, '');
+        else window.history.pushState(nextState, '');
+      } else if (!historyState.appScreen) {
+        window.history.replaceState(nextState, '');
+      }
+    }
+
     syncActiveNav();
   }
 
@@ -72,6 +90,22 @@ function createUiShell({ el }) {
   function applyNavLayout(layout) {
     const normalized = layout === 'sidebar' ? 'sidebar' : 'topbar';
     document.body.setAttribute('data-nav-layout', normalized);
+  }
+
+  if (typeof window !== 'undefined') {
+    const initialState = window.history.state || {};
+    if (!initialState.appScreen) {
+      window.history.replaceState({ ...initialState, appScreen: currentScreen }, '');
+    }
+
+    window.addEventListener('popstate', (event) => {
+      const targetScreen = event.state?.appScreen;
+      if (!targetScreen || !screenIds.includes(targetScreen)) return;
+      closeDrawers();
+      suppressHistoryPush = true;
+      showScreen(targetScreen, { pushHistory: false });
+      suppressHistoryPush = false;
+    });
   }
 
   return {

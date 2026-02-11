@@ -32,18 +32,41 @@
           <div class="brand-name">EduPrompt-AT</div>
         </div>
         <div class="topbar-actions">
-          <button id="btn-new-task" type="button" class="text-btn nav-btn">Neue Aufgabe</button>
-          <button id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
-          <button id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
-          <button id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
-          <button id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
-          <button id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
-          <button id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
-          <button id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
+          <button id="btn-new-task" data-nav-id="btn-new-task" type="button" class="text-btn nav-btn">Neue Aufgabe</button>
+          <button id="btn-library" data-nav-id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
+          <button id="btn-dashboard" data-nav-id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
+          <button id="btn-templates" data-nav-id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
+          <button id="btn-history" data-nav-id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
+          <button id="btn-provider" data-nav-id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
+          <button id="btn-options" data-nav-id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
+          <button id="btn-admin" data-nav-id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
           <span class="user-chip" id="current-user">Benutzer: lade...</span>
         </div>
       </div>
     </header>
+
+    <nav id="mobile-bottom-nav" class="mobile-bottom-nav" aria-label="Mobile Navigation">
+      <button id="mb-new-task" data-nav-id="btn-new-task" type="button" class="nav-btn mobile-nav-btn">
+        <span class="material-icons-round">add_circle</span>
+        <span>Neu</span>
+      </button>
+      <button id="mb-library" data-nav-id="btn-library" type="button" class="nav-btn mobile-nav-btn">
+        <span class="material-icons-round">library_books</span>
+        <span>Bibliothek</span>
+      </button>
+      <button id="mb-dashboard" data-nav-id="btn-dashboard" type="button" class="nav-btn mobile-nav-btn">
+        <span class="material-icons-round">dashboard</span>
+        <span>Dashboard</span>
+      </button>
+      <button id="mb-provider" data-nav-id="btn-provider" type="button" class="nav-btn mobile-nav-btn">
+        <span class="material-icons-round">api</span>
+        <span>Provider</span>
+      </button>
+      <button id="mb-options" data-nav-id="btn-options" type="button" class="nav-btn mobile-nav-btn">
+        <span class="material-icons-round">tune</span>
+        <span>Optionen</span>
+      </button>
+    </nav>
 
     <main class="main-shell">
       <section id="screen-home" class="screen tw-home">
@@ -133,13 +156,43 @@
         </div>
 
         <form id="prompt-form" class="stack-form">
-          <div class="panel panel-soft form-required-panel tw-form-card tw-form-required">
+          <div id="compact-flow-panel" class="panel panel-soft tw-form-card tw-compact-flow is-hidden">
+            <h3>Kompaktansicht</h3>
+            <small class="hint">Waehle Kategorie und Template. Die naechste Stufe oeffnet automatisch.</small>
+            <div class="tw-compact-flow-steps top-space">
+              <div id="flow-step-category" class="tw-compact-step">
+                <div class="tw-compact-step-head">
+                  <strong>1. Handlungsfeld</strong>
+                  <button id="flow-edit-category" type="button" class="text-btn small is-hidden">Aendern</button>
+                </div>
+                <div class="tw-compact-step-body top-space">
+                  <label for="flow-category-select" class="sr-only">Handlungsfeld</label>
+                  <select id="flow-category-select"></select>
+                </div>
+                <small id="flow-category-summary" class="hint is-hidden"></small>
+              </div>
+
+              <div id="flow-step-template" class="tw-compact-step is-hidden">
+                <div class="tw-compact-step-head">
+                  <strong>2. Template</strong>
+                  <button id="flow-edit-template" type="button" class="text-btn small is-hidden">Aendern</button>
+                </div>
+                <div class="tw-compact-step-body top-space">
+                  <label for="flow-template-select" class="sr-only">Template</label>
+                  <select id="flow-template-select"></select>
+                </div>
+                <small id="flow-template-summary" class="hint is-hidden"></small>
+              </div>
+            </div>
+          </div>
+
+          <div id="form-required-panel" class="panel panel-soft form-required-panel tw-form-card tw-form-required">
             <h3 id="required-panel-title">Template - Pflichtfelder</h3>
             <small id="validation-hint" class="hint"></small>
             <div id="required-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
 
-          <div class="panel form-optional-panel tw-form-card">
+          <div id="form-optional-panel" class="panel form-optional-panel tw-form-card">
             <h3 id="optional-panel-title">Template - Optionale Felder</h3>
             <div id="optional-fields-grid" class="grid-2 compact-grid top-space"></div>
           </div>
@@ -162,7 +215,7 @@
             <div id="dynamic-fields-pool" class="is-hidden"></div>
           </div>
 
-          <div class="panel form-advanced-panel tw-form-card">
+          <div id="form-advanced-panel" class="panel form-advanced-panel tw-form-card">
             <div class="panel-title-row">
               <h3>Erweiterte Optionen</h3>
               <button id="toggle-advanced" type="button" class="text-btn small">▼ Optionen einblenden</button>
@@ -219,7 +272,7 @@
               <span>Kl&auml;rende R&uuml;ckfragen aktivieren</span>
             </label>
           </div>
-          <div class="panel form-oneoff-panel tw-form-card tw-form-oneoff">
+          <div id="form-oneoff-panel" class="panel form-oneoff-panel tw-form-card tw-form-oneoff">
             <div class="panel-title-row">
               <h3>Einmaliger Template-Override (optional)</h3>
             </div>
@@ -257,7 +310,7 @@
             </div>
           </div>
 
-          <div class="tw-form-right-rail">
+          <div id="form-right-rail" class="tw-form-right-rail">
             <div class="inline-actions form-submit-row tw-form-submit-row">
               <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
               <small id="generation-status" class="hint"></small>

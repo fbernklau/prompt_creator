@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-10
+Last updated: 2026-02-11
 Owner: Team + Codex
 
 ## Purpose
@@ -10,10 +10,10 @@ Owner: Team + Codex
 
 ## Current Snapshot
 - Branch: `main`
-- HEAD commit: `8a73dc51d752f037dc7d21feca73fce1feb8457b`
-- HEAD message: `Another checkbox fix`
+- HEAD commit: `8fae7d10fe1af89c558eb7650852aa4c538d0cd6`
+- HEAD message: `updated todo`
 - Stable fallback tag: `0.1-stableish` -> `acee376`
-- Working tree: clean
+- Working tree: dirty (ongoing UX refactor in progress)
 
 ## Environment Status (checked in this session)
 - [x] `node` available (`v24.13.0`)
@@ -111,6 +111,19 @@ Owner: Team + Codex
 - [ ] Step 4: Add migration baseline (schema version table + first migration).
 - [ ] Step 5: Add integration/regression tests (especially privacy + generation parser).
 - [ ] Step 6: Final Template Studio UX pass (review/approval flow clarity + form validation).
+
+## New Intake (2026-02-11)
+- [x] Rebuild compact flow mode as cascading selection flow (category -> template -> fields) with no forced first-template auto-selection.
+- [x] Cascading flow behavior: selecting category/template auto-focuses next step and collapses previous (with "Aendern" re-open controls).
+- [x] Client-side view history navigation added (`popstate` + app screen state), so browser back returns to previous app view.
+- [x] Mobile navigation variant implemented as bottom tab bar for primary actions.
+- [x] For rewrite-style text parameters, placeholder mode added ("Platzhalter statt Originaltext"), including token control.
+- [ ] Dark mode refinement started: token palette updated + `system`/`dark` selector consistency improved; final visual tuning pass still pending.
+
+## In Progress Now (UI/UX cycle)
+- [ ] Visual QA pass for compact flow across all templates (desktop + mobile).
+- [ ] Dark mode polish pass against latest mockups (contrast, spacing, panel hierarchy).
+- [ ] End-to-end smoke test: compact flow + generation + preview + placeholder mode.
 
 ## Notes for Tomorrow
 - The current UI is in a good state for supervisor testing.

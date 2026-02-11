@@ -130,6 +130,45 @@ async function loadServerData() {
   state.activeId = state.providers[0]?.id || null;
 }
 
+async function reloadCatalogUi() {
+  const catalog = await loadTemplateCatalog(api);
+  categoryConfig = catalog.categories;
+  presetOptions = catalog.presetOptions;
+  taskController.renderCategoryGrid();
+  await taskController.refreshTemplateDiscovery();
+  libraryController.prepareLibraryFilters();
+}
+
+function setSettingsStatus(text = '') {
+  el('settings-status').textContent = text;
+  if (!text) return;
+  setTimeout(() => {
+    if (el('settings-status').textContent === text) {
+      el('settings-status').textContent = '';
+    }
+  }, 1400);
+}
+
+let settingsSaveChain = Promise.resolve();
+function queueSettingsSave(partial, { refreshCatalog = false, showStatus = true } = {}) {
+  settingsSaveChain = settingsSaveChain
+    .then(async () => {
+      await settingsController.saveSettings(partial, false);
+      taskController.syncAdvancedSectionUi();
+      taskController.syncFlowModeUi();
+      if (refreshCatalog) {
+        await reloadCatalogUi();
+      }
+      if (showStatus) {
+        setSettingsStatus('Automatisch gespeichert.');
+      }
+    })
+    .catch((error) => {
+      alert(error.message);
+    });
+  return settingsSaveChain;
+}
+
 function bindEvents() {
   providerController.initializeProviderForm();
   adminController.bindEvents();
@@ -147,6 +186,20 @@ function bindEvents() {
     uiShell.showScreen('library');
     await libraryController.refreshLibrary();
   });
+  if (el('mb-new-task')) el('mb-new-task').addEventListener('click', taskController.resetTaskState);
+  if (el('mb-library')) {
+    el('mb-library').addEventListener('click', async () => {
+      uiShell.showScreen('library');
+      await libraryController.refreshLibrary();
+    });
+  }
+  if (el('mb-dashboard')) {
+    el('mb-dashboard').addEventListener('click', () => {
+      el('btn-dashboard').click();
+    });
+  }
+  if (el('mb-provider')) el('mb-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
+  if (el('mb-options')) el('mb-options').addEventListener('click', () => uiShell.openDrawer('options-drawer'));
 
   el('btn-new-task').addEventListener('click', taskController.resetTaskState);
   el('btn-restart-from-result').addEventListener('click', taskController.resetTaskState);
@@ -196,34 +249,62 @@ function bindEvents() {
   el('lib-refresh').addEventListener('click', () => libraryController.refreshLibrary().catch((error) => alert(error.message)));
   el('library-list').addEventListener('click', (event) => libraryController.handleLibraryAction(event).catch((error) => alert(error.message)));
 
-  el('save-settings').addEventListener('click', async () => {
+  const collectFullSettingsPayload = () => {
     const theme = document.querySelector('input[name="theme"]:checked')?.value || 'system';
     const flowMode = document.querySelector('input[name="flow-mode"]:checked')?.value || 'step';
     const navLayout = document.querySelector('input[name="nav-layout"]:checked')?.value || 'topbar';
-    await settingsController.saveSettings({
+    return {
       theme,
       flowMode,
       navLayout,
       copyIncludeMetadata: el('setting-copy-metadata').checked,
       advancedOpen: el('setting-advanced-open').checked,
       showCommunityTemplates: el('setting-show-community').checked,
+    };
+  };
+
+  el('save-settings').addEventListener('click', async () => {
+    await queueSettingsSave(collectFullSettingsPayload(), { refreshCatalog: true, showStatus: false });
+    setSettingsStatus('Gespeichert.');
+  });
+
+  document.querySelectorAll('input[name="theme"]').forEach((node) => {
+    node.addEventListener('change', () => {
+      queueSettingsSave({ theme: node.value });
     });
-    taskController.syncAdvancedSectionUi();
-    const catalog = await loadTemplateCatalog(api);
-    categoryConfig = catalog.categories;
-    presetOptions = catalog.presetOptions;
-    taskController.renderCategoryGrid();
-    await taskController.refreshTemplateDiscovery();
-    libraryController.prepareLibraryFilters();
+  });
+  document.querySelectorAll('input[name="flow-mode"]').forEach((node) => {
+    node.addEventListener('change', () => {
+      queueSettingsSave({ flowMode: node.value });
+    });
+  });
+  document.querySelectorAll('input[name="nav-layout"]').forEach((node) => {
+    node.addEventListener('change', () => {
+      queueSettingsSave({ navLayout: node.value });
+    });
+  });
+  el('setting-copy-metadata').addEventListener('change', () => {
+    queueSettingsSave({ copyIncludeMetadata: el('setting-copy-metadata').checked });
+  });
+  el('setting-advanced-open').addEventListener('change', () => {
+    queueSettingsSave({ advancedOpen: el('setting-advanced-open').checked });
+  });
+  el('setting-show-community').addEventListener('change', () => {
+    queueSettingsSave(
+      { showCommunityTemplates: el('setting-show-community').checked },
+      { refreshCatalog: true }
+    );
   });
 
   el('choose-flow-step').addEventListener('click', async () => {
     await settingsController.saveSettings({ flowMode: 'step' }, false);
+    taskController.syncFlowModeUi();
     el('flow-choice-modal').classList.add('is-hidden');
     if (shouldShowSetupWizard()) showSetupWizard();
   });
   el('choose-flow-single').addEventListener('click', async () => {
     await settingsController.saveSettings({ flowMode: 'single' }, false);
+    taskController.syncFlowModeUi();
     el('flow-choice-modal').classList.add('is-hidden');
     if (shouldShowSetupWizard()) showSetupWizard();
   });
@@ -268,6 +349,7 @@ async function init() {
     taskController.setupAdvancedPresets();
     settingsController.applySettingsToUi();
     taskController.syncAdvancedSectionUi();
+    taskController.syncFlowModeUi();
     providerController.renderProviders();
     historyController.renderHistory();
     adminController.ensureAdminVisible();
