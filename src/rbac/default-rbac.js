@@ -22,6 +22,7 @@ const DEFAULT_PERMISSIONS = [
   { key: 'tags.moderate', description: 'Moderate official/community tags.' },
   { key: 'admin.access', description: 'Access admin interface.' },
   { key: 'rbac.manage', description: 'Manage roles, permissions and group-role bindings.' },
+  { key: 'pricing.manage', description: 'Manage provider model pricing catalog.' },
 ];
 
 const DEFAULT_ROLES = [
@@ -49,8 +50,8 @@ const DEFAULT_ROLES = [
     ],
   },
   {
-    key: 'template_reviewers',
-    name: 'Template Reviewers',
+    key: 'prompt_creator_template_reviewers',
+    name: 'Prompt Creator Template Reviewers',
     description: 'Review and moderation for community templates.',
     system: true,
     permissions: [
@@ -64,8 +65,8 @@ const DEFAULT_ROLES = [
     ],
   },
   {
-    key: 'template_curators',
-    name: 'Template Curators',
+    key: 'prompt_creator_template_curators',
+    name: 'Prompt Creator Template Curators',
     description: 'Official template and taxonomy management.',
     system: true,
     permissions: [
@@ -79,11 +80,12 @@ const DEFAULT_ROLES = [
       'tags.read',
       'tags.moderate',
       'admin.access',
+      'pricing.manage',
     ],
   },
   {
-    key: 'platform_admins',
-    name: 'Platform Admins',
+    key: 'prompt_creator_platform_admins',
+    name: 'Prompt Creator Platform Admins',
     description: 'Full platform and RBAC administration.',
     system: true,
     permissions: ['*'],
@@ -92,9 +94,9 @@ const DEFAULT_ROLES = [
 
 const DEFAULT_GROUP_ROLE_BINDINGS = [
   { groupName: 'teachers', roleKey: 'teachers' },
-  { groupName: 'template_reviewers', roleKey: 'template_reviewers' },
-  { groupName: 'template_curators', roleKey: 'template_curators' },
-  { groupName: 'platform_admins', roleKey: 'platform_admins' },
+  { groupName: 'prompt_creator_template_reviewers', roleKey: 'prompt_creator_template_reviewers' },
+  { groupName: 'prompt_creator_template_curators', roleKey: 'prompt_creator_template_curators' },
+  { groupName: 'prompt_creator_platform_admins', roleKey: 'prompt_creator_platform_admins' },
 ];
 
 module.exports = {

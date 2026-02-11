@@ -16,6 +16,9 @@ function createProviderController({
   uid,
   setVaultStatus,
 }) {
+  state.providerModelCatalog = state.providerModelCatalog || { ...PROVIDER_MODEL_CATALOG };
+  state.providerPricingCatalog = state.providerPricingCatalog || [];
+
   function redactKeyState(provider) {
     if (provider.hasServerKey) return 'server-verschluesselt';
     if (provider.canUseSharedTestKey) return 'shared test key';
@@ -35,7 +38,74 @@ function createProviderController({
   }
 
   function getCatalogModels(kind) {
+    const fromApi = state.providerModelCatalog?.[kind];
+    if (Array.isArray(fromApi) && fromApi.length > 0) return fromApi;
     return Array.isArray(PROVIDER_MODEL_CATALOG[kind]) ? PROVIDER_MODEL_CATALOG[kind] : [];
+  }
+
+  function parseNonNegativeNumberOrNull(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const normalized = Number(value);
+    if (!Number.isFinite(normalized) || normalized < 0) return null;
+    return normalized;
+  }
+
+  function findCatalogPricing(kind, model) {
+    if (!Array.isArray(state.providerPricingCatalog)) return null;
+    return state.providerPricingCatalog.find((entry) => entry.providerKind === kind && entry.model === model) || null;
+  }
+
+  function getSelectedPricingMode() {
+    return el('provider-pricing-mode').value === 'custom' ? 'custom' : 'catalog';
+  }
+
+  function syncPricingUi() {
+    const pricingMode = getSelectedPricingMode();
+    const inputWrap = el('provider-pricing-input-wrap');
+    const outputWrap = el('provider-pricing-output-wrap');
+    const input = el('provider-pricing-input');
+    const output = el('provider-pricing-output');
+    const hint = el('provider-pricing-hint');
+    const kind = el('provider-kind').value;
+    const model = getSelectedModel();
+
+    const showCustom = pricingMode === 'custom';
+    inputWrap.classList.toggle('is-hidden', !showCustom);
+    outputWrap.classList.toggle('is-hidden', !showCustom);
+    input.required = showCustom;
+    output.required = showCustom;
+
+    if (showCustom) {
+      hint.textContent = 'Custom aktiv: Kostenberechnung nutzt deine Input/Output-Preise.';
+      return;
+    }
+
+    const catalogEntry = findCatalogPricing(kind, model);
+    if (catalogEntry) {
+      hint.textContent = `Katalog aktiv: ${catalogEntry.inputPricePerMillion} / ${catalogEntry.outputPricePerMillion} ${catalogEntry.currency} pro 1M Tokens.`;
+    } else {
+      hint.textContent = 'Katalog aktiv: Fuer dieses Modell ist aktuell kein Preis hinterlegt.';
+    }
+  }
+
+  async function refreshModelCatalog() {
+    try {
+      const payload = await api('/api/providers/model-catalog');
+      if (payload && typeof payload === 'object') {
+        state.providerModelCatalog = payload.catalog || { ...PROVIDER_MODEL_CATALOG };
+        state.providerPricingCatalog = Array.isArray(payload.pricing) ? payload.pricing : [];
+      }
+    } catch (_error) {
+      state.providerModelCatalog = { ...PROVIDER_MODEL_CATALOG };
+      state.providerPricingCatalog = [];
+    }
+  }
+
+  async function refreshModelCatalogAndSync() {
+    const preferredModel = getSelectedModel();
+    await refreshModelCatalog();
+    syncProviderModelUi({ preferredModel });
+    syncPricingUi();
   }
 
   function syncModelCustomUi() {
@@ -45,6 +115,7 @@ function createProviderController({
     customWrap.classList.toggle('is-hidden', !isCustom);
     customInput.required = isCustom;
     if (!isCustom) customInput.value = '';
+    syncPricingUi();
   }
 
   function syncProviderModelUi({ preferredModel = '' } = {}) {
@@ -80,6 +151,7 @@ function createProviderController({
       hint.textContent = `${getProviderLabel(kind)}: Modell frei definierbar.`;
     }
     syncModelCustomUi();
+    syncPricingUi();
   }
 
   function getSelectedModel() {
@@ -124,12 +196,19 @@ function createProviderController({
     el('provider-kind').addEventListener('change', () => {
       syncProviderModelUi();
       syncProviderBaseUi();
+      syncPricingUi();
     });
     el('provider-model').addEventListener('change', syncModelCustomUi);
     el('provider-auto-base').addEventListener('change', syncProviderBaseUi);
+    el('provider-pricing-mode').addEventListener('change', syncPricingUi);
     el('provider-auto-base').checked = true;
-    syncProviderModelUi();
+    refreshModelCatalog()
+      .catch(() => {})
+      .finally(() => {
+        syncProviderModelUi();
+      });
     syncProviderBaseUi();
+    syncPricingUi();
   }
 
   function startEditProvider(id) {
@@ -144,11 +223,15 @@ function createProviderController({
       ? 'Leer lassen = vorhandenen Key beibehalten'
       : 'API-Key fuer diesen Provider';
     el('provider-base').value = provider.baseUrl || '';
+    el('provider-pricing-mode').value = provider.pricingMode === 'custom' ? 'custom' : 'catalog';
+    el('provider-pricing-input').value = provider.inputPricePerMillion ?? '';
+    el('provider-pricing-output').value = provider.outputPricePerMillion ?? '';
     const recommendedBaseUrl = getRecommendedBaseUrl(provider.kind);
     const isPresetMode = provider.baseUrlMode === 'preset'
       || (!provider.baseUrlMode && !!recommendedBaseUrl && provider.baseUrl === recommendedBaseUrl);
     el('provider-auto-base').checked = isPresetMode;
     syncProviderBaseUi();
+    syncPricingUi();
   }
 
   function clearProviderForm() {
@@ -156,8 +239,12 @@ function createProviderController({
     el('provider-form').reset();
     el('provider-key').placeholder = 'API-Key (wird serverseitig verschluesselt)';
     el('provider-auto-base').checked = true;
+    el('provider-pricing-mode').value = 'catalog';
+    el('provider-pricing-input').value = '';
+    el('provider-pricing-output').value = '';
     syncProviderModelUi();
     syncProviderBaseUi();
+    syncPricingUi();
   }
 
   function getDraftProviderPayload() {
@@ -172,6 +259,9 @@ function createProviderController({
       model: getSelectedModel(),
       baseUrl,
       baseUrlMode: useRecommendedBaseUrl ? 'preset' : 'custom',
+      pricingMode: getSelectedPricingMode(),
+      inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
+      outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
     };
     const apiKey = el('provider-key').value.trim();
     if (apiKey) payload.apiKey = apiKey;
@@ -252,6 +342,9 @@ function createProviderController({
       model,
       baseUrl,
       baseUrlMode,
+      pricingMode: getSelectedPricingMode(),
+      inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
+      outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
     };
     if (keyInput) provider.apiKey = keyInput;
 
@@ -261,6 +354,7 @@ function createProviderController({
     });
 
     state.providers = await api('/api/providers');
+    await refreshModelCatalog();
     if (!state.activeId) state.activeId = provider.id;
     if (!state.providers.some((entry) => entry.id === state.activeId)) {
       state.activeId = state.providers[0]?.id || null;
@@ -308,6 +402,8 @@ function createProviderController({
     initializeProviderForm,
     renderProviders,
     clearProviderForm,
+    refreshModelCatalog,
+    refreshModelCatalogAndSync,
     deleteProvider,
     unlockVault,
     lockVault,

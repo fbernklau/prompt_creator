@@ -176,7 +176,10 @@ function bindEvents() {
   dashboardController.bindEvents();
   taskController.bindEvents();
 
-  el('btn-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
+  el('btn-provider').addEventListener('click', () => {
+    providerController.refreshModelCatalogAndSync().catch(() => {});
+    uiShell.openDrawer('provider-drawer');
+  });
   el('btn-history').addEventListener('click', () => {
     historyController.renderHistory();
     uiShell.openDrawer('history-drawer');
@@ -198,7 +201,12 @@ function bindEvents() {
       el('btn-dashboard').click();
     });
   }
-  if (el('mb-provider')) el('mb-provider').addEventListener('click', () => uiShell.openDrawer('provider-drawer'));
+  if (el('mb-provider')) {
+    el('mb-provider').addEventListener('click', () => {
+      providerController.refreshModelCatalogAndSync().catch(() => {});
+      uiShell.openDrawer('provider-drawer');
+    });
+  }
   if (el('mb-options')) el('mb-options').addEventListener('click', () => uiShell.openDrawer('options-drawer'));
 
   el('btn-new-task').addEventListener('click', taskController.resetTaskState);
@@ -339,6 +347,7 @@ async function init() {
 
   try {
     await loadServerData();
+    await providerController.refreshModelCatalog();
     const catalog = await loadTemplateCatalog(api);
     categoryConfig = catalog.categories;
     presetOptions = catalog.presetOptions;

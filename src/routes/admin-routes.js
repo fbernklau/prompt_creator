@@ -22,9 +22,17 @@ function normalizePermissionKey(value = '') {
     .slice(0, 120);
 }
 
+function parseNonNegativeNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return null;
+  return normalized;
+}
+
 function createAdminRouter() {
   const router = Router();
   const guard = [authMiddleware, accessMiddleware, requirePermission('rbac.manage')];
+  const pricingGuard = [authMiddleware, accessMiddleware, requirePermission('pricing.manage')];
 
   router.get('/admin/permissions', ...guard, asyncHandler(async (_req, res) => {
     const result = await pool.query(
@@ -203,6 +211,102 @@ function createAdminRouter() {
     if (!Number.isInteger(bindingId)) return res.status(400).json({ error: 'Invalid binding id.' });
     const result = await pool.query('DELETE FROM rbac_group_role_bindings WHERE id = $1 RETURNING id', [bindingId]);
     if (!result.rowCount) return res.status(404).json({ error: 'Binding not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.get('/admin/model-pricing', ...pricingGuard, asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT id, provider_kind, model, input_price_per_million, output_price_per_million, currency, is_active, updated_at
+       FROM provider_model_pricing_catalog
+       ORDER BY provider_kind ASC, model ASC`
+    );
+    res.json(result.rows.map((row) => ({
+      id: row.id,
+      providerKind: row.provider_kind,
+      model: row.model,
+      inputPricePerMillion: Number(row.input_price_per_million),
+      outputPricePerMillion: Number(row.output_price_per_million),
+      currency: String(row.currency || 'USD').trim().toUpperCase() || 'USD',
+      isActive: Boolean(row.is_active),
+      updatedAt: row.updated_at,
+    })));
+  }));
+
+  router.post('/admin/model-pricing', ...pricingGuard, asyncHandler(async (req, res) => {
+    const providerKind = String(req.body?.providerKind || '').trim().toLowerCase();
+    const model = String(req.body?.model || '').trim();
+    const inputPricePerMillion = parseNonNegativeNumberOrNull(req.body?.inputPricePerMillion);
+    const outputPricePerMillion = parseNonNegativeNumberOrNull(req.body?.outputPricePerMillion);
+    const currency = String(req.body?.currency || 'USD').trim().toUpperCase() || 'USD';
+
+    if (!providerKind || !model) {
+      return res.status(400).json({ error: 'providerKind and model are required.' });
+    }
+    if (inputPricePerMillion === null || outputPricePerMillion === null) {
+      return res.status(400).json({ error: 'inputPricePerMillion and outputPricePerMillion are required.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO provider_model_pricing_catalog
+         (provider_kind, model, input_price_per_million, output_price_per_million, currency, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,TRUE,$6,$6)
+       ON CONFLICT (provider_kind, model)
+       DO UPDATE SET
+         input_price_per_million = EXCLUDED.input_price_per_million,
+         output_price_per_million = EXCLUDED.output_price_per_million,
+         currency = EXCLUDED.currency,
+         is_active = TRUE,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()
+       RETURNING id`,
+      [providerKind, model, inputPricePerMillion, outputPricePerMillion, currency, req.userId]
+    );
+
+    res.json({ ok: true, id: result.rows[0].id });
+  }));
+
+  router.put('/admin/model-pricing/:pricingId', ...pricingGuard, asyncHandler(async (req, res) => {
+    const pricingId = Number(req.params.pricingId);
+    if (!Number.isInteger(pricingId)) return res.status(400).json({ error: 'Invalid pricing id.' });
+
+    const inputPricePerMillion = parseNonNegativeNumberOrNull(req.body?.inputPricePerMillion);
+    const outputPricePerMillion = parseNonNegativeNumberOrNull(req.body?.outputPricePerMillion);
+    const currency = String(req.body?.currency || 'USD').trim().toUpperCase() || 'USD';
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    if (inputPricePerMillion === null || outputPricePerMillion === null) {
+      return res.status(400).json({ error: 'inputPricePerMillion and outputPricePerMillion are required.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE provider_model_pricing_catalog
+       SET input_price_per_million = $1,
+           output_price_per_million = $2,
+           currency = $3,
+           is_active = $4,
+           updated_by = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING id`,
+      [inputPricePerMillion, outputPricePerMillion, currency, isActive, req.userId, pricingId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Pricing entry not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.delete('/admin/model-pricing/:pricingId', ...pricingGuard, asyncHandler(async (req, res) => {
+    const pricingId = Number(req.params.pricingId);
+    if (!Number.isInteger(pricingId)) return res.status(400).json({ error: 'Invalid pricing id.' });
+
+    const result = await pool.query(
+      `UPDATE provider_model_pricing_catalog
+       SET is_active = FALSE,
+           updated_by = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id`,
+      [req.userId, pricingId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Pricing entry not found.' });
     res.json({ ok: true });
   }));
 

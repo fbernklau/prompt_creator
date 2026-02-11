@@ -174,6 +174,84 @@ async function seedTemplateCatalogDefaults() {
   }
 }
 
+const LEGACY_ROLE_KEY_RENAMES = [
+  { oldKey: 'template_reviewers', newKey: 'prompt_creator_template_reviewers' },
+  { oldKey: 'template_curators', newKey: 'prompt_creator_template_curators' },
+  { oldKey: 'platform_admins', newKey: 'prompt_creator_platform_admins' },
+];
+
+const LEGACY_GROUP_NAME_RENAMES = [
+  { oldGroup: 'template_reviewers', newGroup: 'prompt_creator_template_reviewers' },
+  { oldGroup: 'template_curators', newGroup: 'prompt_creator_template_curators' },
+  { oldGroup: 'platform_admins', newGroup: 'prompt_creator_platform_admins' },
+];
+
+async function migrateLegacyRoleKeys() {
+  for (const { oldKey, newKey } of LEGACY_ROLE_KEY_RENAMES) {
+    const oldRoleResult = await pool.query('SELECT id FROM rbac_roles WHERE role_key = $1', [oldKey]);
+    const newRoleResult = await pool.query('SELECT id FROM rbac_roles WHERE role_key = $1', [newKey]);
+    const oldRoleId = oldRoleResult.rows[0]?.id || null;
+    const newRoleId = newRoleResult.rows[0]?.id || null;
+
+    if (!oldRoleId) continue;
+
+    if (!newRoleId) {
+      await pool.query(
+        `UPDATE rbac_roles
+         SET role_key = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [newKey, oldRoleId]
+      );
+      continue;
+    }
+
+    await pool.query(
+      `INSERT INTO rbac_role_permissions (role_id, permission_id)
+       SELECT $1, permission_id
+       FROM rbac_role_permissions
+       WHERE role_id = $2
+       ON CONFLICT (role_id, permission_id) DO NOTHING`,
+      [newRoleId, oldRoleId]
+    );
+    await pool.query(
+      `INSERT INTO rbac_group_role_bindings (group_name, role_id)
+       SELECT group_name, $1
+       FROM rbac_group_role_bindings
+       WHERE role_id = $2
+       ON CONFLICT (group_name, role_id) DO NOTHING`,
+      [newRoleId, oldRoleId]
+    );
+    await pool.query('DELETE FROM rbac_group_role_bindings WHERE role_id = $1', [oldRoleId]);
+    await pool.query('DELETE FROM rbac_roles WHERE id = $1', [oldRoleId]);
+  }
+}
+
+async function migrateLegacyGroupBindings() {
+  for (const { oldGroup, newGroup } of LEGACY_GROUP_NAME_RENAMES) {
+    const oldBindings = await pool.query(
+      `SELECT role_id
+       FROM rbac_group_role_bindings
+       WHERE LOWER(group_name) = LOWER($1)`,
+      [oldGroup]
+    );
+    if (!oldBindings.rowCount) continue;
+
+    for (const row of oldBindings.rows) {
+      await pool.query(
+        `INSERT INTO rbac_group_role_bindings (group_name, role_id)
+         VALUES ($1, $2)
+         ON CONFLICT (group_name, role_id) DO NOTHING`,
+        [newGroup, row.role_id]
+      );
+    }
+    await pool.query(
+      `DELETE FROM rbac_group_role_bindings
+       WHERE LOWER(group_name) = LOWER($1)`,
+      [oldGroup]
+    );
+  }
+}
+
 async function seedRbacDefaults() {
   for (const permission of DEFAULT_PERMISSIONS) {
     await pool.query(
@@ -184,6 +262,9 @@ async function seedRbacDefaults() {
       [permission.key, permission.description]
     );
   }
+
+  await migrateLegacyRoleKeys();
+  await migrateLegacyGroupBindings();
 
   for (const role of DEFAULT_ROLES) {
     await pool.query(
@@ -237,6 +318,9 @@ async function initDb() {
       model TEXT NOT NULL,
       base_url TEXT,
       base_url_mode TEXT NOT NULL DEFAULT 'custom',
+      pricing_mode TEXT NOT NULL DEFAULT 'catalog',
+      input_price_per_million NUMERIC(14,8),
+      output_price_per_million NUMERIC(14,8),
       key_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -260,6 +344,31 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE providers
     ALTER COLUMN base_url_mode SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ADD COLUMN IF NOT EXISTS pricing_mode TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ALTER COLUMN pricing_mode SET DEFAULT 'catalog'
+  `);
+  await pool.query(`
+    UPDATE providers
+    SET pricing_mode = 'catalog'
+    WHERE pricing_mode IS NULL
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ALTER COLUMN pricing_mode SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ADD COLUMN IF NOT EXISTS input_price_per_million NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ADD COLUMN IF NOT EXISTS output_price_per_million NUMERIC(14,8)
   `);
   await pool.query(`
     ALTER TABLE providers
@@ -321,6 +430,23 @@ async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS provider_model_pricing_catalog (
+      id BIGSERIAL PRIMARY KEY,
+      provider_kind TEXT NOT NULL,
+      model TEXT NOT NULL,
+      input_price_per_million NUMERIC(14,8) NOT NULL CHECK (input_price_per_million >= 0),
+      output_price_per_million NUMERIC(14,8) NOT NULL CHECK (output_price_per_million >= 0),
+      currency TEXT NOT NULL DEFAULT 'USD',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT NOT NULL DEFAULT 'system',
+      updated_by TEXT NOT NULL DEFAULT 'system',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(provider_kind, model)
+    );
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS provider_usage_audit (
       id BIGSERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -338,12 +464,67 @@ async function initDb() {
       user_id TEXT NOT NULL,
       provider_id TEXT NOT NULL,
       provider_kind TEXT NOT NULL,
+      provider_model TEXT,
+      key_fingerprint TEXT,
       template_id TEXT NOT NULL,
       success BOOLEAN NOT NULL DEFAULT FALSE,
       latency_ms INTEGER NOT NULL DEFAULT 0,
+      prompt_tokens INTEGER,
+      completion_tokens INTEGER,
+      total_tokens INTEGER,
+      input_cost_usd NUMERIC(14,8),
+      output_cost_usd NUMERIC(14,8),
+      total_cost_usd NUMERIC(14,8),
+      pricing_source TEXT,
+      pricing_input_per_million NUMERIC(14,8),
+      pricing_output_per_million NUMERIC(14,8),
       error_type TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS provider_model TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS key_fingerprint TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS completion_tokens INTEGER
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS total_tokens INTEGER
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS input_cost_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS output_cost_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS total_cost_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS pricing_source TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS pricing_input_per_million NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS pricing_output_per_million NUMERIC(14,8)
   `);
 
   await pool.query(`
@@ -497,6 +678,10 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_provider ON provider_generation_events(provider_kind, success, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_model ON provider_generation_events(provider_kind, provider_model, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_keyfp ON provider_generation_events(user_id, key_fingerprint, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_cost ON provider_generation_events(user_id, total_cost_usd DESC, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_model_pricing_catalog_lookup ON provider_model_pricing_catalog(provider_kind, is_active, model)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_user ON template_favorites(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_template ON template_favorites(template_uid)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_rbac_group_name ON rbac_group_role_bindings(LOWER(group_name))');

@@ -14,6 +14,8 @@ function createDashboardController({
     el('usage-total-requests').textContent = String(summary.totalRequests || 0);
     el('usage-success-rate').textContent = `${Number(summary.successRate || 0).toFixed(1)}%`;
     el('usage-avg-latency').textContent = `${Number(summary.avgLatencyMs || 0)} ms`;
+    el('usage-total-tokens').textContent = String(Math.round(Number(summary.totalTokens || 0)));
+    el('usage-total-cost').textContent = `$${Number(summary.totalCostUsd || 0).toFixed(4)}`;
 
     const providerRows = Array.isArray(summary.byProvider) ? summary.byProvider : [];
     el('usage-provider-body').innerHTML = providerRows.length
@@ -28,17 +30,33 @@ function createDashboardController({
               <td>${provider.totalRequests}</td>
               <td>${Number(provider.successRate || 0).toFixed(1)}%</td>
               <td>${Number(provider.avgLatencyMs || 0)} ms</td>
+              <td>${Math.round(Number(provider.totalTokens || 0))}</td>
+              <td>$${Number(provider.totalCostUsd || 0).toFixed(4)}</td>
               <td>${lastError}</td>
             </tr>
           `;
         })
         .join('')
-      : '<tr><td colspan="5">Noch keine Nutzungsdaten verfuegbar.</td></tr>';
+      : '<tr><td colspan="7">Noch keine Nutzungsdaten verfuegbar.</td></tr>';
+
+    const byKey = Array.isArray(summary.byKeyFingerprints) ? summary.byKeyFingerprints : [];
+    el('usage-key-list').innerHTML = byKey.length
+      ? byKey
+        .map((entry) => `
+          <li>
+            <span>
+              <strong>${entry.keyFingerprint}</strong><br/>
+              <small>${entry.totalRequests} Requests | ${Math.round(Number(entry.totalTokens || 0))} Tokens | $${Number(entry.totalCostUsd || 0).toFixed(4)}</small>
+            </span>
+          </li>
+        `)
+        .join('')
+      : '<li><span>Noch keine key-bezogenen Nutzungsdaten verfuegbar.</span></li>';
 
     const topTemplates = Array.isArray(summary.topTemplates) ? summary.topTemplates : [];
     el('usage-template-list').innerHTML = topTemplates.length
       ? topTemplates
-        .map((entry) => `<li><span><strong>${entry.templateId}</strong><br/><small>${entry.totalRequests} Requests | ${Number(entry.successRate || 0).toFixed(1)}% Erfolg</small></span></li>`)
+        .map((entry) => `<li><span><strong>${entry.templateId}</strong><br/><small>${entry.totalRequests} Requests | ${Number(entry.successRate || 0).toFixed(1)}% Erfolg | ${Math.round(Number(entry.totalTokens || 0))} Tokens | $${Number(entry.totalCostUsd || 0).toFixed(4)}</small></span></li>`)
         .join('')
       : '<li><span>Noch keine Template-Nutzung im gewaehlten Zeitraum.</span></li>';
   }

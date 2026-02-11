@@ -491,6 +491,16 @@
             <p id="usage-avg-latency" class="metric">0 ms</p>
           </div>
         </div>
+        <div class="grid-2 top-space">
+          <div class="panel">
+            <h3>Tokens gesamt</h3>
+            <p id="usage-total-tokens" class="metric">0</p>
+          </div>
+          <div class="panel">
+            <h3>Kosten (USD)</h3>
+            <p id="usage-total-cost" class="metric">$0.0000</p>
+          </div>
+        </div>
 
         <div class="panel top-space">
           <h3>Provider &Uuml;berblick</h3>
@@ -502,12 +512,19 @@
                   <th>Requests</th>
                   <th>Success Rate</th>
                   <th>Ø Latenz</th>
+                  <th>Tokens</th>
+                  <th>Kosten (USD)</th>
                   <th>Letzter Fehler</th>
                 </tr>
               </thead>
               <tbody id="usage-provider-body"></tbody>
             </table>
           </div>
+        </div>
+
+        <div class="panel top-space">
+          <h3>Nutzung pro API-Key (Fingerprint)</h3>
+          <ul id="usage-key-list" class="provider-list top-space"></ul>
         </div>
 
         <div class="panel top-space">
@@ -799,7 +816,7 @@
           <h3>Authentik Gruppen -> Rollen</h3>
           <div class="grid-2">
             <label>Authentik Gruppe
-              <input id="admin-binding-group" placeholder="z. B. template_reviewers" />
+              <input id="admin-binding-group" placeholder="z. B. prompt_creator_template_reviewers" />
             </label>
             <label>Rolle
               <select id="admin-binding-role"></select>
@@ -810,6 +827,45 @@
           </div>
           <ul id="admin-binding-list" class="provider-list top-space"></ul>
           <small id="admin-status" class="hint"></small>
+        </div>
+
+        <div id="admin-pricing-panel" class="panel top-space">
+          <h3>Modell-Pricing (Input/Output je 1M Tokens)</h3>
+          <div class="grid-3">
+            <label>Provider
+              <select id="admin-pricing-provider-kind">
+                <option value="openai">openai</option>
+                <option value="anthropic">anthropic</option>
+                <option value="google">google</option>
+                <option value="mistral">mistral</option>
+                <option value="custom">custom</option>
+              </select>
+            </label>
+            <label>Modell
+              <input id="admin-pricing-model" placeholder="z. B. gpt-5-mini" />
+            </label>
+            <label>Waehrung
+              <input id="admin-pricing-currency" value="USD" />
+            </label>
+            <label>Input USD / 1M
+              <input id="admin-pricing-input" type="number" min="0" step="0.000001" />
+            </label>
+            <label>Output USD / 1M
+              <input id="admin-pricing-output" type="number" min="0" step="0.000001" />
+            </label>
+            <label>Aktiv
+              <select id="admin-pricing-active">
+                <option value="true" selected>Ja</option>
+                <option value="false">Nein</option>
+              </select>
+            </label>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="admin-pricing-save" type="button">Preis speichern</button>
+            <button id="admin-pricing-clear" type="button" class="secondary">Form leeren</button>
+            <small id="admin-pricing-status" class="hint"></small>
+          </div>
+          <ul id="admin-pricing-list" class="provider-list top-space"></ul>
         </div>
       </section>
     </main>
@@ -864,6 +920,19 @@
               <input id="provider-model-custom" placeholder="z. B. mein-spezialmodell-v1" />
             </label>
             <small id="provider-model-hint" class="hint span-2"></small>
+            <label>Pricing-Modus
+              <select id="provider-pricing-mode">
+                <option value="catalog" selected>Katalog (Admin-Preise)</option>
+                <option value="custom">Custom (eigene Preise)</option>
+              </select>
+            </label>
+            <label id="provider-pricing-input-wrap" class="is-hidden">Input USD / 1M
+              <input id="provider-pricing-input" type="number" min="0" step="0.000001" placeholder="z. B. 0.300000" />
+            </label>
+            <label id="provider-pricing-output-wrap" class="is-hidden">Output USD / 1M
+              <input id="provider-pricing-output" type="number" min="0" step="0.000001" placeholder="z. B. 1.200000" />
+            </label>
+            <small id="provider-pricing-hint" class="hint span-2">Kostenberechnung nutzt den Admin-Katalog oder deine Custom-Werte.</small>
             <label class="span-2">API Base URL (optional)
               <input id="provider-base" placeholder="https://api.example.com/v1" />
             </label>

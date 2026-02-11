@@ -72,6 +72,50 @@ function extractGoogleText(payload) {
   return parts.map((part) => part?.text || '').filter(Boolean).join('\n').trim();
 }
 
+function asNonNegativeInt(value) {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return 0;
+  return Math.round(normalized);
+}
+
+function buildUsage({ promptTokens = 0, completionTokens = 0, totalTokens = 0 } = {}) {
+  const input = asNonNegativeInt(promptTokens);
+  const output = asNonNegativeInt(completionTokens);
+  const providedTotal = asNonNegativeInt(totalTokens);
+  return {
+    promptTokens: input,
+    completionTokens: output,
+    totalTokens: providedTotal > 0 ? providedTotal : input + output,
+  };
+}
+
+function extractOpenAiLikeUsage(payload = {}) {
+  const usage = payload?.usage || {};
+  return buildUsage({
+    promptTokens: usage.prompt_tokens ?? usage.input_tokens,
+    completionTokens: usage.completion_tokens ?? usage.output_tokens,
+    totalTokens: usage.total_tokens,
+  });
+}
+
+function extractAnthropicUsage(payload = {}) {
+  const usage = payload?.usage || {};
+  return buildUsage({
+    promptTokens: usage.input_tokens,
+    completionTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+  });
+}
+
+function extractGoogleUsage(payload = {}) {
+  const usage = payload?.usageMetadata || {};
+  return buildUsage({
+    promptTokens: usage.promptTokenCount,
+    completionTokens: usage.candidatesTokenCount,
+    totalTokens: usage.totalTokenCount,
+  });
+}
+
 function detectProviderErrorCode(payload = {}) {
   const rawStatus = payload?.error?.status || payload?.status || '';
   return String(rawStatus || '').trim().toUpperCase();
@@ -160,7 +204,10 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
   }
   const text = extractOpenAiLikeText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
-  return text;
+  return {
+    text,
+    usage: extractOpenAiLikeUsage(payload),
+  };
 }
 
 async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
@@ -198,7 +245,10 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
   }
   const text = extractAnthropicText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
-  return text;
+  return {
+    text,
+    usage: extractAnthropicUsage(payload),
+  };
 }
 
 async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
@@ -235,7 +285,10 @@ async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   }
   const text = extractGoogleText(payload);
   if (!text) throw new Error('Provider lieferte keine Antwort.');
-  return text;
+  return {
+    text,
+    usage: extractGoogleUsage(payload),
+  };
 }
 
 async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
@@ -252,6 +305,11 @@ async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, time
 }
 
 async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
+  const result = await callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+  return result.text;
+}
+
+async function callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
   if (!kind) throw new Error('Provider kind fehlt.');
   if (!baseUrl) throw new Error('Provider base URL fehlt.');
   if (!model) throw new Error('Provider model fehlt.');
@@ -275,5 +333,6 @@ async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutM
 
 module.exports = {
   callProvider,
+  callProviderDetailed,
   isOverloadedProviderError,
 };

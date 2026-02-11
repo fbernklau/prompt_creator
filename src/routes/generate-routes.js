@@ -1,11 +1,12 @@
 const { Router } = require('express');
+const crypto = require('crypto');
 const { pool } = require('../db/pool');
 const { config } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
 const { buildMetapromptFromTemplate } = require('../services/template-engine');
-const { callProvider, isOverloadedProviderError } = require('../services/provider-clients');
+const { callProviderDetailed, isOverloadedProviderError } = require('../services/provider-clients');
 const { decryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const {
@@ -24,6 +25,139 @@ function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
   return error;
+}
+
+function asNonNegativeInt(value) {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return 0;
+  return Math.round(normalized);
+}
+
+function asNullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return null;
+  return normalized;
+}
+
+function estimateTokenCount(text = '') {
+  const normalized = String(text || '').trim();
+  if (!normalized) return 0;
+  return Math.max(Math.ceil(normalized.length / 4), 1);
+}
+
+function mergeUsage(total = {}, next = {}, { promptFallback = '', completionFallback = '' } = {}) {
+  const promptTokens = asNonNegativeInt(next.promptTokens);
+  const completionTokens = asNonNegativeInt(next.completionTokens);
+  const totalTokens = asNonNegativeInt(next.totalTokens);
+  const resolvedPrompt = promptTokens > 0 ? promptTokens : estimateTokenCount(promptFallback);
+  const resolvedCompletion = completionTokens > 0 ? completionTokens : estimateTokenCount(completionFallback);
+  const resolvedTotal = totalTokens > 0 ? totalTokens : resolvedPrompt + resolvedCompletion;
+
+  return {
+    promptTokens: asNonNegativeInt(total.promptTokens) + resolvedPrompt,
+    completionTokens: asNonNegativeInt(total.completionTokens) + resolvedCompletion,
+    totalTokens: asNonNegativeInt(total.totalTokens) + resolvedTotal,
+  };
+}
+
+function buildKeyFingerprint(apiKey = '') {
+  const normalized = String(apiKey || '').trim();
+  if (!normalized) return null;
+  const digest = crypto.createHash('sha256').update(normalized).digest('hex');
+  return `sha256:${digest.slice(0, 16)}`;
+}
+
+async function resolvePricingForProvider(provider) {
+  const pricingMode = String(provider?.pricing_mode || 'catalog').trim().toLowerCase();
+  const customInput = asNullableNumber(provider?.input_price_per_million);
+  const customOutput = asNullableNumber(provider?.output_price_per_million);
+
+  if (pricingMode === 'custom' && customInput !== null && customOutput !== null) {
+    return {
+      source: 'provider_custom',
+      inputPricePerMillion: customInput,
+      outputPricePerMillion: customOutput,
+      currency: 'USD',
+    };
+  }
+
+  const catalogResult = await pool.query(
+    `SELECT input_price_per_million, output_price_per_million, currency
+     FROM provider_model_pricing_catalog
+     WHERE provider_kind = $1
+       AND model = $2
+       AND is_active = TRUE
+     LIMIT 1`,
+    [provider.kind, provider.model]
+  );
+  if (!catalogResult.rowCount) return null;
+
+  const row = catalogResult.rows[0];
+  const inputPricePerMillion = asNullableNumber(row.input_price_per_million);
+  const outputPricePerMillion = asNullableNumber(row.output_price_per_million);
+  if (inputPricePerMillion === null || outputPricePerMillion === null) return null;
+
+  return {
+    source: 'catalog',
+    inputPricePerMillion,
+    outputPricePerMillion,
+    currency: String(row.currency || 'USD').trim().toUpperCase() || 'USD',
+  };
+}
+
+function calculateUsageCost(usage = {}, pricing = null) {
+  const promptTokens = asNonNegativeInt(usage.promptTokens);
+  const completionTokens = asNonNegativeInt(usage.completionTokens);
+  const totalTokens = asNonNegativeInt(usage.totalTokens);
+  if (!pricing) {
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      totalCostUsd: null,
+      pricingSource: null,
+      pricingInputPerMillion: null,
+      pricingOutputPerMillion: null,
+      pricingCurrency: null,
+    };
+  }
+
+  const inputPricePerMillion = asNullableNumber(pricing.inputPricePerMillion);
+  const outputPricePerMillion = asNullableNumber(pricing.outputPricePerMillion);
+  if (inputPricePerMillion === null || outputPricePerMillion === null) {
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      totalCostUsd: null,
+      pricingSource: pricing.source || null,
+      pricingInputPerMillion: null,
+      pricingOutputPerMillion: null,
+      pricingCurrency: pricing.currency || 'USD',
+    };
+  }
+
+  const inputCostUsd = (promptTokens / 1000000) * inputPricePerMillion;
+  const outputCostUsd = (completionTokens / 1000000) * outputPricePerMillion;
+  const totalCostUsd = inputCostUsd + outputCostUsd;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    inputCostUsd,
+    outputCostUsd,
+    totalCostUsd,
+    pricingSource: pricing.source || null,
+    pricingInputPerMillion: inputPricePerMillion,
+    pricingOutputPerMillion: outputPricePerMillion,
+    pricingCurrency: pricing.currency || 'USD',
+  };
 }
 
 function isSharedGoogleAllowed(req) {
@@ -258,7 +392,7 @@ ${original}`;
 
 async function getProviderForUser(req, providerId) {
   const providerResult = await pool.query(
-    `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta
+    `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta
      FROM providers
      WHERE user_id = $1 AND provider_id = $2`,
     [req.userId, providerId]
@@ -372,18 +506,35 @@ async function logGenerationEvent({
   success,
   latencyMs,
   errorType,
+  keyFingerprint = null,
+  usage = null,
+  costSummary = null,
 }) {
+  const usageSafe = usage || {};
+  const costSafe = costSummary || {};
+
   await pool.query(
     `INSERT INTO provider_generation_events
-       (user_id, provider_id, provider_kind, template_id, success, latency_ms, error_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+       (user_id, provider_id, provider_kind, provider_model, key_fingerprint, template_id, success, latency_ms, prompt_tokens, completion_tokens, total_tokens, input_cost_usd, output_cost_usd, total_cost_usd, pricing_source, pricing_input_per_million, pricing_output_per_million, error_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
     [
       userId,
       provider.provider_id,
       provider.kind,
+      provider.model,
+      keyFingerprint,
       templateId,
       Boolean(success),
       Math.max(Number(latencyMs) || 0, 0),
+      asNonNegativeInt(usageSafe.promptTokens),
+      asNonNegativeInt(usageSafe.completionTokens),
+      asNonNegativeInt(usageSafe.totalTokens),
+      asNullableNumber(costSafe.inputCostUsd),
+      asNullableNumber(costSafe.outputCostUsd),
+      asNullableNumber(costSafe.totalCostUsd),
+      costSafe.pricingSource ? String(costSafe.pricingSource).slice(0, 80) : null,
+      asNullableNumber(costSafe.pricingInputPerMillion),
+      asNullableNumber(costSafe.pricingOutputPerMillion),
       errorType ? String(errorType).slice(0, 180) : null,
     ]
   );
@@ -480,32 +631,45 @@ function createGenerateRouter() {
     const startedAt = Date.now();
     let keySource = 'provider';
     let baseUrl = '';
+    let keyFingerprint = null;
+    let usageSummary = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
+    let costSummary = calculateUsageCost(usageSummary, null);
     try {
       const providerCredential = await resolveProviderCredential(req, provider);
+      const pricing = await resolvePricingForProvider(provider);
       keySource = providerCredential.keySource;
       baseUrl = providerCredential.baseUrl;
+      keyFingerprint = buildKeyFingerprint(providerCredential.apiKey);
+      costSummary = calculateUsageCost(usageSummary, pricing);
       const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
         ? metapromptOverride.trim()
         : context.metaprompt;
 
-      const outputRaw = await callProvider({
-        kind: provider.kind,
-        baseUrl,
-        model: provider.model,
-        apiKey: providerCredential.apiKey,
-        metaprompt: metapromptForProvider,
-        timeoutMs: config.providerRequestTimeoutMs,
-      });
-      let output = parseHandoffPrompt(outputRaw);
-      if (!output) {
-        const repairedRaw = await callProvider({
+      const callWithUsage = async (metapromptText) => {
+        const result = await callProviderDetailed({
           kind: provider.kind,
           baseUrl,
           model: provider.model,
           apiKey: providerCredential.apiKey,
-          metaprompt: buildRepairMetaprompt(outputRaw),
+          metaprompt: metapromptText,
           timeoutMs: config.providerRequestTimeoutMs,
         });
+        usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+          promptFallback: metapromptText,
+          completionFallback: result.text,
+        });
+        costSummary = calculateUsageCost(usageSummary, pricing);
+        return result.text;
+      };
+
+      const outputRaw = await callWithUsage(metapromptForProvider);
+      let output = parseHandoffPrompt(outputRaw);
+      if (!output) {
+        const repairedRaw = await callWithUsage(buildRepairMetaprompt(outputRaw));
         output = parseHandoffPrompt(repairedRaw);
       }
       if (!output) {
@@ -513,14 +677,7 @@ function createGenerateRouter() {
       }
       if (hasPrivacyRisk(output)) {
         try {
-          const privacyRepairRaw = await callProvider({
-            kind: provider.kind,
-            baseUrl,
-            model: provider.model,
-            apiKey: providerCredential.apiKey,
-            metaprompt: buildPrivacyRepairMetaprompt(output),
-            timeoutMs: config.providerRequestTimeoutMs,
-          });
+          const privacyRepairRaw = await callWithUsage(buildPrivacyRepairMetaprompt(output));
           const privacyRepairOutput = parseHandoffPrompt(privacyRepairRaw);
           if (privacyRepairOutput) {
             output = privacyRepairOutput;
@@ -548,6 +705,9 @@ function createGenerateRouter() {
         success: true,
         latencyMs: Date.now() - startedAt,
         errorType: null,
+        keyFingerprint,
+        usage: usageSummary,
+        costSummary,
       });
 
       let savedVariantTemplateId = null;
@@ -588,6 +748,16 @@ function createGenerateRouter() {
           baseUrl,
           keySource,
         },
+        usage: usageSummary,
+        cost: {
+          inputCostUsd: costSummary.inputCostUsd,
+          outputCostUsd: costSummary.outputCostUsd,
+          totalCostUsd: costSummary.totalCostUsd,
+          pricingSource: costSummary.pricingSource,
+          pricingInputPerMillion: costSummary.pricingInputPerMillion,
+          pricingOutputPerMillion: costSummary.pricingOutputPerMillion,
+          pricingCurrency: costSummary.pricingCurrency,
+        },
       });
     } catch (error) {
       let finalError = error;
@@ -602,6 +772,9 @@ function createGenerateRouter() {
           success: false,
           latencyMs: Date.now() - startedAt,
           errorType: finalError?.message || 'generation_failed',
+          keyFingerprint,
+          usage: usageSummary,
+          costSummary,
         });
       } catch (_logError) {
         // Do not override original provider error path.

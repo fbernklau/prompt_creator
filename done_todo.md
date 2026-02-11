@@ -34,12 +34,13 @@ Owner: Team + Codex
 - [x] Authentik/Traefik header auth integrated.
 - [x] Access gate by required Authentik group (`OIDC_REQUIRED_GROUP`, currently `teachers`).
 - [x] RBAC engine implemented with DB-backed permissions, roles, and group-role bindings.
-- [x] Default 4-role model seeded (`teachers`, `template_reviewers`, `template_curators`, `platform_admins`).
+- [x] Default 4-role model seeded (`teachers`, `prompt_creator_template_reviewers`, `prompt_creator_template_curators`, `prompt_creator_platform_admins`).
 - [x] App-local roles can be created and managed in admin UI (future extensibility).
 
 ### Provider management + security
 - [x] Provider presets and recommended base URL lock/unlock implemented.
 - [x] Provider model selector supports predefined models + custom entry.
+- [x] Provider model catalog now supports dynamic server-side additions (admin-managed entries merged with built-ins).
 - [x] Provider connectivity test endpoint + UI implemented.
 - [x] API keys encrypted server-side at rest (AES-GCM envelope), plaintext never returned to browser.
 - [x] Optional shared Gemini test key flow via `.env` allowlists implemented.
@@ -51,6 +52,14 @@ Owner: Team + Codex
 - [x] Metaprompt preview endpoint and editable preview UI implemented.
 - [x] User can choose edited preview as generation input (`metapromptOverride`).
 - [x] Usage audit + generation analytics logging implemented.
+- [x] Generation events now track provider model, key fingerprint, token usage and estimated USD costs.
+- [x] Multi-call generation accounting included (main call + repair/privacy repair calls accumulate usage/cost).
+
+### Pricing + cost analytics
+- [x] DB schema extended for provider pricing mode (`catalog`/`custom`) and per-provider custom input/output pricing.
+- [x] Admin pricing catalog implemented (CRUD + active/inactive) for provider/model input+output cost per 1M tokens.
+- [x] Provider form supports pricing mode switch + custom input/output prices.
+- [x] Usage dashboard extended with total tokens, total cost, per-provider cost/tokens and key-fingerprint usage overview.
 
 ### Privacy / safety hardening
 - [x] Metaprompt envelope now includes explicit privacy rules (no personal/sensitive data requests, placeholders only).
@@ -89,6 +98,8 @@ Owner: Team + Codex
 - [ ] Full Docker + Authentik + provider smoke test against real `.env` on VPS still pending.
 - [ ] Privacy policy is strong, but not yet strict hard-fail mode (currently sanitize/repair fallback).
 - [ ] Template Studio UX still needs extra guardrails (validation clarity, safer official edit flow, clearer review transitions).
+- [ ] Pricing accuracy depends on maintained catalog values (admin needs to keep model prices current).
+- [ ] Token accounting currently uses provider usage metadata, with local fallback estimation if provider usage is missing.
 
 ## Not Done Yet (high-value backlog)
 - [ ] Introduce explicit DB migrations (current schema evolves in bootstrap).
@@ -107,10 +118,11 @@ Owner: Team + Codex
 ## Immediate Next Steps (recommended order)
 - [ ] Step 1: Deploy current `main` to VPS and run full smoke test with real `.env`.
 - [ ] Step 2: Run provider sanity matrix (OpenAI/Google/Anthropic/Mistral where available) with at least one template per category.
-- [ ] Step 3: Add privacy hard-fail switch (optional): reject output if personal-data requests still detected after repair.
-- [ ] Step 4: Add migration baseline (schema version table + first migration).
-- [ ] Step 5: Add integration/regression tests (especially privacy + generation parser).
-- [ ] Step 6: Final Template Studio UX pass (review/approval flow clarity + form validation).
+- [ ] Step 3: Seed/verify pricing catalog values for all actively used models; validate one real request per provider with cost output.
+- [ ] Step 4: Add privacy hard-fail switch (optional): reject output if personal-data requests still detected after repair.
+- [ ] Step 5: Add migration baseline (schema version table + first migration).
+- [ ] Step 6: Add integration/regression tests (especially privacy + generation parser + cost accounting).
+- [ ] Step 7: Final Template Studio UX pass (review/approval flow clarity + form validation).
 
 ## New Intake (2026-02-11)
 - [x] Rebuild compact flow mode as cascading selection flow (category -> template -> fields) with no forced first-template auto-selection.

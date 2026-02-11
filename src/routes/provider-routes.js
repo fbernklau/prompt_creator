@@ -8,8 +8,75 @@ const { encryptApiKey, hasServerEncryptedKey, decryptApiKey } = require('../secu
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const { callProvider } = require('../services/provider-clients');
 
+const BUILTIN_PROVIDER_MODEL_CATALOG = {
+  openai: [
+    'gpt-5.2',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4.1-nano',
+    'gpt-5.2-codex',
+    'gpt-5.2-pro',
+  ],
+  anthropic: [
+    'claude-sonnet-4-5-20250929',
+    'claude-haiku-4-5-20251001',
+    'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+    'claude-opus-4-5',
+  ],
+  google: [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3-flash-preview',
+    'gemini-3-pro-preview',
+  ],
+  mistral: [
+    'mistral-large-2512',
+    'mistral-medium-2508',
+    'mistral-small-2506',
+    'ministral-14b-2512',
+    'ministral-8b-2512',
+    'ministral-3b-2512',
+    'codestral-2508',
+    'devstral-2512',
+  ],
+  custom: [],
+};
+
 function normalizeSet(values = []) {
   return new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
+}
+
+function parseNonNegativeNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return null;
+  return normalized;
+}
+
+function mergeModelCatalogWithPricingRows(rows = []) {
+  const merged = {};
+  Object.entries(BUILTIN_PROVIDER_MODEL_CATALOG).forEach(([kind, models]) => {
+    merged[kind] = new Set(models);
+  });
+
+  rows.forEach((row) => {
+    const kind = String(row.provider_kind || '').trim().toLowerCase();
+    const model = String(row.model || '').trim();
+    if (!kind || !model) return;
+    if (!merged[kind]) merged[kind] = new Set();
+    merged[kind].add(model);
+  });
+
+  const result = {};
+  Object.entries(merged).forEach(([kind, modelSet]) => {
+    result[kind] = Array.from(modelSet).sort((a, b) => a.localeCompare(b));
+  });
+  return result;
 }
 
 function isSharedGoogleAllowed(req) {
@@ -47,9 +114,29 @@ Gib nur JSON aus.`;
 function createProviderRouter() {
   const router = Router();
 
+  router.get('/providers/model-catalog', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (_req, res) => {
+    const pricingRows = await pool.query(
+      `SELECT provider_kind, model, input_price_per_million, output_price_per_million, currency
+       FROM provider_model_pricing_catalog
+       WHERE is_active = TRUE
+       ORDER BY provider_kind, model`
+    );
+
+    res.json({
+      catalog: mergeModelCatalogWithPricingRows(pricingRows.rows),
+      pricing: pricingRows.rows.map((row) => ({
+        providerKind: row.provider_kind,
+        model: row.model,
+        inputPricePerMillion: Number(row.input_price_per_million),
+        outputPricePerMillion: Number(row.output_price_per_million),
+        currency: String(row.currency || 'USD').trim().toUpperCase() || 'USD',
+      })),
+    });
+  }));
+
   router.get('/providers', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     const result = await pool.query(
-      `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta
+      `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta
        FROM providers
        WHERE user_id = $1
        ORDER BY updated_at DESC`,
@@ -64,6 +151,9 @@ function createProviderRouter() {
         model: r.model,
         baseUrl: r.base_url || getRecommendedBaseUrl(r.kind),
         baseUrlMode: r.base_url_mode || 'custom',
+        pricingMode: r.pricing_mode || 'catalog',
+        inputPricePerMillion: r.input_price_per_million === null ? null : Number(r.input_price_per_million),
+        outputPricePerMillion: r.output_price_per_million === null ? null : Number(r.output_price_per_million),
         hasServerKey: hasServerEncryptedKey(r.key_meta),
         canUseSharedTestKey: r.kind === 'google' ? isSharedGoogleAllowed(req) : false,
       }))
@@ -72,11 +162,17 @@ function createProviderRouter() {
 
   router.put('/providers/:providerId', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     const providerId = req.params.providerId;
-    const { name, kind, model, baseUrl, baseUrlMode, apiKey } = req.body || {};
+    const { name, kind, model, baseUrl, baseUrlMode, pricingMode, inputPricePerMillion, outputPricePerMillion, apiKey } = req.body || {};
     const normalizedBaseUrlMode = baseUrlMode === 'preset' ? 'preset' : 'custom';
+    const normalizedPricingMode = pricingMode === 'custom' ? 'custom' : 'catalog';
+    const normalizedInputPrice = parseNonNegativeNumberOrNull(inputPricePerMillion);
+    const normalizedOutputPrice = parseNonNegativeNumberOrNull(outputPricePerMillion);
 
     if (!name || !kind || !model) {
       return res.status(400).json({ error: 'Missing required provider fields.' });
+    }
+    if (normalizedPricingMode === 'custom' && (normalizedInputPrice === null || normalizedOutputPrice === null)) {
+      return res.status(400).json({ error: 'Bei Custom-Pricing sind Input- und Output-Preis erforderlich.' });
     }
 
     const existingResult = await pool.query(
@@ -97,8 +193,8 @@ function createProviderRouter() {
     }
 
     await pool.query(
-      `INSERT INTO providers (user_id, provider_id, name, kind, model, base_url, base_url_mode, key_meta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO providers (user_id, provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (user_id, provider_id)
        DO UPDATE SET
          name = EXCLUDED.name,
@@ -106,9 +202,24 @@ function createProviderRouter() {
          model = EXCLUDED.model,
          base_url = EXCLUDED.base_url,
          base_url_mode = EXCLUDED.base_url_mode,
+         pricing_mode = EXCLUDED.pricing_mode,
+         input_price_per_million = EXCLUDED.input_price_per_million,
+         output_price_per_million = EXCLUDED.output_price_per_million,
          key_meta = EXCLUDED.key_meta,
          updated_at = NOW()`,
-      [req.userId, providerId, name, kind, model, baseUrl || null, normalizedBaseUrlMode, encryptedKey]
+      [
+        req.userId,
+        providerId,
+        name,
+        kind,
+        model,
+        baseUrl || null,
+        normalizedBaseUrlMode,
+        normalizedPricingMode,
+        normalizedPricingMode === 'custom' ? normalizedInputPrice : null,
+        normalizedPricingMode === 'custom' ? normalizedOutputPrice : null,
+        encryptedKey,
+      ]
     );
 
     res.json({ ok: true });
