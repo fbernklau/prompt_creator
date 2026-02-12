@@ -469,78 +469,108 @@
         <div class="step-nav">
           <button id="btn-back-home-from-dashboard" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
         </div>
-        <h2>Nutzungs-Dashboard</h2>
-        <p class="subline">Eigene Anfrage-Qualit&auml;t, Latenzen und Provider-Stabilit&auml;t im Blick behalten.</p>
+        <h2>Dashboard</h2>
+        <p class="subline">API-Provider verwalten, Nutzungswerte pr&uuml;fen und Optionen zentral steuern.</p>
 
-        <div class="panel top-space">
-          <div class="inline-actions">
-            <label>Zeitraum
-              <select id="usage-window-days">
-                <option value="7">7 Tage</option>
-                <option value="14">14 Tage</option>
-                <option value="30" selected>30 Tage</option>
-                <option value="60">60 Tage</option>
-                <option value="120">120 Tage</option>
-              </select>
-            </label>
-            <button id="usage-refresh" type="button">Aktualisieren</button>
-            <small id="usage-status" class="hint"></small>
+        <div id="dashboard-tab-nav" class="chip-row top-space dashboard-tab-nav">
+          <button type="button" class="secondary is-active" data-dashboard-tab="providers">API-Provider</button>
+          <button type="button" class="secondary" data-dashboard-tab="usage">Usage Stats</button>
+          <button type="button" class="secondary" data-dashboard-tab="options">Optionen</button>
+        </div>
+
+        <div id="dashboard-tab-providers" class="dashboard-tab-panel top-space">
+          <div class="panel">
+            <div class="panel-title-row">
+              <h3>API-Provider</h3>
+              <small id="dashboard-provider-stage-hint" class="hint">Metaprompt und Result verwenden aktuell denselben aktiven Provider.</small>
+            </div>
+            <div id="dashboard-provider-stage-tabs" class="chip-row dashboard-provider-stage-tabs">
+              <button type="button" class="secondary is-active" data-provider-stage="metaprompt">Metaprompt-Model</button>
+              <button type="button" class="secondary" data-provider-stage="result">Result-Model</button>
+            </div>
+            <div id="dashboard-provider-host" class="top-space"></div>
           </div>
         </div>
 
-        <div class="grid-3 top-space">
+        <div id="dashboard-tab-usage" class="dashboard-tab-panel top-space is-hidden">
           <div class="panel">
-            <h3>Requests</h3>
-            <p id="usage-total-requests" class="metric">0</p>
+            <div class="inline-actions">
+              <label>Zeitraum
+                <select id="usage-window-days">
+                  <option value="7">7 Tage</option>
+                  <option value="14">14 Tage</option>
+                  <option value="30" selected>30 Tage</option>
+                  <option value="60">60 Tage</option>
+                  <option value="120">120 Tage</option>
+                </select>
+              </label>
+              <button id="usage-refresh" type="button">Aktualisieren</button>
+              <small id="usage-status" class="hint"></small>
+            </div>
           </div>
-          <div class="panel">
-            <h3>Success Rate</h3>
-            <p id="usage-success-rate" class="metric">0%</p>
+
+          <div class="grid-3 top-space">
+            <div class="panel">
+              <h3>Requests</h3>
+              <p id="usage-total-requests" class="metric">0</p>
+            </div>
+            <div class="panel">
+              <h3>Success Rate</h3>
+              <p id="usage-success-rate" class="metric">0%</p>
+            </div>
+            <div class="panel">
+              <h3>Ø Latenz</h3>
+              <p id="usage-avg-latency" class="metric">0 ms</p>
+            </div>
           </div>
-          <div class="panel">
-            <h3>Ø Latenz</h3>
-            <p id="usage-avg-latency" class="metric">0 ms</p>
+          <div class="grid-2 top-space">
+            <div class="panel">
+              <h3>Tokens gesamt</h3>
+              <p id="usage-total-tokens" class="metric">0</p>
+            </div>
+            <div class="panel">
+              <h3>Kosten (USD)</h3>
+              <p id="usage-total-cost" class="metric">$0.0000</p>
+            </div>
           </div>
-        </div>
-        <div class="grid-2 top-space">
-          <div class="panel">
-            <h3>Tokens gesamt</h3>
-            <p id="usage-total-tokens" class="metric">0</p>
+
+          <div class="panel top-space">
+            <h3>Provider &Uuml;berblick</h3>
+            <div class="table-wrap top-space">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Requests</th>
+                    <th>Success Rate</th>
+                    <th>Ø Latenz</th>
+                    <th>Tokens</th>
+                    <th>Kosten (USD)</th>
+                    <th>Letzter Fehler</th>
+                  </tr>
+                </thead>
+                <tbody id="usage-provider-body"></tbody>
+              </table>
+            </div>
           </div>
-          <div class="panel">
-            <h3>Kosten (USD)</h3>
-            <p id="usage-total-cost" class="metric">$0.0000</p>
+
+          <div class="panel top-space">
+            <h3>Nutzung pro API-Key (Fingerprint)</h3>
+            <ul id="usage-key-list" class="provider-list top-space"></ul>
+          </div>
+
+          <div class="panel top-space">
+            <h3>Top Templates</h3>
+            <ul id="usage-template-list" class="provider-list top-space"></ul>
           </div>
         </div>
 
-        <div class="panel top-space">
-          <h3>Provider &Uuml;berblick</h3>
-          <div class="table-wrap top-space">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th>Requests</th>
-                  <th>Success Rate</th>
-                  <th>Ø Latenz</th>
-                  <th>Tokens</th>
-                  <th>Kosten (USD)</th>
-                  <th>Letzter Fehler</th>
-                </tr>
-              </thead>
-              <tbody id="usage-provider-body"></tbody>
-            </table>
+        <div id="dashboard-tab-options" class="dashboard-tab-panel top-space is-hidden">
+          <div class="panel">
+            <h3>Optionen</h3>
+            <small class="hint">Pers&ouml;nliche Anzeige- und Arbeitsoptionen.</small>
+            <div id="dashboard-options-host" class="top-space"></div>
           </div>
-        </div>
-
-        <div class="panel top-space">
-          <h3>Nutzung pro API-Key (Fingerprint)</h3>
-          <ul id="usage-key-list" class="provider-list top-space"></ul>
-        </div>
-
-        <div class="panel top-space">
-          <h3>Top Templates</h3>
-          <ul id="usage-template-list" class="provider-list top-space"></ul>
         </div>
       </section>
 
@@ -980,9 +1010,10 @@
         </form>
 
         <div class="panel top-space">
-          <label>Aktiver Provider
+          <label><span id="provider-active-label">Aktiver Provider</span>
             <select id="active-provider"></select>
           </label>
+          <small id="provider-active-stage-status" class="hint"></small>
           <ul id="provider-list" class="provider-list top-space"></ul>
         </div>
       </div>

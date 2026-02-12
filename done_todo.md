@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-11
+Last updated: 2026-02-12
 Owner: Team + Codex
 
 ## Purpose
@@ -13,7 +13,7 @@ Owner: Team + Codex
 - HEAD commit: `7b6b0af1da6c4627a883208548bfd36d4179b9bb`
 - HEAD message: `Description visibility fix`
 - Stable tags: `0.1-stableish` -> `acee376`, `stable-0.3` -> current mainline snapshot
-- Working tree: clean
+- Working tree: dirty (Dashboard user-menu refactor in progress)
 
 ## Environment Status (checked in this session)
 - [x] `node` available (`v24.13.0`)
@@ -44,6 +44,8 @@ Owner: Team + Codex
 - [x] Provider connectivity test endpoint + UI implemented.
 - [x] API keys encrypted server-side at rest (AES-GCM envelope), plaintext never returned to browser.
 - [x] Optional shared Gemini test key flow via `.env` allowlists implemented.
+- [x] Stage-specific provider assignment persisted in user settings (`metapromptProviderId`, `resultProviderId`).
+- [x] Prompt generation now resolves provider from `metapromptProviderId` (fallback to previous active provider logic).
 
 ### Prompt generation pipeline
 - [x] End-to-end flow implemented: template -> fields -> metaprompt -> provider -> handoff prompt.
@@ -102,6 +104,8 @@ Owner: Team + Codex
 - [x] Additive tag intersection filter working in discovery flow.
 - [x] Subcategory view toggle now supports both grid and list mode.
 - [x] Template form header now shows template description/long description reliably.
+- [x] Dashboard information architecture started: Dashboard now structured as user center with tabs (`API-Provider`, `Usage Stats`, `Optionen`).
+- [x] Navigation behavior updated: topbar/mobile `API-Provider` and `Optionen` open Dashboard tab context instead of standalone drawer entrypoints.
 
 ### Template content refresh
 - [x] First-category content refresh applied (Paedagogische Planung family).
@@ -115,6 +119,7 @@ Owner: Team + Codex
 - [ ] Pricing accuracy depends on maintained catalog values (admin needs to keep model prices current).
 - [ ] Token accounting currently uses provider usage metadata, with local fallback estimation if provider usage is missing.
 - [ ] Full per-template content QA still pending for all remaining categories (required/optional fields + placeholder/help text quality).
+- [ ] Stage-specific assignment is stored and selectable, but `resultProviderId` is not executed yet until Result-Modus is implemented.
 
 ## Not Done Yet (high-value backlog)
 - [ ] Introduce explicit DB migrations (current schema evolves in bootstrap).
@@ -131,13 +136,15 @@ Owner: Team + Codex
 - [x] Product output stays prompt-only (no final task solution output from this app).
 
 ## Immediate Next Steps (recommended order)
-- [ ] Step 1: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).
-- [ ] Step 2: Dark mode polish pass vs mockups (contrast, spacing, panel hierarchy, legacy style cleanup).
-- [ ] Step 3: Deploy current `main` to VPS and run full smoke test with real `.env`.
-- [ ] Step 4: Run provider sanity matrix (OpenAI/Google/Anthropic/Mistral where available) with at least one template per category.
-- [ ] Step 5: Seed/verify pricing catalog values for all actively used models; validate one real request per provider with cost output.
-- [ ] Step 6: Add privacy hard-fail switch (optional): reject output if personal-data requests still detected after repair.
-- [ ] Step 7: Add migration baseline (schema version table + first migration) + integration/regression tests.
+- [ ] Step 1: Finalize Dashboard user-menu refactor and visual QA (providers/options embedded, no drawer regressions).
+- [x] Step 2: Add stage-specific provider assignment model (`metapromptProviderId`, `resultProviderId`) while keeping `Prompt-only` as default mode.
+- [ ] Step 3: Add user mode toggle (`Prompt-only` default, `Direktes Ergebnis` optional beta) in Optionen.
+- [ ] Step 4: Add clearer generation status pipeline (metaprompt build -> provider call -> post-process -> done).
+- [ ] Step 5: Implement streaming generation UX (switch to result screen immediately and stream partial output).
+- [ ] Step 6: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).
+- [ ] Step 7: Dark mode polish pass vs mockups (contrast, spacing, panel hierarchy, legacy style cleanup).
+- [ ] Step 8: Deploy current `main` to VPS and run full smoke test with real `.env`, then provider sanity matrix + pricing validation.
+- [ ] Step 9: Add migration baseline + integration/regression tests (privacy, generation parser, stream fallbacks).
 
 ## New Intake (2026-02-11)
 - [x] Rebuild compact flow mode as cascading selection flow (category -> template -> fields) with no forced first-template auto-selection.
@@ -148,9 +155,18 @@ Owner: Team + Codex
 - [ ] Dark mode refinement started: token palette updated + `system`/`dark` selector consistency improved; final visual tuning pass still pending.
 
 ## In Progress Now (UI/UX cycle)
+- [ ] Dashboard as user control center: tab flow and nav consistency pass.
 - [ ] Visual QA pass for compact flow across all templates (desktop + mobile).
 - [ ] Per-template content consistency pass (field semantics + UX text quality).
 - [ ] End-to-end smoke test: compact flow + generation + preview + placeholder mode.
+
+## New Intake (2026-02-12)
+- [ ] Streaming response UX for prompt generation (show live progress/output while generation runs).
+- [ ] Optional direct result mode (`Prompt-only` remains default): template -> metaprompt model -> result model.
+- [ ] Dashboard ownership of user controls confirmed:
+- [ ] Tab 1: API-Provider (with `Metaprompt-Model`/`Result-Model` subtabs).
+- [ ] Tab 2: Usage Stats.
+- [ ] Tab 3: Optionen.
 
 ## Notes for Tomorrow
 - Current UX baseline is stable and much closer to mockups; main open work is content quality + dark mode finish.

@@ -15,9 +15,74 @@ function createProviderController({
   api,
   uid,
   setVaultStatus,
+  persistProviderStageSettings,
 }) {
   state.providerModelCatalog = state.providerModelCatalog || {};
   state.providerPricingCatalog = state.providerPricingCatalog || [];
+  state.settings = state.settings || {};
+
+  function getProviderStage() {
+    return state.dashboard?.providerStage === 'result' ? 'result' : 'metaprompt';
+  }
+
+  function getSettingsKeyForStage(stage) {
+    return stage === 'result' ? 'resultProviderId' : 'metapromptProviderId';
+  }
+
+  function getAssignedProviderId(stage) {
+    const key = getSettingsKeyForStage(stage);
+    const raw = state.settings?.[key];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  }
+
+  function setAssignedProviderId(stage, providerId) {
+    const key = getSettingsKeyForStage(stage);
+    state.settings[key] = String(providerId || '').trim();
+  }
+
+  function setStageAssignmentStatus(text = '', type = 'info') {
+    const node = el('provider-active-stage-status');
+    if (!node) return;
+    node.textContent = text;
+    node.dataset.type = type;
+    if (!text) return;
+    setTimeout(() => {
+      if (node.textContent === text) node.textContent = '';
+    }, 1800);
+  }
+
+  async function persistStageSettings(partial = {}) {
+    if (!partial || typeof partial !== 'object' || !Object.keys(partial).length) return;
+    if (typeof persistProviderStageSettings !== 'function') return;
+    await persistProviderStageSettings(partial);
+  }
+
+  async function syncStageAssignmentsWithProviderList({ persist = false } = {}) {
+    const firstProviderId = state.providers[0]?.id || '';
+    const updates = {};
+
+    ['metaprompt', 'result'].forEach((stage) => {
+      const key = getSettingsKeyForStage(stage);
+      const assigned = getAssignedProviderId(stage);
+      const valid = assigned && state.providers.some((provider) => provider.id === assigned);
+      const next = valid ? assigned : firstProviderId;
+      if ((assigned || '') !== (next || '')) {
+        updates[key] = next || '';
+        setAssignedProviderId(stage, next || '');
+      }
+    });
+
+    const nextActive = getAssignedProviderId('metaprompt') || firstProviderId || null;
+    state.activeId = nextActive;
+
+    if (persist && Object.keys(updates).length) {
+      try {
+        await persistStageSettings(updates);
+      } catch (error) {
+        setStageAssignmentStatus(`Zuordnung konnte nicht gespeichert werden: ${error.message}`, 'error');
+      }
+    }
+  }
 
   function redactKeyState(provider) {
     if (provider.hasServerKey) return 'server-verschluesselt';
@@ -212,6 +277,9 @@ function createProviderController({
       });
     syncProviderBaseUi();
     syncPricingUi();
+    document.addEventListener('dashboard:provider-stage-change', () => {
+      renderProviders();
+    });
   }
 
   function startEditProvider(id) {
@@ -274,15 +342,30 @@ function createProviderController({
   async function deleteProvider(id) {
     await api(`/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
     state.providers = state.providers.filter((provider) => provider.id !== id);
-    if (state.activeId === id) state.activeId = state.providers[0]?.id || null;
+    await syncStageAssignmentsWithProviderList({ persist: true });
     renderProviders();
   }
 
   function renderProviders() {
+    const stage = getProviderStage();
+    const stageLabel = stage === 'result' ? 'Result-Model' : 'Metaprompt-Model';
+    const activeLabel = el('provider-active-label');
+    if (activeLabel) activeLabel.textContent = `Aktiver Provider (${stageLabel})`;
+
+    const assignedForStage = getAssignedProviderId(stage);
+    const fallbackId = state.activeId || state.providers[0]?.id || '';
+    const selectedId = assignedForStage && state.providers.some((provider) => provider.id === assignedForStage)
+      ? assignedForStage
+      : fallbackId;
+    if (selectedId) {
+      setAssignedProviderId(stage, selectedId);
+      state.activeId = selectedId;
+    }
+
     const activeSelect = el('active-provider');
     activeSelect.innerHTML = state.providers.length
       ? state.providers
-          .map((provider) => `<option value="${provider.id}" ${provider.id === state.activeId ? 'selected' : ''}>${provider.name} (${provider.model})</option>`)
+          .map((provider) => `<option value="${provider.id}" ${provider.id === selectedId ? 'selected' : ''}>${provider.name} (${provider.model})</option>`)
           .join('')
       : '<option value="">Bitte Provider anlegen...</option>';
 
@@ -301,9 +384,19 @@ function createProviderController({
       )
       .join('');
 
-    activeSelect.onchange = () => {
-      state.activeId = activeSelect.value || null;
+    activeSelect.onchange = async () => {
+      const nextProviderId = activeSelect.value || '';
+      state.activeId = nextProviderId || null;
+      setAssignedProviderId(stage, nextProviderId || '');
       renderProviders();
+      try {
+        await persistStageSettings({
+          [getSettingsKeyForStage(stage)]: nextProviderId || '',
+        });
+        setStageAssignmentStatus(`Zuordnung gespeichert (${stageLabel}).`, 'ok');
+      } catch (error) {
+        setStageAssignmentStatus(`Speichern fehlgeschlagen (${stageLabel}): ${error.message}`, 'error');
+      }
     };
 
     list.querySelectorAll('[data-edit-provider]').forEach((button) => {
@@ -358,10 +451,7 @@ function createProviderController({
 
     state.providers = await api('/api/providers');
     await refreshModelCatalog();
-    if (!state.activeId) state.activeId = provider.id;
-    if (!state.providers.some((entry) => entry.id === state.activeId)) {
-      state.activeId = state.providers[0]?.id || null;
-    }
+    await syncStageAssignmentsWithProviderList({ persist: true });
     clearProviderForm();
     renderProviders();
   }

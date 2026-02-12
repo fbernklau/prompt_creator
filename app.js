@@ -57,6 +57,9 @@ const providerController = createProviderController({
   api,
   uid,
   setVaultStatus: uiShell.setVaultStatus,
+  persistProviderStageSettings: async (partial) => {
+    await queueSettingsSave(partial, { refreshCatalog: false, showStatus: false });
+  },
 });
 const libraryController = createLibraryController({
   state,
@@ -169,22 +172,40 @@ function queueSettingsSave(partial, { refreshCatalog = false, showStatus = true 
   return settingsSaveChain;
 }
 
+function mountDashboardUserPanels() {
+  const providerHost = el('dashboard-provider-host');
+  const optionsHost = el('dashboard-options-host');
+  const providerBody = document.querySelector('#provider-drawer .drawer-body');
+  const optionsBody = document.querySelector('#options-drawer .drawer-body');
+
+  if (providerHost && providerBody && !providerHost.contains(providerBody)) {
+    providerHost.appendChild(providerBody);
+  }
+  if (optionsHost && optionsBody && !optionsHost.contains(optionsBody)) {
+    optionsHost.appendChild(optionsBody);
+  }
+
+  if (el('provider-drawer')) el('provider-drawer').classList.add('is-hidden');
+  if (el('options-drawer')) el('options-drawer').classList.add('is-hidden');
+}
+
 function bindEvents() {
+  mountDashboardUserPanels();
   providerController.initializeProviderForm();
   adminController.bindEvents();
   templateStudioController.bindEvents();
   dashboardController.bindEvents();
   taskController.bindEvents();
 
-  el('btn-provider').addEventListener('click', () => {
-    providerController.refreshModelCatalogAndSync().catch(() => {});
-    uiShell.openDrawer('provider-drawer');
+  el('btn-provider').addEventListener('click', async () => {
+    await providerController.refreshModelCatalogAndSync().catch(() => {});
+    await dashboardController.openDashboard('providers');
   });
   el('btn-history').addEventListener('click', () => {
     historyController.renderHistory();
     uiShell.openDrawer('history-drawer');
   });
-  el('btn-options').addEventListener('click', () => uiShell.openDrawer('options-drawer'));
+  el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => alert(error.message)));
   el('btn-library').addEventListener('click', async () => {
     uiShell.showScreen('library');
     await libraryController.refreshLibrary();
@@ -202,12 +223,12 @@ function bindEvents() {
     });
   }
   if (el('mb-provider')) {
-    el('mb-provider').addEventListener('click', () => {
-      providerController.refreshModelCatalogAndSync().catch(() => {});
-      uiShell.openDrawer('provider-drawer');
+    el('mb-provider').addEventListener('click', async () => {
+      await providerController.refreshModelCatalogAndSync().catch(() => {});
+      await dashboardController.openDashboard('providers');
     });
   }
-  if (el('mb-options')) el('mb-options').addEventListener('click', () => uiShell.openDrawer('options-drawer'));
+  if (el('mb-options')) el('mb-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => alert(error.message)));
 
   el('btn-new-task').addEventListener('click', taskController.resetTaskState);
   el('btn-restart-from-result').addEventListener('click', taskController.resetTaskState);
@@ -318,8 +339,8 @@ function bindEvents() {
   });
 
   el('wizard-open-provider').addEventListener('click', () => {
-    uiShell.openDrawer('provider-drawer');
-    el('wizard-status').textContent = 'Provider Drawer geoeffnet. Bitte Modell, Key und Base URL setzen.';
+    dashboardController.openDashboard('providers').catch((error) => alert(error.message));
+    el('wizard-status').textContent = 'Dashboard geoeffnet. Bitte Modell, Key und Base URL setzen.';
   });
   el('wizard-test-provider').addEventListener('click', async () => {
     el('wizard-status').textContent = 'Teste aktiven Provider...';

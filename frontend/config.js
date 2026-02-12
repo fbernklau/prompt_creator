@@ -13,6 +13,9 @@ const SETTINGS_DEFAULTS = {
   copyIncludeMetadata: false,
   advancedOpen: false,
   showCommunityTemplates: true,
+  resultModeEnabled: false,
+  metapromptProviderId: '',
+  resultProviderId: '',
 };
 
 const PROVIDER_BASE_URLS = {

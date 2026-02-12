@@ -22,6 +22,9 @@ const config = {
     copyIncludeMetadata: false,
     advancedOpen: false,
     showCommunityTemplates: true,
+    resultModeEnabled: false,
+    metapromptProviderId: '',
+    resultProviderId: '',
   },
 };
 

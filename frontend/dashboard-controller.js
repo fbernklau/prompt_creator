@@ -8,6 +8,10 @@ function createDashboardController({
     windowDays: 30,
     summary: null,
   };
+  state.dashboard = state.dashboard || {
+    activeTab: 'providers',
+    providerStage: 'metaprompt',
+  };
 
   function renderSummary() {
     const summary = state.usage.summary || {};
@@ -70,22 +74,81 @@ function createDashboardController({
     el('usage-status').textContent = `Aktualisiert (${new Date().toLocaleTimeString('de-AT')})`;
   }
 
-  async function openDashboard() {
-    await refreshSummary();
+  function renderDashboardTabs() {
+    const activeTab = state.dashboard.activeTab;
+    const panels = ['providers', 'usage', 'options'];
+    panels.forEach((name) => {
+      const panel = el(`dashboard-tab-${name}`);
+      if (panel) panel.classList.toggle('is-hidden', name !== activeTab);
+    });
+    document.querySelectorAll('[data-dashboard-tab]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.dashboardTab === activeTab);
+    });
+  }
+
+  function renderProviderStageTabs() {
+    const stage = state.dashboard.providerStage === 'result' ? 'result' : 'metaprompt';
+    state.dashboard.providerStage = stage;
+    document.querySelectorAll('[data-provider-stage]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.providerStage === stage);
+    });
+    const hint = el('dashboard-provider-stage-hint');
+    if (hint) {
+      hint.textContent = stage === 'result'
+        ? 'Diese Zuordnung wird gespeichert und fuer den optionalen Result-Modus verwendet.'
+        : 'Diese Zuordnung wird fuer die Metaprompt-Generierung verwendet.';
+    }
+  }
+
+  function emitProviderStageChange() {
+    document.dispatchEvent(new CustomEvent('dashboard:provider-stage-change', {
+      detail: { stage: state.dashboard.providerStage },
+    }));
+  }
+
+  async function setDashboardTab(tabName, { refreshUsage = false } = {}) {
+    const normalized = ['providers', 'usage', 'options'].includes(tabName) ? tabName : 'providers';
+    state.dashboard.activeTab = normalized;
+    renderDashboardTabs();
+    if (normalized === 'usage' && refreshUsage) {
+      await refreshSummary();
+    }
+  }
+
+  async function openDashboard(tabName = 'providers') {
+    await setDashboardTab(tabName, { refreshUsage: tabName === 'usage' });
     showScreen('dashboard');
   }
 
   function bindEvents() {
-    el('btn-dashboard').addEventListener('click', () => openDashboard().catch((error) => alert(error.message)));
+    el('btn-dashboard').addEventListener('click', () => openDashboard('usage').catch((error) => alert(error.message)));
     el('btn-back-home-from-dashboard').addEventListener('click', () => showScreen('home'));
+    document.querySelectorAll('[data-dashboard-tab]').forEach((button) => {
+      button.addEventListener('click', () => {
+        setDashboardTab(button.dataset.dashboardTab, { refreshUsage: button.dataset.dashboardTab === 'usage' })
+          .catch((error) => alert(error.message));
+      });
+    });
+    document.querySelectorAll('[data-provider-stage]').forEach((button) => {
+      button.addEventListener('click', () => {
+        state.dashboard.providerStage = button.dataset.providerStage === 'result' ? 'result' : 'metaprompt';
+        renderProviderStageTabs();
+        emitProviderStageChange();
+      });
+    });
     el('usage-refresh').addEventListener('click', () => refreshSummary().catch((error) => alert(error.message)));
     el('usage-window-days').addEventListener('change', () => refreshSummary().catch((error) => alert(error.message)));
+    renderDashboardTabs();
+    renderProviderStageTabs();
+    emitProviderStageChange();
   }
 
   return {
     bindEvents,
     refreshSummary,
     openDashboard,
+    setDashboardTab,
+    getProviderStage: () => state.dashboard.providerStage,
   };
 }
 

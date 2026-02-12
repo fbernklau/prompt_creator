@@ -1444,11 +1444,14 @@ function createTaskController({
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
 
-    const activeProvider = state.providers.find((provider) => provider.id === state.activeId);
+    const metapromptProviderId = String(state.settings?.metapromptProviderId || state.activeId || '').trim();
+    const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
+      || state.providers.find((provider) => provider.id === state.activeId);
     if (!activeProvider) {
       alert('Bitte zuerst einen aktiven Provider auswaehlen.');
       return;
     }
+    state.activeId = activeProvider.id;
 
     setGenerating(
       true,
@@ -1473,7 +1476,7 @@ function createTaskController({
         }),
       });
 
-      const providerMeta = `Aktiver Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
+      const providerMeta = `Metaprompt-Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
 
       state.previousGeneratedPrompt = state.generatedPrompt || '';
       state.generatedPrompt = generation.output;

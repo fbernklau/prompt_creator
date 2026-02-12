@@ -47,6 +47,15 @@ function sanitizeSettings(input = {}) {
   if (typeof input.showCommunityTemplates === 'boolean') {
     output.showCommunityTemplates = input.showCommunityTemplates;
   }
+  if (typeof input.resultModeEnabled === 'boolean') {
+    output.resultModeEnabled = input.resultModeEnabled;
+  }
+  if (typeof input.metapromptProviderId === 'string') {
+    output.metapromptProviderId = input.metapromptProviderId.trim();
+  }
+  if (typeof input.resultProviderId === 'string') {
+    output.resultProviderId = input.resultProviderId.trim();
+  }
   return output;
 }
 

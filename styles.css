@@ -460,6 +460,29 @@ button.cta {
   font-weight: 700;
 }
 
+.dashboard-tab-nav .secondary,
+.dashboard-provider-stage-tabs .secondary {
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.dashboard-tab-panel {
+  display: grid;
+  gap: 12px;
+}
+
+#dashboard-provider-host > .drawer-body,
+#dashboard-options-host > .drawer-body {
+  padding: 0;
+  overflow: visible;
+}
+
+#dashboard-provider-host .panel,
+#dashboard-options-host .panel {
+  box-shadow: none;
+}
+
 .admin-tab-panel {
   display: grid;
   gap: 12px;
