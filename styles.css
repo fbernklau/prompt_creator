@@ -2492,6 +2492,14 @@ button.is-active,
   padding: 10px;
 }
 
+#screen-result.tw-result .result-prompt-box > textarea {
+  display: block;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 #screen-result.tw-result #result,
 #screen-result.tw-result #result-direct-output {
   min-height: 320px;
