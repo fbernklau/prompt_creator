@@ -1,6 +1,6 @@
 import { DEFAULT_PRESET_OPTIONS, SETTINGS_DEFAULTS } from './frontend/config.js';
 import { el } from './frontend/dom.js';
-import { api } from './frontend/api.js';
+import { api, apiStream } from './frontend/api.js';
 import { uid } from './frontend/id.js';
 import { loadTemplateCatalog } from './frontend/catalog.js';
 import { createUiShell } from './frontend/ui-shell.js';
@@ -97,6 +97,7 @@ const taskController = createTaskController({
   state,
   el,
   api,
+  apiStream,
   getCategoryConfig,
   getPresetOptions,
   showScreen: uiShell.showScreen,

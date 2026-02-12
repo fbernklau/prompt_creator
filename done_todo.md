@@ -142,7 +142,7 @@ Owner: Team + Codex
 - [x] Step 2: Add stage-specific provider assignment model (`metapromptProviderId`, `resultProviderId`) while keeping `Prompt-only` as default mode.
 - [x] Step 3: Add user mode toggle (`Prompt-only` default, `Direktes Ergebnis` optional beta) in Optionen.
 - [x] Step 4: Add clearer generation status pipeline (metaprompt build -> provider call -> post-process -> done).
-- [ ] Step 5: Implement streaming generation UX (switch to result screen immediately and stream partial output).
+- [x] Step 5: Implement streaming generation UX (switch to result screen immediately and stream partial output).
 - [ ] Step 6: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).
 - [ ] Step 7: Dark mode polish pass vs mockups (contrast, spacing, panel hierarchy, legacy style cleanup).
 - [ ] Step 8: Deploy current `main` to VPS and run full smoke test with real `.env`, then provider sanity matrix + pricing validation.
@@ -163,7 +163,7 @@ Owner: Team + Codex
 - [ ] End-to-end smoke test: compact flow + generation + preview + placeholder mode.
 
 ## New Intake (2026-02-12)
-- [ ] Streaming response UX for prompt generation (show live progress/output while generation runs).
+- [x] Streaming response UX for prompt generation (show live progress/output while generation runs).
 - [ ] Optional direct result mode (`Prompt-only` remains default): template -> metaprompt model -> result model.
 - [ ] Dashboard ownership of user controls confirmed:
 - [ ] Tab 1: API-Provider (with `Metaprompt-Model`/`Result-Model` subtabs).

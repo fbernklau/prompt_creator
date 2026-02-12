@@ -2,6 +2,7 @@ function createTaskController({
   state,
   el,
   api,
+  apiStream,
   getCategoryConfig,
   getPresetOptions,
   showScreen,
@@ -1439,11 +1440,117 @@ function createTaskController({
     syncAdvancedSectionUi();
   }
 
+  function buildGenerationRequestPayload(context, providerId) {
+    return {
+      providerId,
+      templateId: context.template?.id,
+      categoryName: context.baseFields.handlungsfeld,
+      subcategoryName: context.baseFields.unterkategorie,
+      baseFields: context.baseFields,
+      dynamicValues: context.dynamicValues,
+      metapromptOverride: context.metapromptOverride || undefined,
+      templateOverride: context.oneoff.templateOverride,
+      saveOverrideAsPersonal: context.oneoff.saveOverrideAsPersonal,
+      saveOverrideTitleSuffix: context.oneoff.saveOverrideTitleSuffix,
+    };
+  }
+
+  function applyGenerationResult(generation, context, { priorPrompt = null } = {}) {
+    const providerMeta = `Metaprompt-Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
+
+    const previousPromptValue = priorPrompt !== null ? String(priorPrompt || '') : (state.generatedPrompt || '');
+    state.previousGeneratedPrompt = previousPromptValue;
+    state.generatedPrompt = generation.output;
+    state.generatedMeta = providerMeta;
+    state.lastPromptContext = {
+      fach: context.baseFields.fach,
+      handlungsfeld: context.baseFields.handlungsfeld,
+      unterkategorie: context.baseFields.unterkategorie,
+      schulstufe: context.baseFields.schulstufe,
+      ziel: context.baseFields.ziel,
+    };
+
+    el('result').value = generation.output;
+    el('result-meta').textContent = providerMeta;
+    setResultUsageSummary(generation.usage || null);
+    setResultCostSummary(generation.cost || null);
+    if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
+    if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
+    if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
+    if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = context.baseFields.schulstufe || '-';
+    el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
+    el('save-library-status').textContent = '';
+    el('result-compare-panel').classList.add('is-hidden');
+    el('result-compare-current').value = state.generatedPrompt || '';
+    el('result-compare-previous').value = state.previousGeneratedPrompt || 'Keine vorherige Generation vorhanden.';
+
+    if (generation.savedVariantTemplateId) {
+      el('result-variant-status').textContent = `Template-Variante gespeichert: ${generation.savedVariantTemplateId}`;
+      el('btn-open-templates-from-result').classList.remove('is-hidden');
+    } else {
+      el('result-variant-status').textContent = '';
+      el('btn-open-templates-from-result').classList.add('is-hidden');
+    }
+  }
+
+  async function generatePromptLegacy(context, activeProvider) {
+    const priorPrompt = state.generatedPrompt || '';
+    let stage = 'metaprompt';
+    setGenerating(
+      true,
+      context.metapromptOverride
+        ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
+        : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...'
+    );
+
+    try {
+      stage = 'provider_call';
+      setGenerationStatus(
+        `Schritt 2/4: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
+        'info'
+      );
+      const generation = await api('/api/generate', {
+        method: 'POST',
+        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id)),
+      });
+
+      stage = 'postprocess';
+      setGenerationStatus('Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...', 'info');
+      applyGenerationResult(generation, context, { priorPrompt });
+
+      stage = 'finalize';
+      setGenerationStatus('Schritt 4/4: Verlauf und Discovery werden aktualisiert...', 'info');
+      await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
+      await refreshTemplateDiscovery();
+      setGenerating(false, 'Generierung abgeschlossen.');
+      showScreen('result');
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      const missingStreamEndpoint = Number(error?.status) === 404
+        || message.includes('cannot post /api/generate/stream')
+        || message.includes('not found');
+      if (missingStreamEndpoint && stage === 'metaprompt') {
+        setGenerationStatus('Streaming-Endpunkt nicht verfuegbar, wechsle auf Standard-Generierung...', 'info');
+        await generatePromptLegacy(context, activeProvider);
+        return;
+      }
+
+      const stageLabel = {
+        input: 'Eingabe',
+        metaprompt: 'Metaprompt-Aufbau',
+        provider_call: 'Provider-Aufruf',
+        postprocess: 'Antwortverarbeitung',
+        finalize: 'Abschluss',
+      }[stage] || 'Generierung';
+      setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
+      throw error;
+    }
+  }
+
   async function generatePrompt(event) {
     event.preventDefault();
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
-    let stage = 'input';
 
     const metapromptProviderId = String(state.settings?.metapromptProviderId || state.activeId || '').trim();
     const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
@@ -1454,78 +1561,87 @@ function createTaskController({
     }
     state.activeId = activeProvider.id;
 
-    stage = 'metaprompt';
-    setGenerating(
-      true,
-      context.metapromptOverride
-        ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
-        : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...'
-    );
+    if (typeof apiStream !== 'function') {
+      await generatePromptLegacy(context, activeProvider);
+      return;
+    }
+
+    const priorPrompt = state.generatedPrompt || '';
+    let streamError = null;
+    let stage = 'metaprompt';
+    let streamDonePayload = null;
+    let streamDraftOutput = '';
+
+    setGenerating(true, 'Schritt 1/4: Metaprompt wird vorbereitet...');
+    showScreen('result');
+    state.generatedPrompt = '';
+    el('result').value = '';
+    el('result-meta').textContent = 'Generierung gestartet...';
+    setResultUsageSummary(null);
+    setResultCostSummary(null);
+    el('result-variant-status').textContent = '';
+    el('btn-open-templates-from-result').classList.add('is-hidden');
+    el('save-library-status').textContent = '';
+
     try {
-      stage = 'provider_call';
-      setGenerationStatus(
-        `Schritt 2/4: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
-        'info'
-      );
-      const generation = await api('/api/generate', {
+      await apiStream('/api/generate/stream', {
         method: 'POST',
-        body: JSON.stringify({
-          providerId: activeProvider.id,
-          templateId: context.template?.id,
-          categoryName: context.baseFields.handlungsfeld,
-          subcategoryName: context.baseFields.unterkategorie,
-          baseFields: context.baseFields,
-          dynamicValues: context.dynamicValues,
-          metapromptOverride: context.metapromptOverride || undefined,
-          templateOverride: context.oneoff.templateOverride,
-          saveOverrideAsPersonal: context.oneoff.saveOverrideAsPersonal,
-          saveOverrideTitleSuffix: context.oneoff.saveOverrideTitleSuffix,
-        }),
+        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id)),
+        onEvent: (payload) => {
+          const eventName = String(payload?.event || '').trim();
+          if (!eventName) return;
+
+          if (eventName === 'status') {
+            stage = String(payload.stage || stage || '').trim() || stage;
+            const statusMessage = String(payload.message || '').trim();
+            setGenerationStatus(statusMessage, 'info');
+            if (statusMessage) {
+              el('result-meta').textContent = statusMessage;
+            }
+            return;
+          }
+
+          if (eventName === 'output_delta') {
+            const delta = typeof payload.delta === 'string' ? payload.delta : '';
+            if (!delta) return;
+            streamDraftOutput += delta;
+            const resultNode = el('result');
+            resultNode.value = streamDraftOutput;
+            resultNode.scrollTop = resultNode.scrollHeight;
+            return;
+          }
+
+          if (eventName === 'output_replace') {
+            const output = typeof payload.output === 'string' ? payload.output : '';
+            streamDraftOutput = output;
+            el('result').value = output;
+            return;
+          }
+
+          if (eventName === 'done') {
+            streamDonePayload = payload;
+            return;
+          }
+
+          if (eventName === 'error') {
+            streamError = new Error(String(payload.message || 'Unbekannter Streaming-Fehler.'));
+            const streamStage = String(payload.stage || stage || '').trim();
+            if (streamStage) streamError.stage = streamStage;
+          }
+        },
       });
-
-      stage = 'postprocess';
-      setGenerationStatus('Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...', 'info');
-      const providerMeta = `Metaprompt-Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
-
-      state.previousGeneratedPrompt = state.generatedPrompt || '';
-      state.generatedPrompt = generation.output;
-      state.generatedMeta = providerMeta;
-      state.lastPromptContext = {
-        fach: context.baseFields.fach,
-        handlungsfeld: context.baseFields.handlungsfeld,
-        unterkategorie: context.baseFields.unterkategorie,
-        schulstufe: context.baseFields.schulstufe,
-        ziel: context.baseFields.ziel,
-      };
-
-      el('result').value = generation.output;
-      el('result-meta').textContent = providerMeta;
-      setResultUsageSummary(generation.usage || null);
-      setResultCostSummary(generation.cost || null);
-      if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
-      if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
-      if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
-      if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = context.baseFields.schulstufe || '-';
-      el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
-      el('save-library-status').textContent = '';
-      el('result-compare-panel').classList.add('is-hidden');
-      el('result-compare-current').value = state.generatedPrompt || '';
-      el('result-compare-previous').value = state.previousGeneratedPrompt || 'Keine vorherige Generation vorhanden.';
-
-      if (generation.savedVariantTemplateId) {
-        el('result-variant-status').textContent = `Template-Variante gespeichert: ${generation.savedVariantTemplateId}`;
-        el('btn-open-templates-from-result').classList.remove('is-hidden');
-      } else {
-        el('result-variant-status').textContent = '';
-        el('btn-open-templates-from-result').classList.add('is-hidden');
+      if (streamError) throw streamError;
+      if (!streamDonePayload) {
+        throw new Error('Streaming-Antwort unvollstaendig. Bitte erneut versuchen.');
       }
 
+      stage = 'postprocess';
+      applyGenerationResult(streamDonePayload, context, { priorPrompt });
+
       stage = 'finalize';
-      setGenerationStatus('Schritt 4/4: Verlauf und Discovery werden aktualisiert...', 'info');
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
-      showScreen('result');
     } catch (error) {
       const stageLabel = {
         input: 'Eingabe',

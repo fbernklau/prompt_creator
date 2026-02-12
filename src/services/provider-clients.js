@@ -174,6 +174,104 @@ async function doJsonRequest({ url, method = 'POST', headers = {}, body, timeout
   }
 }
 
+async function doStreamRequest({ url, method = 'POST', headers = {}, body, timeoutMs = 45000 }) {
+  const { controller, timer } = withTimeout(timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    return { response };
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new ProviderHttpError('Provider request timeout.', {
+        status: 408,
+        kind: 'provider',
+        retryable: true,
+        code: 'TIMEOUT',
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readSseStream(response, onEvent) {
+  if (!response?.body) {
+    throw new Error('Streaming response body fehlt.');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const processChunk = (chunk, { flush = false } = {}) => {
+    if (chunk) {
+      buffer += chunk;
+    }
+    buffer = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let boundaryIndex = buffer.indexOf('\n\n');
+    while (boundaryIndex >= 0) {
+      const rawEvent = buffer.slice(0, boundaryIndex);
+      buffer = buffer.slice(boundaryIndex + 2);
+      boundaryIndex = buffer.indexOf('\n\n');
+
+      const lines = rawEvent.split(/\r?\n/);
+      let eventName = 'message';
+      const dataLines = [];
+      lines.forEach((line) => {
+        if (!line) return;
+        if (line.startsWith(':')) return;
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim() || 'message';
+          return;
+        }
+        if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      });
+      onEvent({
+        event: eventName,
+        data: dataLines.join('\n'),
+      });
+    }
+
+    if (flush && buffer.trim()) {
+      const lines = buffer.split(/\r?\n/);
+      let eventName = 'message';
+      const dataLines = [];
+      lines.forEach((line) => {
+        if (!line) return;
+        if (line.startsWith(':')) return;
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim() || 'message';
+          return;
+        }
+        if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      });
+      buffer = '';
+      onEvent({
+        event: eventName,
+        data: dataLines.join('\n'),
+      });
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    processChunk(decoder.decode(value, { stream: true }));
+  }
+  processChunk(decoder.decode(), { flush: true });
+}
+
 async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   const url = `${trimTrailingSlash(baseUrl)}/chat/completions`;
   const { response, payload } = await doJsonRequest({
@@ -208,6 +306,63 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
     text,
     usage: extractOpenAiLikeUsage(payload),
   };
+}
+
+async function callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+  const url = `${trimTrailingSlash(baseUrl)}/chat/completions`;
+  const { response } = await doStreamRequest({
+    url,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'text/event-stream',
+    },
+    body: {
+      model,
+      messages: [
+        { role: 'system', content: PROMPT_ONLY_SYSTEM_INSTRUCTION },
+        { role: 'user', content: metaprompt },
+      ],
+      temperature: 0.2,
+      stream: true,
+      stream_options: { include_usage: true },
+    },
+    timeoutMs,
+  });
+
+  if (!response.ok) {
+    const payload = await parseJson(response);
+    const message = parseProviderError('openai', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'openai',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
+
+  let text = '';
+  let usage = buildUsage();
+  await readSseStream(response, ({ data }) => {
+    if (!data || data === '[DONE]') return;
+    let payload = null;
+    try {
+      payload = JSON.parse(data);
+    } catch (_error) {
+      return;
+    }
+    const delta = payload?.choices?.[0]?.delta?.content;
+    if (typeof delta === 'string' && delta) {
+      text += delta;
+      if (typeof onTextDelta === 'function') onTextDelta(delta);
+    }
+    if (payload?.usage) {
+      usage = extractOpenAiLikeUsage(payload);
+    }
+  });
+
+  if (!text) throw new Error('Provider lieferte keine Antwort.');
+  return { text, usage };
 }
 
 async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
@@ -251,6 +406,89 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
   };
 }
 
+async function callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+  const normalized = trimTrailingSlash(baseUrl);
+  const url = normalized.endsWith('/v1')
+    ? `${normalized}/messages`
+    : `${normalized}/v1/messages`;
+
+  const { response } = await doStreamRequest({
+    url,
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      Accept: 'text/event-stream',
+    },
+    body: {
+      model,
+      max_tokens: 2048,
+      system: PROMPT_ONLY_SYSTEM_INSTRUCTION,
+      messages: [
+        { role: 'user', content: metaprompt },
+      ],
+      stream: true,
+    },
+    timeoutMs,
+  });
+
+  if (!response.ok) {
+    const payload = await parseJson(response);
+    const message = parseProviderError('anthropic', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'anthropic',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
+
+  let text = '';
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  await readSseStream(response, ({ data }) => {
+    if (!data) return;
+    let payload = null;
+    try {
+      payload = JSON.parse(data);
+    } catch (_error) {
+      return;
+    }
+
+    const delta = payload?.delta?.text;
+    if (typeof delta === 'string' && delta) {
+      text += delta;
+      if (typeof onTextDelta === 'function') onTextDelta(delta);
+    }
+
+    const messageUsage = payload?.message?.usage || {};
+    const eventUsage = payload?.usage || {};
+    if (Number.isFinite(Number(messageUsage.input_tokens))) {
+      inputTokens = asNonNegativeInt(messageUsage.input_tokens);
+    }
+    if (Number.isFinite(Number(eventUsage.input_tokens))) {
+      inputTokens = asNonNegativeInt(eventUsage.input_tokens);
+    }
+    if (Number.isFinite(Number(messageUsage.output_tokens))) {
+      outputTokens = asNonNegativeInt(messageUsage.output_tokens);
+    }
+    if (Number.isFinite(Number(eventUsage.output_tokens))) {
+      outputTokens = asNonNegativeInt(eventUsage.output_tokens);
+    }
+  });
+
+  if (!text) throw new Error('Provider lieferte keine Antwort.');
+  return {
+    text,
+    usage: buildUsage({
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens: inputTokens + outputTokens,
+    }),
+  };
+}
+
 async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   const url = `${trimTrailingSlash(baseUrl)}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const { response, payload } = await doJsonRequest({
@@ -291,6 +529,81 @@ async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   };
 }
 
+async function callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+  const url = `${trimTrailingSlash(baseUrl)}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  const { response } = await doStreamRequest({
+    url,
+    headers: {
+      Accept: 'text/event-stream',
+    },
+    body: {
+      systemInstruction: {
+        role: 'system',
+        parts: [{ text: PROMPT_ONLY_SYSTEM_INSTRUCTION }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: metaprompt }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+      },
+    },
+    timeoutMs,
+  });
+
+  if (!response.ok) {
+    const payload = await parseJson(response);
+    const message = parseProviderError('google', payload, response.status);
+    throw new ProviderHttpError(message, {
+      status: response.status,
+      kind: 'google',
+      overloaded: isOverloadedError({ status: response.status, payload, message }),
+      retryable: RETRYABLE_STATUSES.has(response.status),
+      code: detectProviderErrorCode(payload),
+    });
+  }
+
+  let text = '';
+  let usage = buildUsage();
+
+  await readSseStream(response, ({ data }) => {
+    if (!data) return;
+    let payload = null;
+    try {
+      payload = JSON.parse(data);
+    } catch (_error) {
+      return;
+    }
+
+    const nextText = extractGoogleText(payload);
+    if (nextText) {
+      let delta = nextText;
+      if (text && nextText.startsWith(text)) {
+        delta = nextText.slice(text.length);
+      } else if (text.endsWith(nextText)) {
+        delta = '';
+      }
+      if (delta) {
+        text += delta;
+        if (typeof onTextDelta === 'function') onTextDelta(delta);
+      } else if (nextText.length > text.length) {
+        text = nextText;
+      }
+    }
+
+    const nextUsage = extractGoogleUsage(payload);
+    if (nextUsage.totalTokens > 0 || nextUsage.promptTokens > 0 || nextUsage.completionTokens > 0) {
+      usage = nextUsage;
+    }
+  });
+
+  if (!text) throw new Error('Provider lieferte keine Antwort.');
+  return { text, usage };
+}
+
 async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
   if (kind === 'openai' || kind === 'mistral') {
     return callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs });
@@ -302,6 +615,23 @@ async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, time
     return callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs });
   }
   throw new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+}
+
+async function callProviderOnceStream({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000, onTextDelta }) {
+  if (kind === 'openai' || kind === 'mistral') {
+    return callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+  }
+  if (kind === 'anthropic') {
+    return callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+  }
+  if (kind === 'google') {
+    return callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+  }
+  const fallback = await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+  if (fallback?.text && typeof onTextDelta === 'function') {
+    onTextDelta(fallback.text);
+  }
+  return fallback;
 }
 
 async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
@@ -331,8 +661,45 @@ async function callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, 
   throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
 }
 
+async function callProviderDetailedStream({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000, onTextDelta }) {
+  if (!kind) throw new Error('Provider kind fehlt.');
+  if (!baseUrl) throw new Error('Provider base URL fehlt.');
+  if (!model) throw new Error('Provider model fehlt.');
+  if (!apiKey) throw new Error('Provider API key fehlt.');
+
+  let attempt = 0;
+  let lastError = null;
+  while (attempt < MAX_PROVIDER_ATTEMPTS) {
+    attempt += 1;
+    let emittedDelta = false;
+    try {
+      return await callProviderOnceStream({
+        kind,
+        baseUrl,
+        model,
+        apiKey,
+        metaprompt,
+        timeoutMs,
+        onTextDelta: (delta) => {
+          if (!delta) return;
+          emittedDelta = true;
+          if (typeof onTextDelta === 'function') onTextDelta(delta);
+        },
+      });
+    } catch (error) {
+      lastError = error;
+      if (emittedDelta || !isRetryableProviderError(error) || attempt >= MAX_PROVIDER_ATTEMPTS) break;
+      const backoffMs = 500 * Math.pow(2, attempt - 1);
+      await wait(backoffMs);
+    }
+  }
+
+  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+}
+
 module.exports = {
   callProvider,
   callProviderDetailed,
+  callProviderDetailedStream,
   isOverloadedProviderError,
 };

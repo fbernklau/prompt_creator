@@ -6,7 +6,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
 const { buildMetapromptFromTemplate } = require('../services/template-engine');
-const { callProviderDetailed, isOverloadedProviderError } = require('../services/provider-clients');
+const { callProviderDetailed, callProviderDetailedStream, isOverloadedProviderError } = require('../services/provider-clients');
 const { decryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const {
@@ -563,6 +563,25 @@ async function resolveProviderCredential(req, provider) {
   };
 }
 
+function setupStreamResponse(res) {
+  res.status(200);
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+}
+
+function writeStreamEvent(res, event, payload = {}) {
+  const line = JSON.stringify({
+    event,
+    ...payload,
+  });
+  res.write(`${line}\n`);
+}
+
 function createGenerateRouter() {
   const router = Router();
 
@@ -780,6 +799,262 @@ function createGenerateRouter() {
         // Do not override original provider error path.
       }
       throw finalError;
+    }
+  }));
+
+  router.post('/generate/stream', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {
+    setupStreamResponse(res);
+    let stage = 'input';
+    let provider = null;
+    let context = null;
+    const startedAt = Date.now();
+    let keyFingerprint = null;
+    let usageSummary = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
+    let costSummary = calculateUsageCost(usageSummary, null);
+
+    try {
+      const {
+        providerId,
+        templateId,
+        categoryName,
+        subcategoryName,
+        baseFields,
+        dynamicValues,
+        metapromptOverride,
+        templateOverride,
+        saveOverrideAsPersonal,
+        saveOverrideTitleSuffix,
+      } = req.body || {};
+      if (!providerId || (!templateId && (!categoryName || !subcategoryName))) {
+        writeStreamEvent(res, 'error', {
+          stage: 'input',
+          message: 'providerId and either templateId or categoryName+subcategoryName are required.',
+        });
+        return res.end();
+      }
+
+      provider = await getProviderForUser(req, providerId);
+      if (!provider) {
+        writeStreamEvent(res, 'error', {
+          stage: 'input',
+          message: 'Aktiver Provider nicht gefunden.',
+        });
+        return res.end();
+      }
+
+      context = await resolveGenerationContext(req, {
+        templateId,
+        categoryName,
+        subcategoryName,
+        baseFields,
+        dynamicValues,
+        templateOverride,
+      });
+
+      const providerCredential = await resolveProviderCredential(req, provider);
+      const pricing = await resolvePricingForProvider(provider);
+      const keySource = providerCredential.keySource;
+      const baseUrl = providerCredential.baseUrl;
+      keyFingerprint = buildKeyFingerprint(providerCredential.apiKey);
+      costSummary = calculateUsageCost(usageSummary, pricing);
+      const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
+        ? metapromptOverride.trim()
+        : context.metaprompt;
+
+      let firstPassOutput = '';
+      const callWithUsage = async (metapromptText, { streamOutput = false } = {}) => {
+        if (streamOutput) {
+          const result = await callProviderDetailedStream({
+            kind: provider.kind,
+            baseUrl,
+            model: provider.model,
+            apiKey: providerCredential.apiKey,
+            metaprompt: metapromptText,
+            timeoutMs: config.providerRequestTimeoutMs,
+            onTextDelta: (delta) => {
+              if (!delta) return;
+              firstPassOutput += delta;
+              writeStreamEvent(res, 'output_delta', { delta });
+            },
+          });
+          usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+            promptFallback: metapromptText,
+            completionFallback: result.text,
+          });
+          costSummary = calculateUsageCost(usageSummary, pricing);
+          return result.text;
+        }
+
+        const result = await callProviderDetailed({
+          kind: provider.kind,
+          baseUrl,
+          model: provider.model,
+          apiKey: providerCredential.apiKey,
+          metaprompt: metapromptText,
+          timeoutMs: config.providerRequestTimeoutMs,
+        });
+        usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+          promptFallback: metapromptText,
+          completionFallback: result.text,
+        });
+        costSummary = calculateUsageCost(usageSummary, pricing);
+        return result.text;
+      };
+
+      stage = 'metaprompt';
+      writeStreamEvent(res, 'status', {
+        stage,
+        message: metapromptOverride
+          ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
+          : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...',
+      });
+
+      stage = 'provider_call';
+      writeStreamEvent(res, 'status', {
+        stage,
+        message: `Schritt 2/4: Anfrage an ${provider.name} (${provider.model}) wird gesendet...`,
+      });
+      const outputRaw = await callWithUsage(metapromptForProvider, { streamOutput: true });
+
+      stage = 'postprocess';
+      writeStreamEvent(res, 'status', {
+        stage,
+        message: 'Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...',
+      });
+      let output = parseHandoffPrompt(outputRaw);
+      if (!output) {
+        const repairedRaw = await callWithUsage(buildRepairMetaprompt(outputRaw));
+        output = parseHandoffPrompt(repairedRaw);
+      }
+      if (!output) {
+        throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
+      }
+      if (hasPrivacyRisk(output)) {
+        try {
+          const privacyRepairRaw = await callWithUsage(buildPrivacyRepairMetaprompt(output));
+          const privacyRepairOutput = parseHandoffPrompt(privacyRepairRaw);
+          if (privacyRepairOutput) {
+            output = privacyRepairOutput;
+          }
+        } catch (_privacyRepairError) {
+          // Fallback to local sanitization below.
+        }
+      }
+      const sanitized = sanitizePromptForPrivacy(output);
+      output = sanitized.output;
+      if (hasPrivacyRisk(output)) {
+        output = ensurePrivacyPolicyBlock(redactSensitiveTerms(output));
+      }
+
+      if (!firstPassOutput || output !== firstPassOutput) {
+        writeStreamEvent(res, 'output_replace', { output });
+      }
+
+      await pool.query(
+        `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [req.userId, provider.provider_id, provider.kind, keySource, context.resolvedTemplate.templateUid]
+      );
+
+      await logGenerationEvent({
+        userId: req.userId,
+        provider,
+        templateId: context.resolvedTemplate.templateUid,
+        success: true,
+        latencyMs: Date.now() - startedAt,
+        errorType: null,
+        keyFingerprint,
+        usage: usageSummary,
+        costSummary,
+      });
+
+      let savedVariantTemplateId = null;
+      if (saveOverrideAsPersonal && templateOverride && typeof templateOverride === 'object') {
+        const clone = await cloneTemplateAsPersonal({
+          userId: req.userId,
+          access: req.access,
+          templateUid: context.resolvedTemplate.templateUid,
+          titleSuffix: typeof saveOverrideTitleSuffix === 'string' ? saveOverrideTitleSuffix : ' (Variante)',
+          overrides: {
+            title: templateOverride.title,
+            description: templateOverride.description,
+            profile: templateOverride.profile,
+            promptMode: templateOverride.promptMode,
+            basePrompt: templateOverride.basePrompt,
+            requiredBaseFields: templateOverride.requiredBaseFields,
+            optionalBaseFields: templateOverride.optionalBaseFields,
+            dynamicFields: templateOverride.dynamicFields,
+            tags: templateOverride.tags,
+            taxonomyPath: templateOverride.taxonomyPath,
+            changeNote: templateOverride.changeNote || 'Generated one-off variant saved from run',
+          },
+        });
+        savedVariantTemplateId = clone.templateUid;
+      }
+
+      stage = 'finalize';
+      writeStreamEvent(res, 'status', {
+        stage,
+        message: 'Schritt 4/4: Verlauf und Discovery werden aktualisiert...',
+      });
+      writeStreamEvent(res, 'done', {
+        metaprompt: metapromptForProvider,
+        output,
+        templateId: context.resolvedTemplate.templateUid,
+        runtimeTemplateId: context.template.id,
+        savedVariantTemplateId,
+        provider: {
+          id: provider.provider_id,
+          name: provider.name,
+          kind: provider.kind,
+          model: provider.model,
+          baseUrl,
+          keySource,
+        },
+        usage: usageSummary,
+        cost: {
+          inputCostUsd: costSummary.inputCostUsd,
+          outputCostUsd: costSummary.outputCostUsd,
+          totalCostUsd: costSummary.totalCostUsd,
+          pricingSource: costSummary.pricingSource,
+          pricingInputPerMillion: costSummary.pricingInputPerMillion,
+          pricingOutputPerMillion: costSummary.pricingOutputPerMillion,
+          pricingCurrency: costSummary.pricingCurrency,
+        },
+      });
+      return res.end();
+    } catch (error) {
+      let finalError = error;
+      if (isOverloadedProviderError(error)) {
+        finalError = httpError(503, 'Das gewaehlte Modell ist derzeit ueberlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell waehlen.');
+      }
+      if (provider && context) {
+        try {
+          await logGenerationEvent({
+            userId: req.userId,
+            provider,
+            templateId: context.resolvedTemplate.templateUid,
+            success: false,
+            latencyMs: Date.now() - startedAt,
+            errorType: finalError?.message || 'generation_failed',
+            keyFingerprint,
+            usage: usageSummary,
+            costSummary,
+          });
+        } catch (_logError) {
+          // Do not override original provider error path.
+        }
+      }
+      writeStreamEvent(res, 'error', {
+        stage,
+        message: finalError?.message || 'Unbekannter Fehler bei der Generierung.',
+        status: Number(finalError?.status) || 500,
+      });
+      return res.end();
     }
   }));
 
