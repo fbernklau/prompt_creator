@@ -57,6 +57,7 @@ Owner: Team + Codex
 - [x] Usage audit + generation analytics logging implemented.
 - [x] Generation events now track provider model, key fingerprint, token usage and estimated USD costs.
 - [x] Multi-call generation accounting included (main call + repair/privacy repair calls accumulate usage/cost).
+- [x] Stage-based generation status pipeline in UI (`1/4 Metaprompt` -> `2/4 Provider-Call` -> `3/4 Verarbeitung` -> `4/4 Abschluss`).
 
 ### Pricing + cost analytics
 - [x] DB schema extended for provider pricing mode (`catalog`/`custom`) and per-provider custom input/output pricing.
@@ -140,7 +141,7 @@ Owner: Team + Codex
 - [ ] Step 1: Finalize Dashboard user-menu refactor and visual QA (providers/options embedded, no drawer regressions).
 - [x] Step 2: Add stage-specific provider assignment model (`metapromptProviderId`, `resultProviderId`) while keeping `Prompt-only` as default mode.
 - [x] Step 3: Add user mode toggle (`Prompt-only` default, `Direktes Ergebnis` optional beta) in Optionen.
-- [ ] Step 4: Add clearer generation status pipeline (metaprompt build -> provider call -> post-process -> done).
+- [x] Step 4: Add clearer generation status pipeline (metaprompt build -> provider call -> post-process -> done).
 - [ ] Step 5: Implement streaming generation UX (switch to result screen immediately and stream partial output).
 - [ ] Step 6: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).
 - [ ] Step 7: Dark mode polish pass vs mockups (contrast, spacing, panel hierarchy, legacy style cleanup).

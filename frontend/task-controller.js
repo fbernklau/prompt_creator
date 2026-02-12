@@ -1443,6 +1443,7 @@ function createTaskController({
     event.preventDefault();
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
+    let stage = 'input';
 
     const metapromptProviderId = String(state.settings?.metapromptProviderId || state.activeId || '').trim();
     const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
@@ -1453,13 +1454,19 @@ function createTaskController({
     }
     state.activeId = activeProvider.id;
 
+    stage = 'metaprompt';
     setGenerating(
       true,
       context.metapromptOverride
-        ? `Bearbeitete Metaprompt wird an ${activeProvider.name} gesendet...`
-        : `Metaprompt wird erstellt und an ${activeProvider.name} gesendet...`
+        ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
+        : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...'
     );
     try {
+      stage = 'provider_call';
+      setGenerationStatus(
+        `Schritt 2/4: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
+        'info'
+      );
       const generation = await api('/api/generate', {
         method: 'POST',
         body: JSON.stringify({
@@ -1476,6 +1483,8 @@ function createTaskController({
         }),
       });
 
+      stage = 'postprocess';
+      setGenerationStatus('Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...', 'info');
       const providerMeta = `Metaprompt-Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
 
       state.previousGeneratedPrompt = state.generatedPrompt || '';
@@ -1511,12 +1520,21 @@ function createTaskController({
         el('btn-open-templates-from-result').classList.add('is-hidden');
       }
 
+      stage = 'finalize';
+      setGenerationStatus('Schritt 4/4: Verlauf und Discovery werden aktualisiert...', 'info');
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
       showScreen('result');
     } catch (error) {
-      setGenerating(false, `Fehler: ${error.message}`);
+      const stageLabel = {
+        input: 'Eingabe',
+        metaprompt: 'Metaprompt-Aufbau',
+        provider_call: 'Provider-Aufruf',
+        postprocess: 'Antwortverarbeitung',
+        finalize: 'Abschluss',
+      }[stage] || 'Generierung';
+      setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
       throw error;
     }
   }
