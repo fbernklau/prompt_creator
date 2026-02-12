@@ -93,9 +93,12 @@ function createDashboardController({
       button.classList.toggle('is-active', button.dataset.providerStage === stage);
     });
     const hint = el('dashboard-provider-stage-hint');
+    const resultModeEnabled = !!state.settings?.resultModeEnabled;
     if (hint) {
       hint.textContent = stage === 'result'
-        ? 'Diese Zuordnung wird gespeichert und fuer den optionalen Result-Modus verwendet.'
+        ? (resultModeEnabled
+          ? 'Diese Zuordnung wird im aktivierten Result-Modus verwendet.'
+          : 'Result-Modus ist aktuell deaktiviert (Optionen). Die Zuordnung wird bereits gespeichert.')
         : 'Diese Zuordnung wird fuer die Metaprompt-Generierung verwendet.';
     }
   }

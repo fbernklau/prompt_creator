@@ -46,6 +46,7 @@ Owner: Team + Codex
 - [x] Optional shared Gemini test key flow via `.env` allowlists implemented.
 - [x] Stage-specific provider assignment persisted in user settings (`metapromptProviderId`, `resultProviderId`).
 - [x] Prompt generation now resolves provider from `metapromptProviderId` (fallback to previous active provider logic).
+- [x] Result mode setting persisted in user settings (`resultModeEnabled`, default `false`).
 
 ### Prompt generation pipeline
 - [x] End-to-end flow implemented: template -> fields -> metaprompt -> provider -> handoff prompt.
@@ -138,7 +139,7 @@ Owner: Team + Codex
 ## Immediate Next Steps (recommended order)
 - [ ] Step 1: Finalize Dashboard user-menu refactor and visual QA (providers/options embedded, no drawer regressions).
 - [x] Step 2: Add stage-specific provider assignment model (`metapromptProviderId`, `resultProviderId`) while keeping `Prompt-only` as default mode.
-- [ ] Step 3: Add user mode toggle (`Prompt-only` default, `Direktes Ergebnis` optional beta) in Optionen.
+- [x] Step 3: Add user mode toggle (`Prompt-only` default, `Direktes Ergebnis` optional beta) in Optionen.
 - [ ] Step 4: Add clearer generation status pipeline (metaprompt build -> provider call -> post-process -> done).
 - [ ] Step 5: Implement streaming generation UX (switch to result screen immediately and stream partial output).
 - [ ] Step 6: Continue template-content QA category-by-category (required/optional fields, descriptions, placeholders/help texts).

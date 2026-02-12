@@ -281,10 +281,12 @@ function bindEvents() {
   const collectFullSettingsPayload = () => {
     const theme = document.querySelector('input[name="theme"]:checked')?.value || 'system';
     const flowMode = document.querySelector('input[name="flow-mode"]:checked')?.value || 'step';
+    const generationMode = document.querySelector('input[name="generation-mode"]:checked')?.value || 'prompt';
     const navLayout = document.querySelector('input[name="nav-layout"]:checked')?.value || 'topbar';
     return {
       theme,
       flowMode,
+      resultModeEnabled: generationMode === 'result',
       navLayout,
       copyIncludeMetadata: el('setting-copy-metadata').checked,
       advancedOpen: el('setting-advanced-open').checked,
@@ -305,6 +307,11 @@ function bindEvents() {
   document.querySelectorAll('input[name="flow-mode"]').forEach((node) => {
     node.addEventListener('change', () => {
       queueSettingsSave({ flowMode: node.value });
+    });
+  });
+  document.querySelectorAll('input[name="generation-mode"]').forEach((node) => {
+    node.addEventListener('change', () => {
+      queueSettingsSave({ resultModeEnabled: node.value === 'result' });
     });
   });
   document.querySelectorAll('input[name="nav-layout"]').forEach((node) => {

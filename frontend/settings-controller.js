@@ -6,6 +6,7 @@ function createSettingsController({ state, el, api, applyTheme, applyNavLayout }
     }
     document.querySelectorAll('input[name="theme"]').forEach((node) => (node.checked = node.value === state.settings.theme));
     document.querySelectorAll('input[name="flow-mode"]').forEach((node) => (node.checked = node.value === (state.settings.flowMode || 'step')));
+    document.querySelectorAll('input[name="generation-mode"]').forEach((node) => (node.checked = node.value === (state.settings.resultModeEnabled ? 'result' : 'prompt')));
     document.querySelectorAll('input[name="nav-layout"]').forEach((node) => (node.checked = node.value === (state.settings.navLayout || 'topbar')));
     el('setting-copy-metadata').checked = !!state.settings.copyIncludeMetadata;
     el('setting-advanced-open').checked = !!state.settings.advancedOpen;
