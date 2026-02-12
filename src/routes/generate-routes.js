@@ -160,6 +160,45 @@ function calculateUsageCost(usage = {}, pricing = null) {
   };
 }
 
+function combineUsageSummaries(...entries) {
+  return entries.reduce((acc, current) => ({
+    promptTokens: asNonNegativeInt(acc.promptTokens) + asNonNegativeInt(current?.promptTokens),
+    completionTokens: asNonNegativeInt(acc.completionTokens) + asNonNegativeInt(current?.completionTokens),
+    totalTokens: asNonNegativeInt(acc.totalTokens) + asNonNegativeInt(current?.totalTokens),
+  }), {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  });
+}
+
+function combineCostSummaries(...entries) {
+  const sumNullable = (key) => {
+    let hasNumber = false;
+    let total = 0;
+    entries.forEach((entry) => {
+      const value = asNullableNumber(entry?.[key]);
+      if (value === null) return;
+      hasNumber = true;
+      total += value;
+    });
+    return hasNumber ? total : null;
+  };
+
+  return {
+    inputCostUsd: sumNullable('inputCostUsd'),
+    outputCostUsd: sumNullable('outputCostUsd'),
+    totalCostUsd: sumNullable('totalCostUsd'),
+    pricingSource: entries
+      .map((entry) => String(entry?.pricingSource || '').trim())
+      .filter(Boolean)
+      .join('+') || null,
+    pricingInputPerMillion: null,
+    pricingOutputPerMillion: null,
+    pricingCurrency: entries.find((entry) => entry?.pricingCurrency)?.pricingCurrency || 'USD',
+  };
+}
+
 function isSharedGoogleAllowed(req) {
   if (!config.googleTestApiKey) return false;
   const allowedUsers = normalizeSet(config.googleTestAllowedUsers);
@@ -582,6 +621,14 @@ function writeStreamEvent(res, event, payload = {}) {
   res.write(`${line}\n`);
 }
 
+const RESULT_EXECUTION_SYSTEM_INSTRUCTION = `Du bist ein fachlich-didaktischer Assistent fuer Lehrkraefte.
+Fuehre den erhaltenen Prompt direkt aus und liefere ausschliesslich das angeforderte Endergebnis.
+Stelle keine Rueckfragen und keine Meta-Erklaerungen, ausser der Prompt fordert dies explizit.`;
+
+function normalizeGenerationMode(value) {
+  return String(value || '').trim().toLowerCase() === 'result' ? 'result' : 'prompt';
+}
+
 function createGenerateRouter() {
   const router = Router();
 
@@ -621,6 +668,8 @@ function createGenerateRouter() {
   router.post('/generate', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {
     const {
       providerId,
+      resultProviderId,
+      generationMode,
       templateId,
       categoryName,
       subcategoryName,
@@ -635,8 +684,16 @@ function createGenerateRouter() {
       return res.status(400).json({ error: 'providerId and either templateId or categoryName+subcategoryName are required.' });
     }
 
-    const provider = await getProviderForUser(req, providerId);
-    if (!provider) return res.status(404).json({ error: 'Aktiver Provider nicht gefunden.' });
+    const mode = normalizeGenerationMode(generationMode);
+    const metapromptProvider = await getProviderForUser(req, providerId);
+    if (!metapromptProvider) return res.status(404).json({ error: 'Aktiver Metaprompt-Provider nicht gefunden.' });
+
+    let resultProvider = null;
+    if (mode === 'result') {
+      const effectiveResultProviderId = String(resultProviderId || providerId).trim();
+      resultProvider = await getProviderForUser(req, effectiveResultProviderId);
+      if (!resultProvider) return res.status(404).json({ error: 'Aktiver Result-Provider nicht gefunden.' });
+    }
 
     const context = await resolveGenerationContext(req, {
       templateId,
@@ -648,86 +705,130 @@ function createGenerateRouter() {
     });
 
     const startedAt = Date.now();
-    let keySource = 'provider';
-    let baseUrl = '';
-    let keyFingerprint = null;
-    let usageSummary = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    };
-    let costSummary = calculateUsageCost(usageSummary, null);
+    let metapromptKeyFingerprint = null;
+    let resultKeyFingerprint = null;
+    let metapromptUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let resultUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let metapromptCost = calculateUsageCost(metapromptUsage, null);
+    let resultCost = calculateUsageCost(resultUsage, null);
+    let metapromptCredential = null;
+    let resultCredential = null;
+    let metapromptForProvider = '';
+    let handoffPrompt = '';
+    let resultOutput = null;
+
     try {
-      const providerCredential = await resolveProviderCredential(req, provider);
-      const pricing = await resolvePricingForProvider(provider);
-      keySource = providerCredential.keySource;
-      baseUrl = providerCredential.baseUrl;
-      keyFingerprint = buildKeyFingerprint(providerCredential.apiKey);
-      costSummary = calculateUsageCost(usageSummary, pricing);
-      const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
+      metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
+      const metapromptPricing = await resolvePricingForProvider(metapromptProvider);
+      metapromptKeyFingerprint = buildKeyFingerprint(metapromptCredential.apiKey);
+      metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
+      metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
         ? metapromptOverride.trim()
         : context.metaprompt;
 
-      const callWithUsage = async (metapromptText) => {
+      const callMetapromptProvider = async (metapromptText) => {
         const result = await callProviderDetailed({
-          kind: provider.kind,
-          baseUrl,
-          model: provider.model,
-          apiKey: providerCredential.apiKey,
+          kind: metapromptProvider.kind,
+          baseUrl: metapromptCredential.baseUrl,
+          model: metapromptProvider.model,
+          apiKey: metapromptCredential.apiKey,
           metaprompt: metapromptText,
           timeoutMs: config.providerRequestTimeoutMs,
         });
-        usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+        metapromptUsage = mergeUsage(metapromptUsage, result.usage || {}, {
           promptFallback: metapromptText,
           completionFallback: result.text,
         });
-        costSummary = calculateUsageCost(usageSummary, pricing);
+        metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
         return result.text;
       };
 
-      const outputRaw = await callWithUsage(metapromptForProvider);
-      let output = parseHandoffPrompt(outputRaw);
-      if (!output) {
-        const repairedRaw = await callWithUsage(buildRepairMetaprompt(outputRaw));
-        output = parseHandoffPrompt(repairedRaw);
+      const outputRaw = await callMetapromptProvider(metapromptForProvider);
+      handoffPrompt = parseHandoffPrompt(outputRaw);
+      if (!handoffPrompt) {
+        const repairedRaw = await callMetapromptProvider(buildRepairMetaprompt(outputRaw));
+        handoffPrompt = parseHandoffPrompt(repairedRaw);
       }
-      if (!output) {
+      if (!handoffPrompt) {
         throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
       }
-      if (hasPrivacyRisk(output)) {
+      if (hasPrivacyRisk(handoffPrompt)) {
         try {
-          const privacyRepairRaw = await callWithUsage(buildPrivacyRepairMetaprompt(output));
+          const privacyRepairRaw = await callMetapromptProvider(buildPrivacyRepairMetaprompt(handoffPrompt));
           const privacyRepairOutput = parseHandoffPrompt(privacyRepairRaw);
           if (privacyRepairOutput) {
-            output = privacyRepairOutput;
+            handoffPrompt = privacyRepairOutput;
           }
         } catch (_privacyRepairError) {
           // Fallback to local sanitization below.
         }
       }
-      const sanitized = sanitizePromptForPrivacy(output);
-      output = sanitized.output;
-      if (hasPrivacyRisk(output)) {
-        output = ensurePrivacyPolicyBlock(redactSensitiveTerms(output));
+      const sanitized = sanitizePromptForPrivacy(handoffPrompt);
+      handoffPrompt = sanitized.output;
+      if (hasPrivacyRisk(handoffPrompt)) {
+        handoffPrompt = ensurePrivacyPolicyBlock(redactSensitiveTerms(handoffPrompt));
+      }
+
+      if (mode === 'result' && resultProvider) {
+        resultCredential = await resolveProviderCredential(req, resultProvider);
+        const resultPricing = await resolvePricingForProvider(resultProvider);
+        resultKeyFingerprint = buildKeyFingerprint(resultCredential.apiKey);
+        resultCost = calculateUsageCost(resultUsage, resultPricing);
+
+        const resultCall = await callProviderDetailed({
+          kind: resultProvider.kind,
+          baseUrl: resultCredential.baseUrl,
+          model: resultProvider.model,
+          apiKey: resultCredential.apiKey,
+          metaprompt: handoffPrompt,
+          timeoutMs: config.providerRequestTimeoutMs,
+          systemInstruction: RESULT_EXECUTION_SYSTEM_INSTRUCTION,
+        });
+        resultUsage = mergeUsage(resultUsage, resultCall.usage || {}, {
+          promptFallback: handoffPrompt,
+          completionFallback: resultCall.text,
+        });
+        resultCost = calculateUsageCost(resultUsage, resultPricing);
+        resultOutput = String(resultCall.text || '').trim();
       }
 
       await pool.query(
         `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
          VALUES ($1,$2,$3,$4,$5)`,
-        [req.userId, provider.provider_id, provider.kind, keySource, context.resolvedTemplate.templateUid]
+        [req.userId, metapromptProvider.provider_id, metapromptProvider.kind, metapromptCredential.keySource, context.resolvedTemplate.templateUid]
       );
+      if (mode === 'result' && resultProvider && resultCredential) {
+        await pool.query(
+          `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [req.userId, resultProvider.provider_id, resultProvider.kind, resultCredential.keySource, context.resolvedTemplate.templateUid]
+        );
+      }
 
       await logGenerationEvent({
         userId: req.userId,
-        provider,
+        provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
         latencyMs: Date.now() - startedAt,
         errorType: null,
-        keyFingerprint,
-        usage: usageSummary,
-        costSummary,
+        keyFingerprint: metapromptKeyFingerprint,
+        usage: metapromptUsage,
+        costSummary: metapromptCost,
       });
+      if (mode === 'result' && resultProvider) {
+        await logGenerationEvent({
+          userId: req.userId,
+          provider: resultProvider,
+          templateId: context.resolvedTemplate.templateUid,
+          success: true,
+          latencyMs: Date.now() - startedAt,
+          errorType: null,
+          keyFingerprint: resultKeyFingerprint,
+          usage: resultUsage,
+          costSummary: resultCost,
+        });
+      }
 
       let savedVariantTemplateId = null;
       if (saveOverrideAsPersonal && templateOverride && typeof templateOverride === 'object') {
@@ -753,29 +854,54 @@ function createGenerateRouter() {
         savedVariantTemplateId = clone.templateUid;
       }
 
+      const usageTotal = combineUsageSummaries(metapromptUsage, resultUsage);
+      const costTotal = combineCostSummaries(metapromptCost, resultCost);
       res.json({
+        mode,
         metaprompt: metapromptForProvider,
-        output,
+        handoffPrompt,
+        output: handoffPrompt,
+        resultOutput,
         templateId: context.resolvedTemplate.templateUid,
         runtimeTemplateId: context.template.id,
         savedVariantTemplateId,
         provider: {
-          id: provider.provider_id,
-          name: provider.name,
-          kind: provider.kind,
-          model: provider.model,
-          baseUrl,
-          keySource,
+          id: metapromptProvider.provider_id,
+          name: metapromptProvider.name,
+          kind: metapromptProvider.kind,
+          model: metapromptProvider.model,
+          baseUrl: metapromptCredential.baseUrl,
+          keySource: metapromptCredential.keySource,
         },
-        usage: usageSummary,
-        cost: {
-          inputCostUsd: costSummary.inputCostUsd,
-          outputCostUsd: costSummary.outputCostUsd,
-          totalCostUsd: costSummary.totalCostUsd,
-          pricingSource: costSummary.pricingSource,
-          pricingInputPerMillion: costSummary.pricingInputPerMillion,
-          pricingOutputPerMillion: costSummary.pricingOutputPerMillion,
-          pricingCurrency: costSummary.pricingCurrency,
+        providers: {
+          metaprompt: {
+            id: metapromptProvider.provider_id,
+            name: metapromptProvider.name,
+            kind: metapromptProvider.kind,
+            model: metapromptProvider.model,
+            baseUrl: metapromptCredential.baseUrl,
+            keySource: metapromptCredential.keySource,
+          },
+          result: mode === 'result' && resultProvider && resultCredential
+            ? {
+              id: resultProvider.provider_id,
+              name: resultProvider.name,
+              kind: resultProvider.kind,
+              model: resultProvider.model,
+              baseUrl: resultCredential.baseUrl,
+              keySource: resultCredential.keySource,
+            }
+            : null,
+        },
+        usage: usageTotal,
+        usageStages: {
+          metaprompt: metapromptUsage,
+          result: mode === 'result' ? resultUsage : null,
+        },
+        cost: costTotal,
+        costStages: {
+          metaprompt: metapromptCost,
+          result: mode === 'result' ? resultCost : null,
         },
       });
     } catch (error) {
@@ -786,15 +912,28 @@ function createGenerateRouter() {
       try {
         await logGenerationEvent({
           userId: req.userId,
-          provider,
-          templateId: context.resolvedTemplate.templateUid,
+          provider: metapromptProvider,
+          templateId: context?.resolvedTemplate?.templateUid || templateId || null,
           success: false,
           latencyMs: Date.now() - startedAt,
           errorType: finalError?.message || 'generation_failed',
-          keyFingerprint,
-          usage: usageSummary,
-          costSummary,
+          keyFingerprint: metapromptKeyFingerprint,
+          usage: metapromptUsage,
+          costSummary: metapromptCost,
         });
+        if (mode === 'result' && resultProvider) {
+          await logGenerationEvent({
+            userId: req.userId,
+            provider: resultProvider,
+            templateId: context?.resolvedTemplate?.templateUid || templateId || null,
+            success: false,
+            latencyMs: Date.now() - startedAt,
+            errorType: finalError?.message || 'generation_failed',
+            keyFingerprint: resultKeyFingerprint,
+            usage: resultUsage,
+            costSummary: resultCost,
+          });
+        }
       } catch (_logError) {
         // Do not override original provider error path.
       }
@@ -805,20 +944,23 @@ function createGenerateRouter() {
   router.post('/generate/stream', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {
     setupStreamResponse(res);
     let stage = 'input';
-    let provider = null;
+    let metapromptProvider = null;
+    let resultProvider = null;
     let context = null;
     const startedAt = Date.now();
-    let keyFingerprint = null;
-    let usageSummary = {
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    };
-    let costSummary = calculateUsageCost(usageSummary, null);
+    let metapromptKeyFingerprint = null;
+    let resultKeyFingerprint = null;
+    let metapromptUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let resultUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let metapromptCost = calculateUsageCost(metapromptUsage, null);
+    let resultCost = calculateUsageCost(resultUsage, null);
+    let mode = 'prompt';
 
     try {
       const {
         providerId,
+        resultProviderId,
+        generationMode,
         templateId,
         categoryName,
         subcategoryName,
@@ -837,13 +979,25 @@ function createGenerateRouter() {
         return res.end();
       }
 
-      provider = await getProviderForUser(req, providerId);
-      if (!provider) {
+      mode = normalizeGenerationMode(generationMode);
+      metapromptProvider = await getProviderForUser(req, providerId);
+      if (!metapromptProvider) {
         writeStreamEvent(res, 'error', {
           stage: 'input',
-          message: 'Aktiver Provider nicht gefunden.',
+          message: 'Aktiver Metaprompt-Provider nicht gefunden.',
         });
         return res.end();
+      }
+      if (mode === 'result') {
+        const effectiveResultProviderId = String(resultProviderId || providerId).trim();
+        resultProvider = await getProviderForUser(req, effectiveResultProviderId);
+        if (!resultProvider) {
+          writeStreamEvent(res, 'error', {
+            stage: 'input',
+            message: 'Aktiver Result-Provider nicht gefunden.',
+          });
+          return res.end();
+        }
       }
 
       context = await resolveGenerationContext(req, {
@@ -855,53 +1009,51 @@ function createGenerateRouter() {
         templateOverride,
       });
 
-      const providerCredential = await resolveProviderCredential(req, provider);
-      const pricing = await resolvePricingForProvider(provider);
-      const keySource = providerCredential.keySource;
-      const baseUrl = providerCredential.baseUrl;
-      keyFingerprint = buildKeyFingerprint(providerCredential.apiKey);
-      costSummary = calculateUsageCost(usageSummary, pricing);
+      const metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
+      const metapromptPricing = await resolvePricingForProvider(metapromptProvider);
+      metapromptKeyFingerprint = buildKeyFingerprint(metapromptCredential.apiKey);
+      metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
       const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
         ? metapromptOverride.trim()
         : context.metaprompt;
 
-      let firstPassOutput = '';
-      const callWithUsage = async (metapromptText, { streamOutput = false } = {}) => {
+      let streamedHandoffPrompt = '';
+      const callMetapromptProvider = async (metapromptText, { streamOutput = false } = {}) => {
         if (streamOutput) {
           const result = await callProviderDetailedStream({
-            kind: provider.kind,
-            baseUrl,
-            model: provider.model,
-            apiKey: providerCredential.apiKey,
+            kind: metapromptProvider.kind,
+            baseUrl: metapromptCredential.baseUrl,
+            model: metapromptProvider.model,
+            apiKey: metapromptCredential.apiKey,
             metaprompt: metapromptText,
             timeoutMs: config.providerRequestTimeoutMs,
             onTextDelta: (delta) => {
               if (!delta) return;
-              firstPassOutput += delta;
-              writeStreamEvent(res, 'output_delta', { delta });
+              streamedHandoffPrompt += delta;
+              writeStreamEvent(res, 'handoff_delta', { delta });
             },
           });
-          usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+          metapromptUsage = mergeUsage(metapromptUsage, result.usage || {}, {
             promptFallback: metapromptText,
             completionFallback: result.text,
           });
-          costSummary = calculateUsageCost(usageSummary, pricing);
+          metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
           return result.text;
         }
 
         const result = await callProviderDetailed({
-          kind: provider.kind,
-          baseUrl,
-          model: provider.model,
-          apiKey: providerCredential.apiKey,
+          kind: metapromptProvider.kind,
+          baseUrl: metapromptCredential.baseUrl,
+          model: metapromptProvider.model,
+          apiKey: metapromptCredential.apiKey,
           metaprompt: metapromptText,
           timeoutMs: config.providerRequestTimeoutMs,
         });
-        usageSummary = mergeUsage(usageSummary, result.usage || {}, {
+        metapromptUsage = mergeUsage(metapromptUsage, result.usage || {}, {
           promptFallback: metapromptText,
           completionFallback: result.text,
         });
-        costSummary = calculateUsageCost(usageSummary, pricing);
+        metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
         return result.text;
       };
 
@@ -909,68 +1061,121 @@ function createGenerateRouter() {
       writeStreamEvent(res, 'status', {
         stage,
         message: metapromptOverride
-          ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
-          : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...',
+          ? `Schritt 1/${mode === 'result' ? '5' : '4'}: Bearbeitete Metaprompt wird vorbereitet...`
+          : `Schritt 1/${mode === 'result' ? '5' : '4'}: Metaprompt wird aus Template-Daten erstellt...`,
       });
 
       stage = 'provider_call';
       writeStreamEvent(res, 'status', {
         stage,
-        message: `Schritt 2/4: Anfrage an ${provider.name} (${provider.model}) wird gesendet...`,
+        message: `Schritt 2/${mode === 'result' ? '5' : '4'}: Anfrage an ${metapromptProvider.name} (${metapromptProvider.model}) wird gesendet...`,
       });
-      const outputRaw = await callWithUsage(metapromptForProvider, { streamOutput: true });
+      const outputRaw = await callMetapromptProvider(metapromptForProvider, { streamOutput: true });
 
       stage = 'postprocess';
       writeStreamEvent(res, 'status', {
         stage,
-        message: 'Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...',
+        message: `Schritt 3/${mode === 'result' ? '5' : '4'}: Metaprompt-Antwort wird geprueft und aufbereitet...`,
       });
-      let output = parseHandoffPrompt(outputRaw);
-      if (!output) {
-        const repairedRaw = await callWithUsage(buildRepairMetaprompt(outputRaw));
-        output = parseHandoffPrompt(repairedRaw);
+      let handoffPrompt = parseHandoffPrompt(outputRaw);
+      if (!handoffPrompt) {
+        const repairedRaw = await callMetapromptProvider(buildRepairMetaprompt(outputRaw));
+        handoffPrompt = parseHandoffPrompt(repairedRaw);
       }
-      if (!output) {
+      if (!handoffPrompt) {
         throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
       }
-      if (hasPrivacyRisk(output)) {
+      if (hasPrivacyRisk(handoffPrompt)) {
         try {
-          const privacyRepairRaw = await callWithUsage(buildPrivacyRepairMetaprompt(output));
+          const privacyRepairRaw = await callMetapromptProvider(buildPrivacyRepairMetaprompt(handoffPrompt));
           const privacyRepairOutput = parseHandoffPrompt(privacyRepairRaw);
           if (privacyRepairOutput) {
-            output = privacyRepairOutput;
+            handoffPrompt = privacyRepairOutput;
           }
         } catch (_privacyRepairError) {
           // Fallback to local sanitization below.
         }
       }
-      const sanitized = sanitizePromptForPrivacy(output);
-      output = sanitized.output;
-      if (hasPrivacyRisk(output)) {
-        output = ensurePrivacyPolicyBlock(redactSensitiveTerms(output));
+      const sanitized = sanitizePromptForPrivacy(handoffPrompt);
+      handoffPrompt = sanitized.output;
+      if (hasPrivacyRisk(handoffPrompt)) {
+        handoffPrompt = ensurePrivacyPolicyBlock(redactSensitiveTerms(handoffPrompt));
+      }
+      if (!streamedHandoffPrompt || handoffPrompt !== streamedHandoffPrompt) {
+        writeStreamEvent(res, 'handoff_replace', { output: handoffPrompt });
       }
 
-      if (!firstPassOutput || output !== firstPassOutput) {
-        writeStreamEvent(res, 'output_replace', { output });
+      let resultOutput = null;
+      let resultCredential = null;
+      if (mode === 'result' && resultProvider) {
+        stage = 'result_provider_call';
+        writeStreamEvent(res, 'status', {
+          stage,
+          message: `Schritt 4/5: Direktes Ergebnis wird mit ${resultProvider.name} (${resultProvider.model}) erzeugt...`,
+        });
+        resultCredential = await resolveProviderCredential(req, resultProvider);
+        const resultPricing = await resolvePricingForProvider(resultProvider);
+        resultKeyFingerprint = buildKeyFingerprint(resultCredential.apiKey);
+        resultCost = calculateUsageCost(resultUsage, resultPricing);
+
+        const resultCall = await callProviderDetailedStream({
+          kind: resultProvider.kind,
+          baseUrl: resultCredential.baseUrl,
+          model: resultProvider.model,
+          apiKey: resultCredential.apiKey,
+          metaprompt: handoffPrompt,
+          timeoutMs: config.providerRequestTimeoutMs,
+          systemInstruction: RESULT_EXECUTION_SYSTEM_INSTRUCTION,
+          onTextDelta: (delta) => {
+            if (!delta) return;
+            writeStreamEvent(res, 'result_delta', { delta });
+          },
+        });
+        resultUsage = mergeUsage(resultUsage, resultCall.usage || {}, {
+          promptFallback: handoffPrompt,
+          completionFallback: resultCall.text,
+        });
+        resultCost = calculateUsageCost(resultUsage, resultPricing);
+        resultOutput = String(resultCall.text || '').trim();
+        writeStreamEvent(res, 'result_replace', { output: resultOutput });
+
+        await pool.query(
+          `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [req.userId, resultProvider.provider_id, resultProvider.kind, resultCredential.keySource, context.resolvedTemplate.templateUid]
+        );
       }
 
       await pool.query(
         `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
          VALUES ($1,$2,$3,$4,$5)`,
-        [req.userId, provider.provider_id, provider.kind, keySource, context.resolvedTemplate.templateUid]
+        [req.userId, metapromptProvider.provider_id, metapromptProvider.kind, metapromptCredential.keySource, context.resolvedTemplate.templateUid]
       );
 
       await logGenerationEvent({
         userId: req.userId,
-        provider,
+        provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
         latencyMs: Date.now() - startedAt,
         errorType: null,
-        keyFingerprint,
-        usage: usageSummary,
-        costSummary,
+        keyFingerprint: metapromptKeyFingerprint,
+        usage: metapromptUsage,
+        costSummary: metapromptCost,
       });
+      if (mode === 'result' && resultProvider) {
+        await logGenerationEvent({
+          userId: req.userId,
+          provider: resultProvider,
+          templateId: context.resolvedTemplate.templateUid,
+          success: true,
+          latencyMs: Date.now() - startedAt,
+          errorType: null,
+          keyFingerprint: resultKeyFingerprint,
+          usage: resultUsage,
+          costSummary: resultCost,
+        });
+      }
 
       let savedVariantTemplateId = null;
       if (saveOverrideAsPersonal && templateOverride && typeof templateOverride === 'object') {
@@ -999,31 +1204,56 @@ function createGenerateRouter() {
       stage = 'finalize';
       writeStreamEvent(res, 'status', {
         stage,
-        message: 'Schritt 4/4: Verlauf und Discovery werden aktualisiert...',
+        message: `Schritt ${mode === 'result' ? '5/5' : '4/4'}: Verlauf und Discovery werden aktualisiert...`,
       });
+      const usageTotal = combineUsageSummaries(metapromptUsage, resultUsage);
+      const costTotal = combineCostSummaries(metapromptCost, resultCost);
       writeStreamEvent(res, 'done', {
+        mode,
         metaprompt: metapromptForProvider,
-        output,
+        handoffPrompt,
+        output: handoffPrompt,
+        resultOutput,
         templateId: context.resolvedTemplate.templateUid,
         runtimeTemplateId: context.template.id,
         savedVariantTemplateId,
         provider: {
-          id: provider.provider_id,
-          name: provider.name,
-          kind: provider.kind,
-          model: provider.model,
-          baseUrl,
-          keySource,
+          id: metapromptProvider.provider_id,
+          name: metapromptProvider.name,
+          kind: metapromptProvider.kind,
+          model: metapromptProvider.model,
+          baseUrl: metapromptCredential.baseUrl,
+          keySource: metapromptCredential.keySource,
         },
-        usage: usageSummary,
-        cost: {
-          inputCostUsd: costSummary.inputCostUsd,
-          outputCostUsd: costSummary.outputCostUsd,
-          totalCostUsd: costSummary.totalCostUsd,
-          pricingSource: costSummary.pricingSource,
-          pricingInputPerMillion: costSummary.pricingInputPerMillion,
-          pricingOutputPerMillion: costSummary.pricingOutputPerMillion,
-          pricingCurrency: costSummary.pricingCurrency,
+        providers: {
+          metaprompt: {
+            id: metapromptProvider.provider_id,
+            name: metapromptProvider.name,
+            kind: metapromptProvider.kind,
+            model: metapromptProvider.model,
+            baseUrl: metapromptCredential.baseUrl,
+            keySource: metapromptCredential.keySource,
+          },
+          result: mode === 'result' && resultProvider && resultCredential
+            ? {
+              id: resultProvider.provider_id,
+              name: resultProvider.name,
+              kind: resultProvider.kind,
+              model: resultProvider.model,
+              baseUrl: resultCredential.baseUrl,
+              keySource: resultCredential.keySource,
+            }
+            : null,
+        },
+        usage: usageTotal,
+        usageStages: {
+          metaprompt: metapromptUsage,
+          result: mode === 'result' ? resultUsage : null,
+        },
+        cost: costTotal,
+        costStages: {
+          metaprompt: metapromptCost,
+          result: mode === 'result' ? resultCost : null,
         },
       });
       return res.end();
@@ -1032,19 +1262,32 @@ function createGenerateRouter() {
       if (isOverloadedProviderError(error)) {
         finalError = httpError(503, 'Das gewaehlte Modell ist derzeit ueberlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell waehlen.');
       }
-      if (provider && context) {
+      if (metapromptProvider && context) {
         try {
           await logGenerationEvent({
             userId: req.userId,
-            provider,
+            provider: metapromptProvider,
             templateId: context.resolvedTemplate.templateUid,
             success: false,
             latencyMs: Date.now() - startedAt,
             errorType: finalError?.message || 'generation_failed',
-            keyFingerprint,
-            usage: usageSummary,
-            costSummary,
+            keyFingerprint: metapromptKeyFingerprint,
+            usage: metapromptUsage,
+            costSummary: metapromptCost,
           });
+          if (mode === 'result' && resultProvider) {
+            await logGenerationEvent({
+              userId: req.userId,
+              provider: resultProvider,
+              templateId: context.resolvedTemplate.templateUid,
+              success: false,
+              latencyMs: Date.now() - startedAt,
+              errorType: finalError?.message || 'generation_failed',
+              keyFingerprint: resultKeyFingerprint,
+              usage: resultUsage,
+              costSummary: resultCost,
+            });
+          }
         } catch (_logError) {
           // Do not override original provider error path.
         }

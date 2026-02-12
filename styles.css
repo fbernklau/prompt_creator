@@ -2321,6 +2321,34 @@ button.is-active,
   text-align: right;
 }
 
+#screen-form.tw-form .tw-run-mode-switch-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#screen-form.tw-form .tw-run-mode-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #5f7097;
+}
+
+#screen-form.tw-form .tw-run-mode-toggle {
+  gap: 10px;
+}
+
+#screen-form.tw-form .tw-run-mode-option {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334766;
+}
+
+#screen-form.tw-form .tw-run-mode-option-left {
+  min-width: 48px;
+  text-align: right;
+}
+
 #screen-form.tw-form .tw-form-preview-card::-webkit-scrollbar {
   width: 8px;
 }
@@ -2886,6 +2914,14 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-form-submit-row {
   background: #1a2b49;
   border-color: #314c7a;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-run-mode-kicker {
+  color: #92a7d3;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-run-mode-option {
+  color: #e1eafe;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-form-preview-head h3 .material-icons-round {

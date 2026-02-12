@@ -272,8 +272,21 @@ async function readSseStream(response, onEvent) {
   processChunk(decoder.decode(), { flush: true });
 }
 
-async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
+async function callOpenAiLike({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const url = `${trimTrailingSlash(baseUrl)}/chat/completions`;
+  const messages = [];
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  if (normalizedSystemInstruction) {
+    messages.push({ role: 'system', content: normalizedSystemInstruction });
+  }
+  messages.push({ role: 'user', content: metaprompt });
   const { response, payload } = await doJsonRequest({
     url,
     headers: {
@@ -281,10 +294,7 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
     },
     body: {
       model,
-      messages: [
-        { role: 'system', content: PROMPT_ONLY_SYSTEM_INSTRUCTION },
-        { role: 'user', content: metaprompt },
-      ],
+      messages,
       temperature: 0.2,
     },
     timeoutMs,
@@ -308,8 +318,22 @@ async function callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs })
   };
 }
 
-async function callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+async function callOpenAiLikeStream({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  onTextDelta,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const url = `${trimTrailingSlash(baseUrl)}/chat/completions`;
+  const messages = [];
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  if (normalizedSystemInstruction) {
+    messages.push({ role: 'system', content: normalizedSystemInstruction });
+  }
+  messages.push({ role: 'user', content: metaprompt });
   const { response } = await doStreamRequest({
     url,
     headers: {
@@ -318,10 +342,7 @@ async function callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeou
     },
     body: {
       model,
-      messages: [
-        { role: 'system', content: PROMPT_ONLY_SYSTEM_INSTRUCTION },
-        { role: 'user', content: metaprompt },
-      ],
+      messages,
       temperature: 0.2,
       stream: true,
       stream_options: { include_usage: true },
@@ -365,11 +386,30 @@ async function callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeou
   return { text, usage };
 }
 
-async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
+async function callAnthropic({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const normalized = trimTrailingSlash(baseUrl);
   const url = normalized.endsWith('/v1')
     ? `${normalized}/messages`
     : `${normalized}/v1/messages`;
+
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  const body = {
+    model,
+    max_tokens: 2048,
+    messages: [
+      { role: 'user', content: metaprompt },
+    ],
+  };
+  if (normalizedSystemInstruction) {
+    body.system = normalizedSystemInstruction;
+  }
 
   const { response, payload } = await doJsonRequest({
     url,
@@ -377,14 +417,7 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: {
-      model,
-      max_tokens: 2048,
-      system: PROMPT_ONLY_SYSTEM_INSTRUCTION,
-      messages: [
-        { role: 'user', content: metaprompt },
-      ],
-    },
+    body,
     timeoutMs,
   });
 
@@ -406,11 +439,32 @@ async function callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs }) 
   };
 }
 
-async function callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+async function callAnthropicStream({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  onTextDelta,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const normalized = trimTrailingSlash(baseUrl);
   const url = normalized.endsWith('/v1')
     ? `${normalized}/messages`
     : `${normalized}/v1/messages`;
+
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  const body = {
+    model,
+    max_tokens: 2048,
+    messages: [
+      { role: 'user', content: metaprompt },
+    ],
+    stream: true,
+  };
+  if (normalizedSystemInstruction) {
+    body.system = normalizedSystemInstruction;
+  }
 
   const { response } = await doStreamRequest({
     url,
@@ -419,15 +473,7 @@ async function callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeout
       'anthropic-version': '2023-06-01',
       Accept: 'text/event-stream',
     },
-    body: {
-      model,
-      max_tokens: 2048,
-      system: PROMPT_ONLY_SYSTEM_INSTRUCTION,
-      messages: [
-        { role: 'user', content: metaprompt },
-      ],
-      stream: true,
-    },
+    body,
     timeoutMs,
   });
 
@@ -489,25 +535,36 @@ async function callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeout
   };
 }
 
-async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
+async function callGoogle({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const url = `${trimTrailingSlash(baseUrl)}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  const body = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: metaprompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+    },
+  };
+  if (normalizedSystemInstruction) {
+    body.systemInstruction = {
+      role: 'system',
+      parts: [{ text: normalizedSystemInstruction }],
+    };
+  }
   const { response, payload } = await doJsonRequest({
     url,
-    body: {
-      systemInstruction: {
-        role: 'system',
-        parts: [{ text: PROMPT_ONLY_SYSTEM_INSTRUCTION }],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: metaprompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-      },
-    },
+    body,
     timeoutMs,
   });
 
@@ -529,28 +586,40 @@ async function callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs }) {
   };
 }
 
-async function callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta }) {
+async function callGoogleStream({
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs,
+  onTextDelta,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   const url = `${trimTrailingSlash(baseUrl)}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  const normalizedSystemInstruction = String(systemInstruction || '').trim();
+  const body = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: metaprompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.2,
+    },
+  };
+  if (normalizedSystemInstruction) {
+    body.systemInstruction = {
+      role: 'system',
+      parts: [{ text: normalizedSystemInstruction }],
+    };
+  }
   const { response } = await doStreamRequest({
     url,
     headers: {
       Accept: 'text/event-stream',
     },
-    body: {
-      systemInstruction: {
-        role: 'system',
-        parts: [{ text: PROMPT_ONLY_SYSTEM_INSTRUCTION }],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: metaprompt }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-      },
-    },
+    body,
     timeoutMs,
   });
 
@@ -604,42 +673,75 @@ async function callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs,
   return { text, usage };
 }
 
-async function callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
+async function callProviderOnce({
+  kind,
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs = 45000,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   if (kind === 'openai' || kind === 'mistral') {
-    return callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs });
+    return callOpenAiLike({ baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   }
   if (kind === 'anthropic') {
-    return callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs });
+    return callAnthropic({ baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   }
   if (kind === 'google') {
-    return callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs });
+    return callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   }
   throw new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
 }
 
-async function callProviderOnceStream({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000, onTextDelta }) {
+async function callProviderOnceStream({
+  kind,
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs = 45000,
+  onTextDelta,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   if (kind === 'openai' || kind === 'mistral') {
-    return callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+    return callOpenAiLikeStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta, systemInstruction });
   }
   if (kind === 'anthropic') {
-    return callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+    return callAnthropicStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta, systemInstruction });
   }
   if (kind === 'google') {
-    return callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta });
+    return callGoogleStream({ baseUrl, model, apiKey, metaprompt, timeoutMs, onTextDelta, systemInstruction });
   }
-  const fallback = await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+  const fallback = await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   if (fallback?.text && typeof onTextDelta === 'function') {
     onTextDelta(fallback.text);
   }
   return fallback;
 }
 
-async function callProvider({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
-  const result = await callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+async function callProvider({
+  kind,
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs = 45000,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
+  const result = await callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   return result.text;
 }
 
-async function callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000 }) {
+async function callProviderDetailed({
+  kind,
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs = 45000,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   if (!kind) throw new Error('Provider kind fehlt.');
   if (!baseUrl) throw new Error('Provider base URL fehlt.');
   if (!model) throw new Error('Provider model fehlt.');
@@ -650,7 +752,7 @@ async function callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, 
   while (attempt < MAX_PROVIDER_ATTEMPTS) {
     attempt += 1;
     try {
-      return await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs });
+      return await callProviderOnce({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
     } catch (error) {
       lastError = error;
       if (!isRetryableProviderError(error) || attempt >= MAX_PROVIDER_ATTEMPTS) break;
@@ -661,7 +763,16 @@ async function callProviderDetailed({ kind, baseUrl, model, apiKey, metaprompt, 
   throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
 }
 
-async function callProviderDetailedStream({ kind, baseUrl, model, apiKey, metaprompt, timeoutMs = 45000, onTextDelta }) {
+async function callProviderDetailedStream({
+  kind,
+  baseUrl,
+  model,
+  apiKey,
+  metaprompt,
+  timeoutMs = 45000,
+  onTextDelta,
+  systemInstruction = PROMPT_ONLY_SYSTEM_INSTRUCTION,
+}) {
   if (!kind) throw new Error('Provider kind fehlt.');
   if (!baseUrl) throw new Error('Provider base URL fehlt.');
   if (!model) throw new Error('Provider model fehlt.');
@@ -680,6 +791,7 @@ async function callProviderDetailedStream({ kind, baseUrl, model, apiKey, metapr
         apiKey,
         metaprompt,
         timeoutMs,
+        systemInstruction,
         onTextDelta: (delta) => {
           if (!delta) return;
           emittedDelta = true;

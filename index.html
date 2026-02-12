@@ -313,6 +313,15 @@
 
           <div id="form-right-rail" class="tw-form-right-rail">
             <div class="inline-actions form-submit-row tw-form-submit-row">
+              <div class="tw-run-mode-switch-wrap">
+                <span class="tw-run-mode-kicker">Ausgabe f&uuml;r diesen Lauf</span>
+                <label class="admin-toggle tw-run-mode-toggle">
+                  <span class="tw-run-mode-option tw-run-mode-option-left">Prompt</span>
+                  <input id="run-mode-result-toggle" type="checkbox" />
+                  <span class="admin-toggle-track" aria-hidden="true"><span class="admin-toggle-thumb"></span></span>
+                  <span class="tw-run-mode-option">Direktes Ergebnis</span>
+                </label>
+              </div>
               <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
               <small id="generation-status" class="hint"></small>
             </div>
@@ -407,6 +416,31 @@
               </div>
             </div>
 
+            <div id="result-direct-panel" class="panel top-space result-prompt-panel is-hidden">
+              <div class="tw-result-main-head">
+                <div>
+                  <h3>Direktes Ergebnis</h3>
+                  <small id="result-direct-meta" class="hint"></small>
+                  <div id="result-direct-usage-summary" class="result-usage-summary is-hidden" aria-live="polite">
+                    <span>Input: <strong id="result-direct-usage-input">-</strong></span>
+                    <span>Output: <strong id="result-direct-usage-output">-</strong></span>
+                    <span>Total: <strong id="result-direct-usage-total">-</strong></span>
+                  </div>
+                  <div id="result-direct-cost-summary" class="result-usage-summary result-cost-summary is-hidden" aria-live="polite">
+                    <span>Input-Kosten: <strong id="result-direct-cost-input">-</strong></span>
+                    <span>Output-Kosten: <strong id="result-direct-cost-output">-</strong></span>
+                    <span>Total-Kosten: <strong id="result-direct-cost-total">-</strong></span>
+                  </div>
+                </div>
+                <div class="inline-actions">
+                  <button id="copy-result-direct" type="button" class="secondary">Ergebnis kopieren</button>
+                </div>
+              </div>
+              <div class="result-prompt-box top-space">
+                <textarea id="result-direct-output" rows="16" readonly></textarea>
+              </div>
+            </div>
+
             <div class="panel top-space">
               <div class="inline-actions result-actions-row">
                 <button id="export-txt" type="button" class="secondary">Export .txt</button>
@@ -482,7 +516,7 @@
           <div class="panel">
             <div class="panel-title-row">
               <h3>API-Provider</h3>
-              <small id="dashboard-provider-stage-hint" class="hint">Metaprompt und Result verwenden aktuell denselben aktiven Provider.</small>
+              <small id="dashboard-provider-stage-hint" class="hint">Metaprompt- und Result-Provider werden getrennt zugeordnet.</small>
             </div>
             <div id="dashboard-provider-stage-tabs" class="chip-row dashboard-provider-stage-tabs">
               <button type="button" class="secondary is-active" data-provider-stage="metaprompt">Metaprompt-Model</button>

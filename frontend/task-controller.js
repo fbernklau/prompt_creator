@@ -380,10 +380,36 @@ function createTaskController({
     node.dataset.type = type;
   }
 
+  function getGlobalGenerationMode() {
+    return state.settings?.resultModeEnabled ? 'result' : 'prompt';
+  }
+
+  function getRunGenerationMode() {
+    return readChecked('run-mode-result-toggle') ? 'result' : 'prompt';
+  }
+
+  function setRunModeToggle(mode = 'prompt') {
+    const node = el('run-mode-result-toggle');
+    if (!node) return;
+    node.checked = mode === 'result';
+    syncRunModeUi();
+  }
+
+  function syncRunModeUi() {
+    const button = el('generate-submit');
+    const runModeToggle = el('run-mode-result-toggle');
+    if (!button || !runModeToggle) return;
+    button.textContent = runModeToggle.checked ? 'Direktes Ergebnis generieren' : 'Prompt generieren';
+  }
+
+  function resetRunModeOverride() {
+    setRunModeToggle(getGlobalGenerationMode());
+  }
+
   function setGenerating(isGenerating, text = '') {
     const button = el('generate-submit');
     button.disabled = isGenerating;
-    button.textContent = isGenerating ? 'Generiere...' : 'Prompt generieren';
+    button.textContent = isGenerating ? 'Generiere...' : (getRunGenerationMode() === 'result' ? 'Direktes Ergebnis generieren' : 'Prompt generieren');
     setGenerationStatus(text, isGenerating ? 'info' : 'ok');
   }
 
@@ -409,11 +435,11 @@ function createTaskController({
     }
   }
 
-  function setResultUsageSummary(usage = null) {
-    const summaryNode = el('result-usage-summary');
-    const inputNode = el('result-usage-input');
-    const outputNode = el('result-usage-output');
-    const totalNode = el('result-usage-total');
+  function setUsageSummary(prefix = 'result', usage = null) {
+    const summaryNode = el(`${prefix}-usage-summary`);
+    const inputNode = el(`${prefix}-usage-input`);
+    const outputNode = el(`${prefix}-usage-output`);
+    const totalNode = el(`${prefix}-usage-total`);
     if (!summaryNode || !inputNode || !outputNode || !totalNode) return;
 
     const promptTokens = Number(usage?.promptTokens);
@@ -427,11 +453,11 @@ function createTaskController({
     summaryNode.classList.toggle('is-hidden', !hasUsage);
   }
 
-  function setResultCostSummary(cost = null) {
-    const summaryNode = el('result-cost-summary');
-    const inputNode = el('result-cost-input');
-    const outputNode = el('result-cost-output');
-    const totalNode = el('result-cost-total');
+  function setCostSummary(prefix = 'result', cost = null) {
+    const summaryNode = el(`${prefix}-cost-summary`);
+    const inputNode = el(`${prefix}-cost-input`);
+    const outputNode = el(`${prefix}-cost-output`);
+    const totalNode = el(`${prefix}-cost-total`);
     if (!summaryNode || !inputNode || !outputNode || !totalNode) return;
 
     const inputCost = Number(cost?.inputCostUsd);
@@ -444,6 +470,14 @@ function createTaskController({
     outputNode.textContent = formatCost(outputCost, currency);
     totalNode.textContent = formatCost(totalCost, currency);
     summaryNode.classList.toggle('is-hidden', !hasCost);
+  }
+
+  function setResultUsageSummary(usage = null) {
+    setUsageSummary('result', usage);
+  }
+
+  function setResultCostSummary(cost = null) {
+    setCostSummary('result', cost);
   }
 
   function setPreviewStatus(text = '', type = 'info') {
@@ -1368,7 +1402,10 @@ function createTaskController({
     state.lastPromptContext = null;
     el('prompt-form').reset();
     el('result').value = '';
+    if (el('result-direct-output')) el('result-direct-output').value = '';
     el('result-meta').textContent = '';
+    if (el('result-direct-meta')) el('result-direct-meta').textContent = '';
+    if (el('result-direct-panel')) el('result-direct-panel').classList.add('is-hidden');
     el('library-title').value = '';
     el('library-rating').value = '';
     el('library-public').checked = false;
@@ -1387,6 +1424,9 @@ function createTaskController({
     if (el('form-template-description')) el('form-template-description').textContent = '';
     setResultUsageSummary(null);
     setResultCostSummary(null);
+    setUsageSummary('result-direct', null);
+    setCostSummary('result-direct', null);
+    resetRunModeOverride();
     renderCompactFlowPanel();
     showScreen('home');
   }
@@ -1415,6 +1455,7 @@ function createTaskController({
     renderCompactFlowPanel();
     updateFormHeaderForSelection();
     renderDynamicFields();
+    resetRunModeOverride();
     showScreen('form');
   }
 
@@ -1440,9 +1481,14 @@ function createTaskController({
     syncAdvancedSectionUi();
   }
 
-  function buildGenerationRequestPayload(context, providerId) {
+  function buildGenerationRequestPayload(context, providerId, generationMode) {
+    const mode = generationMode === 'result' ? 'result' : 'prompt';
+    const configuredResultProviderId = String(state.settings?.resultProviderId || '').trim();
+    const effectiveResultProviderId = configuredResultProviderId || providerId;
     return {
       providerId,
+      resultProviderId: effectiveResultProviderId,
+      generationMode: mode,
       templateId: context.template?.id,
       categoryName: context.baseFields.handlungsfeld,
       subcategoryName: context.baseFields.unterkategorie,
@@ -1456,11 +1502,22 @@ function createTaskController({
   }
 
   function applyGenerationResult(generation, context, { priorPrompt = null } = {}) {
-    const providerMeta = `Metaprompt-Provider: ${generation.provider.name} (${generation.provider.kind}, ${generation.provider.model}) | Key-Quelle: ${generation.provider.keySource} | Template: ${generation.templateId}`;
+    const mode = String(generation?.mode || '').trim() || 'prompt';
+    const metapromptProvider = generation?.providers?.metaprompt || generation.provider;
+    const resultProvider = generation?.providers?.result || null;
+    const handoffPrompt = String(generation?.handoffPrompt || generation?.output || '').trim();
+    const directResult = String(generation?.resultOutput || '').trim();
+    const providerMeta = metapromptProvider
+      ? `Metaprompt-Provider: ${metapromptProvider.name} (${metapromptProvider.kind}, ${metapromptProvider.model}) | Key-Quelle: ${metapromptProvider.keySource} | Template: ${generation.templateId}`
+      : `Template: ${generation.templateId}`;
+    const resultMeta = resultProvider
+      ? `Result-Provider: ${resultProvider.name} (${resultProvider.kind}, ${resultProvider.model}) | Key-Quelle: ${resultProvider.keySource}`
+      : '';
 
     const previousPromptValue = priorPrompt !== null ? String(priorPrompt || '') : (state.generatedPrompt || '');
     state.previousGeneratedPrompt = previousPromptValue;
-    state.generatedPrompt = generation.output;
+    state.generatedPrompt = handoffPrompt;
+    state.generatedResult = directResult;
     state.generatedMeta = providerMeta;
     state.lastPromptContext = {
       fach: context.baseFields.fach,
@@ -1470,10 +1527,16 @@ function createTaskController({
       ziel: context.baseFields.ziel,
     };
 
-    el('result').value = generation.output;
+    el('result').value = handoffPrompt;
     el('result-meta').textContent = providerMeta;
-    setResultUsageSummary(generation.usage || null);
-    setResultCostSummary(generation.cost || null);
+    setResultUsageSummary(generation?.usageStages?.metaprompt || generation.usage || null);
+    setResultCostSummary(generation?.costStages?.metaprompt || generation.cost || null);
+    const directPanel = el('result-direct-panel');
+    if (directPanel) directPanel.classList.toggle('is-hidden', !(mode === 'result' && directResult));
+    if (el('result-direct-output')) el('result-direct-output').value = directResult;
+    if (el('result-direct-meta')) el('result-direct-meta').textContent = resultMeta;
+    setUsageSummary('result-direct', generation?.usageStages?.result || null);
+    setCostSummary('result-direct', generation?.costStages?.result || null);
     if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
     if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
@@ -1495,46 +1558,38 @@ function createTaskController({
 
   async function generatePromptLegacy(context, activeProvider) {
     const priorPrompt = state.generatedPrompt || '';
+    const runMode = getRunGenerationMode();
     let stage = 'metaprompt';
     setGenerating(
       true,
       context.metapromptOverride
-        ? 'Schritt 1/4: Bearbeitete Metaprompt wird vorbereitet...'
-        : 'Schritt 1/4: Metaprompt wird aus Template-Daten erstellt...'
+        ? `Schritt 1/${runMode === 'result' ? '5' : '4'}: Bearbeitete Metaprompt wird vorbereitet...`
+        : `Schritt 1/${runMode === 'result' ? '5' : '4'}: Metaprompt wird aus Template-Daten erstellt...`
     );
 
     try {
       stage = 'provider_call';
       setGenerationStatus(
-        `Schritt 2/4: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
+        `Schritt 2/${runMode === 'result' ? '5' : '4'}: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
         'info'
       );
       const generation = await api('/api/generate', {
         method: 'POST',
-        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id)),
+        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id, runMode)),
       });
 
       stage = 'postprocess';
-      setGenerationStatus('Schritt 3/4: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...', 'info');
+      setGenerationStatus(`Schritt ${runMode === 'result' ? '4/5' : '3/4'}: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...`, 'info');
       applyGenerationResult(generation, context, { priorPrompt });
 
       stage = 'finalize';
-      setGenerationStatus('Schritt 4/4: Verlauf und Discovery werden aktualisiert...', 'info');
+      setGenerationStatus(`Schritt ${runMode === 'result' ? '5/5' : '4/4'}: Verlauf und Discovery werden aktualisiert...`, 'info');
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
+      resetRunModeOverride();
       showScreen('result');
     } catch (error) {
-      const message = String(error?.message || '').toLowerCase();
-      const missingStreamEndpoint = Number(error?.status) === 404
-        || message.includes('cannot post /api/generate/stream')
-        || message.includes('not found');
-      if (missingStreamEndpoint && stage === 'metaprompt') {
-        setGenerationStatus('Streaming-Endpunkt nicht verfuegbar, wechsle auf Standard-Generierung...', 'info');
-        await generatePromptLegacy(context, activeProvider);
-        return;
-      }
-
       const stageLabel = {
         input: 'Eingabe',
         metaprompt: 'Metaprompt-Aufbau',
@@ -1543,6 +1598,7 @@ function createTaskController({
         finalize: 'Abschluss',
       }[stage] || 'Generierung';
       setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
+      resetRunModeOverride();
       throw error;
     }
   }
@@ -1551,6 +1607,7 @@ function createTaskController({
     event.preventDefault();
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
+    const runMode = getRunGenerationMode();
 
     const metapromptProviderId = String(state.settings?.metapromptProviderId || state.activeId || '').trim();
     const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
@@ -1570,15 +1627,24 @@ function createTaskController({
     let streamError = null;
     let stage = 'metaprompt';
     let streamDonePayload = null;
-    let streamDraftOutput = '';
+    let streamHandoffDraft = '';
+    let streamResultDraft = '';
 
-    setGenerating(true, 'Schritt 1/4: Metaprompt wird vorbereitet...');
+    setGenerating(true, `Schritt 1/${runMode === 'result' ? '5' : '4'}: Metaprompt wird vorbereitet...`);
     showScreen('result');
     state.generatedPrompt = '';
+    state.generatedResult = '';
     el('result').value = '';
+    if (el('result-direct-output')) el('result-direct-output').value = '';
     el('result-meta').textContent = 'Generierung gestartet...';
+    if (el('result-direct-meta')) el('result-direct-meta').textContent = runMode === 'result'
+      ? 'Direktes Ergebnis wird vorbereitet...'
+      : '';
+    if (el('result-direct-panel')) el('result-direct-panel').classList.toggle('is-hidden', runMode !== 'result');
     setResultUsageSummary(null);
     setResultCostSummary(null);
+    setUsageSummary('result-direct', null);
+    setCostSummary('result-direct', null);
     el('result-variant-status').textContent = '';
     el('btn-open-templates-from-result').classList.add('is-hidden');
     el('save-library-status').textContent = '';
@@ -1586,7 +1652,7 @@ function createTaskController({
     try {
       await apiStream('/api/generate/stream', {
         method: 'POST',
-        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id)),
+        body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id, runMode)),
         onEvent: (payload) => {
           const eventName = String(payload?.event || '').trim();
           if (!eventName) return;
@@ -1596,25 +1662,47 @@ function createTaskController({
             const statusMessage = String(payload.message || '').trim();
             setGenerationStatus(statusMessage, 'info');
             if (statusMessage) {
-              el('result-meta').textContent = statusMessage;
+              if (stage === 'result_provider_call' && el('result-direct-meta')) {
+                el('result-direct-meta').textContent = statusMessage;
+              } else {
+                el('result-meta').textContent = statusMessage;
+              }
             }
             return;
           }
 
-          if (eventName === 'output_delta') {
+          if (eventName === 'handoff_delta' || eventName === 'output_delta') {
             const delta = typeof payload.delta === 'string' ? payload.delta : '';
             if (!delta) return;
-            streamDraftOutput += delta;
+            streamHandoffDraft += delta;
             const resultNode = el('result');
-            resultNode.value = streamDraftOutput;
+            resultNode.value = streamHandoffDraft;
             resultNode.scrollTop = resultNode.scrollHeight;
             return;
           }
 
-          if (eventName === 'output_replace') {
+          if (eventName === 'handoff_replace' || eventName === 'output_replace') {
             const output = typeof payload.output === 'string' ? payload.output : '';
-            streamDraftOutput = output;
+            streamHandoffDraft = output;
             el('result').value = output;
+            return;
+          }
+
+          if (eventName === 'result_delta') {
+            const delta = typeof payload.delta === 'string' ? payload.delta : '';
+            if (!delta) return;
+            streamResultDraft += delta;
+            const resultNode = el('result-direct-output');
+            if (!resultNode) return;
+            resultNode.value = streamResultDraft;
+            resultNode.scrollTop = resultNode.scrollHeight;
+            return;
+          }
+
+          if (eventName === 'result_replace') {
+            const output = typeof payload.output === 'string' ? payload.output : '';
+            streamResultDraft = output;
+            if (el('result-direct-output')) el('result-direct-output').value = output;
             return;
           }
 
@@ -1642,15 +1730,28 @@ function createTaskController({
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
+      resetRunModeOverride();
     } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      const missingStreamEndpoint = Number(error?.status) === 404
+        || message.includes('cannot post /api/generate/stream')
+        || message.includes('not found');
+      if (missingStreamEndpoint && stage === 'metaprompt') {
+        setGenerationStatus('Streaming-Endpunkt nicht verfuegbar, wechsle auf Standard-Generierung...', 'info');
+        await generatePromptLegacy(context, activeProvider);
+        return;
+      }
+
       const stageLabel = {
         input: 'Eingabe',
         metaprompt: 'Metaprompt-Aufbau',
         provider_call: 'Provider-Aufruf',
+        result_provider_call: 'Result-Provider-Aufruf',
         postprocess: 'Antwortverarbeitung',
         finalize: 'Abschluss',
       }[stage] || 'Generierung';
       setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
+      resetRunModeOverride();
       throw error;
     }
   }
@@ -1678,6 +1779,12 @@ function createTaskController({
 
   function copyPromptWithMetadata() {
     copyTextWithFeedback(buildCopyText(true), 'copy-prompt-meta');
+  }
+
+  function copyDirectResult() {
+    const content = readRawValue('result-direct-output').trim();
+    if (!content) return;
+    copyTextWithFeedback(content, 'copy-result-direct');
   }
 
   function copyMetapromptPreview() {
@@ -1766,6 +1873,9 @@ function createTaskController({
 
     el('copy-prompt-clean').addEventListener('click', copyPromptClean);
     el('copy-prompt-meta').addEventListener('click', copyPromptWithMetadata);
+    if (el('copy-result-direct')) {
+      el('copy-result-direct').addEventListener('click', copyDirectResult);
+    }
     el('btn-compare-last').addEventListener('click', toggleComparePanel);
 
     el('home-template-search-btn').addEventListener('click', () => {
@@ -1798,9 +1908,13 @@ function createTaskController({
     if (el('subcat-view-list')) {
       el('subcat-view-list').addEventListener('click', () => setSubcategoryViewMode('list'));
     }
+    if (el('run-mode-result-toggle')) {
+      el('run-mode-result-toggle').addEventListener('change', syncRunModeUi);
+    }
 
     syncFlowModeUi();
     applySubcategoryViewMode();
+    resetRunModeOverride();
   }
 
   return {
