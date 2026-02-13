@@ -1,5 +1,5 @@
 function createUiShell({ el }) {
-  const screenIds = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin', 'dashboard'];
+  const screenIds = ['home', 'subcategory', 'form', 'result', 'library', 'library-entry', 'templates', 'admin', 'dashboard'];
   const drawerIds = ['provider-drawer', 'options-drawer'];
   const screenNavMap = {
     home: 'btn-new-task',
@@ -7,6 +7,7 @@ function createUiShell({ el }) {
     form: 'btn-new-task',
     result: 'btn-new-task',
     library: 'btn-library',
+    'library-entry': 'btn-library',
     templates: 'btn-templates',
     admin: 'btn-admin',
     dashboard: 'btn-dashboard',

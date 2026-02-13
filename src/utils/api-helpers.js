@@ -24,6 +24,7 @@ function normalizeLibraryRow(row) {
     id: row.id,
     userId: row.user_id,
     title: row.title,
+    descriptionText: row.description_text || '',
     promptText: row.prompt_text,
     fach: row.fach,
     handlungsfeld: row.handlungsfeld,
@@ -73,6 +74,9 @@ function sanitizeSettings(input = {}) {
   }
   if (typeof input.resultProviderId === 'string') {
     output.resultProviderId = input.resultProviderId.trim();
+  }
+  if (typeof input.libraryDetailView === 'string' && ['page', 'modal'].includes(input.libraryDetailView)) {
+    output.libraryDetailView = input.libraryDetailView;
   }
   return output;
 }

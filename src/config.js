@@ -26,6 +26,7 @@ const config = {
     resultModeEnabled: false,
     metapromptProviderId: '',
     resultProviderId: '',
+    libraryDetailView: 'page',
   },
 };
 

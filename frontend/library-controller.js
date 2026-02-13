@@ -3,13 +3,23 @@ function createLibraryController({
   el,
   api,
   getCategoryConfig,
+  showScreen,
   onOpenTemplateFromLibrary = null,
 }) {
   let openLibraryHandler = typeof onOpenTemplateFromLibrary === 'function'
     ? onOpenTemplateFromLibrary
     : null;
   let filterEventsBound = false;
+  let detailEventsBound = false;
   let searchDebounceTimer = null;
+
+  state.libraryDetail = state.libraryDetail || {
+    entryId: null,
+    artifact: 'metaprompt',
+    descriptionEdit: false,
+    status: '',
+    view: 'page',
+  };
 
   function escapeHtml(value = '') {
     return String(value || '')
@@ -18,6 +28,14 @@ function createLibraryController({
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  function getLibraryDetailView() {
+    return state.settings?.libraryDetailView === 'modal' ? 'modal' : 'page';
+  }
+
+  function getActiveItems() {
+    return state.libraryMode === 'own' ? state.libraryOwn : state.libraryPublic;
   }
 
   function setOpenLibraryHandler(handler) {
@@ -151,11 +169,266 @@ function createLibraryController({
     return String(item.metapromptText || item.promptText || '').trim();
   }
 
+  function resolveDescription(item = {}) {
+    return String(item.descriptionText || '').trim() || 'Keine Beschreibung hinterlegt.';
+  }
+
+  function findLibraryEntry(libraryId) {
+    return getActiveItems().find((entry) => String(entry.id) === String(libraryId)) || null;
+  }
+
+  function setDetailStatus(text = '') {
+    state.libraryDetail.status = text;
+  }
+
+  function closeLibraryDetailModal() {
+    const modal = el('library-entry-modal');
+    if (modal) modal.classList.add('is-hidden');
+  }
+
+  function closeLibraryDetail() {
+    state.libraryDetail.entryId = null;
+    state.libraryDetail.descriptionEdit = false;
+    state.libraryDetail.artifact = 'metaprompt';
+    state.libraryDetail.status = '';
+    closeLibraryDetailModal();
+    const page = el('library-entry-page-content');
+    const modalBody = el('library-entry-modal-content');
+    if (page) page.innerHTML = '';
+    if (modalBody) modalBody.innerHTML = '';
+  }
+
+  function buildLibraryDetailMarkup(entry = {}) {
+    const canEditDescription = String(entry.userId || '') === String(state.currentUser || '');
+    const artifact = state.libraryDetail.artifact === 'result' && entry.hasResult ? 'result' : 'metaprompt';
+    const descriptionEditable = canEditDescription && state.libraryDetail.descriptionEdit;
+    const content = resolveArtifactText(entry, artifact) || '(kein Inhalt gespeichert)';
+    const metaLine = [
+      entry.handlungsfeld,
+      entry.unterkategorie,
+      entry.fach,
+      entry.providerModel ? `Modell: ${entry.providerModel}` : null,
+    ].filter(Boolean).join(' | ');
+    const showResultTab = entry.hasResult ? '' : 'is-hidden';
+    const publicToggleLabel = entry.isPublic ? 'Privat setzen' : 'Public setzen';
+
+    return `
+      <div class="panel tw-library-detail-card" data-library-detail-id="${entry.id}">
+        <div class="tw-library-detail-head">
+          <div class="tw-library-card-badges">
+            <span class="tw-library-badge tw-library-badge-model">${escapeHtml(String(entry.providerKind || 'custom').toUpperCase())}</span>
+            <span class="tw-library-badge">${escapeHtml(entry.handlungsfeld || '-')}</span>
+            <span class="tw-library-badge">${escapeHtml(entry.isPublic ? 'Community' : 'Personal')}</span>
+            <span class="tw-library-badge">${escapeHtml(entry.generationMode === 'result' ? 'Result' : 'Prompt')}</span>
+          </div>
+          <h3>${escapeHtml(entry.title || 'Library-Eintrag')}</h3>
+          <small class="hint">${escapeHtml(metaLine)}</small>
+          <small class="hint">Erstellt: ${escapeHtml(new Date(entry.createdAt || Date.now()).toLocaleString('de-AT'))}</small>
+        </div>
+        <label class="top-space">Beschreibung
+          <textarea data-detail-description rows="4" ${descriptionEditable ? '' : 'readonly'}>${escapeHtml(String(entry.descriptionText || ''))}</textarea>
+        </label>
+        <div class="inline-actions top-space">
+          ${canEditDescription && !descriptionEditable ? '<button type="button" class="secondary" data-detail-action="edit-description">Beschreibung bearbeiten</button>' : ''}
+          ${canEditDescription && descriptionEditable ? '<button type="button" data-detail-action="save-description">Beschreibung speichern</button>' : ''}
+          ${canEditDescription && descriptionEditable ? '<button type="button" class="secondary" data-detail-action="cancel-edit-description">Abbrechen</button>' : ''}
+          <small class="hint" data-detail-status>${escapeHtml(state.libraryDetail.status || '')}</small>
+        </div>
+
+        <div class="inline-actions top-space tw-library-artifact-tabs tw-library-detail-tabs">
+          <button type="button" class="secondary small ${artifact === 'metaprompt' ? 'is-active' : ''}" data-detail-action="artifact-tab" data-artifact="metaprompt">Metaprompt</button>
+          <button type="button" class="secondary small ${artifact === 'result' ? 'is-active' : ''} ${showResultTab}" data-detail-action="artifact-tab" data-artifact="result">Ergebnis</button>
+        </div>
+
+        <pre class="library-text top-space tw-library-detail-text">${escapeHtml(content)}</pre>
+
+        <div class="inline-actions top-space tw-library-detail-actions">
+          <button type="button" data-detail-action="reuse">Wiederverwenden</button>
+          <button type="button" class="secondary" data-detail-action="copy">Inhalt kopieren</button>
+          ${canEditDescription ? `<button type="button" class="secondary" data-detail-action="toggle-public">${publicToggleLabel}</button>` : ''}
+          ${canEditDescription ? '<button type="button" class="secondary" data-detail-action="delete">Löschen</button>' : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderLibraryDetail() {
+    const entry = findLibraryEntry(state.libraryDetail.entryId);
+    if (!entry) {
+      closeLibraryDetail();
+      return;
+    }
+    const view = getLibraryDetailView();
+    state.libraryDetail.view = view;
+    const pageHost = el('library-entry-page-content');
+    const modalHost = el('library-entry-modal-content');
+    const modal = el('library-entry-modal');
+
+    const markup = buildLibraryDetailMarkup(entry);
+    if (view === 'modal') {
+      if (modalHost) modalHost.innerHTML = markup;
+      if (pageHost) pageHost.innerHTML = '';
+      if (modal) modal.classList.remove('is-hidden');
+      if (typeof showScreen === 'function') showScreen('library');
+      return;
+    }
+
+    if (pageHost) pageHost.innerHTML = markup;
+    if (modalHost) modalHost.innerHTML = '';
+    closeLibraryDetailModal();
+    if (typeof showScreen === 'function') showScreen('library-entry');
+  }
+
+  function openLibraryDetail(entry, { editDescription = false } = {}) {
+    if (!entry) return;
+    state.libraryDetail.entryId = entry.id;
+    state.libraryDetail.artifact = entry.hasResult ? 'result' : 'metaprompt';
+    state.libraryDetail.descriptionEdit = Boolean(editDescription);
+    state.libraryDetail.status = '';
+    renderLibraryDetail();
+  }
+
+  function copyToClipboard(content = '') {
+    const normalized = String(content || '').trim();
+    if (!normalized) return;
+    navigator.clipboard.writeText(normalized);
+  }
+
+  function bindDetailEvents() {
+    if (detailEventsBound) return;
+    detailEventsBound = true;
+
+    const pageHost = el('library-entry-page-content');
+    const modalHost = el('library-entry-modal-content');
+    const modalClose = el('library-entry-modal-close');
+
+    const clickHandler = (event) => {
+      handleDetailAction(event).catch((error) => alert(error.message));
+    };
+
+    if (pageHost) pageHost.addEventListener('click', clickHandler);
+    if (modalHost) modalHost.addEventListener('click', clickHandler);
+    if (modalClose) {
+      modalClose.addEventListener('click', () => {
+        closeLibraryDetailModal();
+      });
+    }
+  }
+
+  async function openLibraryTemplate(libraryId) {
+    const entry = await api(`/api/library/${encodeURIComponent(libraryId)}/open`);
+    if (typeof openLibraryHandler !== 'function') {
+      alert('Wiederverwenden ist aktuell nicht verfügbar.');
+      return;
+    }
+    const opened = openLibraryHandler(entry);
+    if (opened !== false) {
+      closeLibraryDetail();
+      state.libraryMode = 'own';
+      el('lib-tab-own')?.classList.add('is-active');
+      el('lib-tab-public')?.classList.remove('is-active');
+    }
+  }
+
+  async function handleDetailAction(event) {
+    const button = event.target.closest('button[data-detail-action]');
+    if (!button) return;
+
+    const entry = findLibraryEntry(state.libraryDetail.entryId);
+    if (!entry) return;
+    const action = button.dataset.detailAction;
+
+    if (action === 'artifact-tab') {
+      const nextArtifact = button.dataset.artifact === 'result' ? 'result' : 'metaprompt';
+      if (nextArtifact === 'result' && !entry.hasResult) return;
+      state.libraryDetail.artifact = nextArtifact;
+      renderLibraryDetail();
+      return;
+    }
+
+    if (action === 'edit-description') {
+      state.libraryDetail.descriptionEdit = true;
+      setDetailStatus('');
+      renderLibraryDetail();
+      const host = state.libraryDetail.view === 'modal' ? el('library-entry-modal-content') : el('library-entry-page-content');
+      const input = host?.querySelector('[data-detail-description]');
+      if (input) input.focus();
+      return;
+    }
+
+    if (action === 'cancel-edit-description') {
+      state.libraryDetail.descriptionEdit = false;
+      setDetailStatus('');
+      renderLibraryDetail();
+      return;
+    }
+
+    if (action === 'save-description') {
+      const host = state.libraryDetail.view === 'modal' ? el('library-entry-modal-content') : el('library-entry-page-content');
+      const input = host?.querySelector('[data-detail-description]');
+      const descriptionText = String(input?.value || '').trim();
+      await api(`/api/library/${encodeURIComponent(String(entry.id))}`, {
+        method: 'PUT',
+        body: JSON.stringify({ descriptionText }),
+      });
+      state.libraryOwn = state.libraryOwn.map((row) => (row.id === entry.id ? { ...row, descriptionText } : row));
+      state.libraryPublic = state.libraryPublic.map((row) => (row.id === entry.id ? { ...row, descriptionText } : row));
+      state.libraryDetail.descriptionEdit = false;
+      setDetailStatus('Beschreibung gespeichert.');
+      renderLibraryList();
+      renderLibraryDetail();
+      return;
+    }
+
+    if (action === 'reuse') {
+      await openLibraryTemplate(entry.id);
+      return;
+    }
+
+    if (action === 'copy') {
+      copyToClipboard(resolveArtifactText(entry, state.libraryDetail.artifact));
+      setDetailStatus('Inhalt kopiert.');
+      renderLibraryDetail();
+      return;
+    }
+
+    if (action === 'toggle-public') {
+      await api(`/api/library/${encodeURIComponent(String(entry.id))}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isPublic: !entry.isPublic }),
+      });
+      await refreshLibrary();
+      const updated = findLibraryEntry(entry.id) || { ...entry, isPublic: !entry.isPublic };
+      openLibraryDetail(updated);
+      return;
+    }
+
+    if (action === 'delete') {
+      const proceed = confirm('Eintrag wirklich löschen?');
+      if (!proceed) return;
+      await api(`/api/library/${encodeURIComponent(String(entry.id))}`, { method: 'DELETE' });
+      closeLibraryDetail();
+      await refreshLibrary();
+    }
+  }
+
+  function switchArtifactTab(card, item, artifact) {
+    const normalized = artifact === 'result' ? 'result' : 'metaprompt';
+    const contentNode = card.querySelector('[data-library-artifact-content]');
+    if (!contentNode) return;
+    const text = resolveArtifactText(item, normalized);
+    contentNode.textContent = text || '(kein Inhalt gespeichert)';
+    card.dataset.activeArtifact = normalized;
+    card.querySelectorAll('[data-action="artifact-tab"]').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.artifact === normalized);
+    });
+  }
+
   function renderLibraryList() {
     const list = el('library-list');
-    const items = state.libraryMode === 'own' ? state.libraryOwn : state.libraryPublic;
+    const items = getActiveItems();
     if (!items.length) {
-      list.innerHTML = '<div class="panel tw-library-empty"><span class="hint">Keine Eintraege gefunden.</span></div>';
+      list.innerHTML = '<div class="panel tw-library-empty"><span class="hint">Keine Einträge gefunden.</span></div>';
       return;
     }
 
@@ -171,8 +444,9 @@ function createLibraryController({
         const modeBadge = item.generationMode === 'result' ? 'Result' : 'Prompt';
         const activeArtifact = item.hasResult ? 'result' : 'metaprompt';
         const artifactText = resolveArtifactText(item, activeArtifact);
+        const descriptionText = resolveDescription(item);
         return `
-        <article class="library-item tw-library-card" data-library-id="${item.id}" data-active-artifact="${activeArtifact}">
+        <article class="library-item tw-library-card clickable-card" data-library-id="${item.id}" data-active-artifact="${activeArtifact}" role="button" tabindex="0" aria-label="Library-Eintrag ${escapeHtml(item.title)} öffnen">
           <div class="tw-library-card-head">
             <div class="tw-library-card-badges">
               <span class="tw-library-badge tw-library-badge-model">${escapeHtml(modelBadge)}</span>
@@ -183,18 +457,11 @@ function createLibraryController({
             <button type="button" class="tw-library-card-fav" data-action="copy-lib" title="Aktiven Tab kopieren">♡</button>
           </div>
           <h3 class="tw-library-card-title">${escapeHtml(item.title)}</h3>
-          <p class="tw-library-card-description">${escapeHtml(item.promptText)}</p>
+          <p class="tw-library-card-description">${escapeHtml(descriptionText)}</p>
           <div class="tw-library-rating-row">
             <span class="tw-library-stars">${renderStars(item.avgRating)}</span>
             <span class="tw-library-rating-value">${Number(item.avgRating || 0).toFixed(2)}</span>
             <span class="tw-library-rating-count">(${item.ratingCount || 0} reviews)</span>
-          </div>
-          <div class="tw-library-card-foot">
-            <span class="tw-library-author">${escapeHtml(ownerLabel)}</span>
-            <div class="inline-actions">
-              <button type="button" class="tw-library-try-btn" data-action="open-lib">Öffnen</button>
-              <button type="button" class="tw-library-try-btn" data-action="try-lib">Try Prompt</button>
-            </div>
           </div>
           <div class="tw-library-admin-row">
             <span class="library-meta">${escapeHtml(item.handlungsfeld)} | ${escapeHtml(item.unterkategorie)} | ${escapeHtml(item.fach)} | Modell: ${escapeHtml(item.providerModel || '-')}</span>
@@ -210,25 +477,41 @@ function createLibraryController({
             <button type="button" class="secondary small ${activeArtifact === 'metaprompt' ? 'is-active' : ''}" data-action="artifact-tab" data-artifact="metaprompt">Metaprompt</button>
             <button type="button" class="secondary small ${activeArtifact === 'result' ? 'is-active' : ''} ${item.hasResult ? '' : 'is-hidden'}" data-action="artifact-tab" data-artifact="result">Ergebnis</button>
           </div>
+          <pre class="library-text" data-library-artifact-content>${escapeHtml(artifactText)}</pre>
+          <div class="tw-library-tags">
+            ${(item.tags || []).slice(0, 5).map((tag) => `<span class="tw-library-tag-chip">${escapeHtml(tag)}</span>`).join('')}
+          </div>
+          <div class="tw-library-card-foot">
+            <span class="tw-library-author">${escapeHtml(ownerLabel)}</span>
+            <div class="inline-actions">
+              <button type="button" class="tw-library-try-btn" data-action="reuse-lib">Wiederverwenden</button>
+            </div>
+          </div>
           ${
             state.libraryMode === 'own'
               ? `
             <div class="inline-actions tw-library-owner-actions">
               <button type="button" class="secondary small" data-action="edit-lib">Bearbeiten</button>
               <button type="button" class="secondary small" data-action="toggle-public">${item.isPublic ? 'Privat setzen' : 'Public setzen'}</button>
-              <button type="button" class="secondary small" data-action="delete-lib">Loeschen</button>
+              <button type="button" class="secondary small" data-action="delete-lib">Löschen</button>
             </div>
           `
               : ''
           }
-          <pre class="library-text" data-library-artifact-content>${escapeHtml(artifactText)}</pre>
-          <div class="tw-library-tags">
-            ${(item.tags || []).slice(0, 5).map((tag) => `<span class="tw-library-tag-chip">${escapeHtml(tag)}</span>`).join('')}
-          </div>
         </article>
       `;
       })
       .join('');
+
+    list.querySelectorAll('[data-library-id]').forEach((card) => {
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.target.closest('button,select,input,textarea,label,a')) return;
+        event.preventDefault();
+        const entry = findLibraryEntry(card.dataset.libraryId);
+        if (entry) openLibraryDetail(entry);
+      });
+    });
   }
 
   async function refreshLibrary() {
@@ -240,6 +523,11 @@ function createLibraryController({
       state.libraryPublic = await api(`/api/library/public${query ? `?${query}` : ''}`);
     }
     renderLibraryList();
+    if (state.libraryDetail.entryId) {
+      const current = findLibraryEntry(state.libraryDetail.entryId);
+      if (current) renderLibraryDetail();
+      else closeLibraryDetail();
+    }
   }
 
   function resolveLastGenerationProvider() {
@@ -254,6 +542,7 @@ function createLibraryController({
     const generationMode = state.lastGenerationPayload?.mode === 'result' ? 'result' : 'prompt';
     const payload = {
       title: el('library-title').value.trim() || `${state.lastPromptContext.unterkategorie} - ${state.lastPromptContext.fach}`,
+      descriptionText: '',
       promptText: state.generatedPrompt,
       fach: state.lastPromptContext.fach,
       handlungsfeld: state.lastPromptContext.handlungsfeld,
@@ -281,49 +570,32 @@ function createLibraryController({
     }, 1400);
   }
 
-  async function openLibraryTemplate(libraryId) {
-    const entry = await api(`/api/library/${encodeURIComponent(libraryId)}/open`);
-    if (typeof openLibraryHandler !== 'function') {
-      alert('Öffnen ist aktuell nicht verfügbar.');
-      return;
-    }
-    const opened = openLibraryHandler(entry);
-    if (opened !== false) {
-      state.libraryMode = 'own';
-      el('lib-tab-own')?.classList.add('is-active');
-      el('lib-tab-public')?.classList.remove('is-active');
-    }
-  }
-
-  function switchArtifactTab(card, item, artifact) {
-    const normalized = artifact === 'result' ? 'result' : 'metaprompt';
-    const contentNode = card.querySelector('[data-library-artifact-content]');
-    if (!contentNode) return;
-    const text = resolveArtifactText(item, normalized);
-    contentNode.textContent = text || '(kein Inhalt gespeichert)';
-    card.dataset.activeArtifact = normalized;
-    card.querySelectorAll('[data-action="artifact-tab"]').forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.artifact === normalized);
-    });
+  function shouldTreatAsCardOpen(event) {
+    if (event.target.closest('button,select,input,textarea,label,a')) return false;
+    return true;
   }
 
   async function handleLibraryAction(event) {
-    const button = event.target.closest('button[data-action]');
-    if (!button) return;
-    const card = button.closest('[data-library-id]');
+    const card = event.target.closest('[data-library-id]');
     if (!card) return;
 
     const libraryId = card.dataset.libraryId;
-    const item = (state.libraryMode === 'own' ? state.libraryOwn : state.libraryPublic)
-      .find((entry) => String(entry.id) === String(libraryId));
+    const item = findLibraryEntry(libraryId);
     if (!item) return;
+
+    const button = event.target.closest('button[data-action]');
+    if (!button) {
+      if (!shouldTreatAsCardOpen(event)) return;
+      openLibraryDetail(item);
+      return;
+    }
 
     if (button.dataset.action === 'artifact-tab') {
       switchArtifactTab(card, item, button.dataset.artifact);
       return;
     }
 
-    if (button.dataset.action === 'open-lib' || button.dataset.action === 'try-lib') {
+    if (button.dataset.action === 'reuse-lib') {
       await openLibraryTemplate(libraryId);
       return;
     }
@@ -331,8 +603,7 @@ function createLibraryController({
     if (button.dataset.action === 'copy-lib') {
       const activeArtifact = card.dataset.activeArtifact || 'metaprompt';
       const content = resolveArtifactText(item, activeArtifact);
-      if (!content) return;
-      navigator.clipboard.writeText(content);
+      copyToClipboard(content);
       return;
     }
 
@@ -353,6 +624,7 @@ function createLibraryController({
       const proceed = confirm('Eintrag wirklich löschen?');
       if (!proceed) return;
       await api(`/api/library/${libraryId}`, { method: 'DELETE' });
+      if (state.libraryDetail.entryId === item.id) closeLibraryDetail();
       await refreshLibrary();
       return;
     }
@@ -367,24 +639,22 @@ function createLibraryController({
     }
 
     if (button.dataset.action === 'edit-lib') {
-      const newTitle = prompt('Neuer Titel', item.title);
-      if (!newTitle) return;
-      const newPrompt = prompt('Prompt-Inhalt bearbeiten', item.promptText);
-      if (!newPrompt) return;
-      await api(`/api/library/${libraryId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ title: newTitle, promptText: newPrompt }),
-      });
-      await refreshLibrary();
+      openLibraryDetail(item, { editDescription: true });
     }
   }
 
+  function bindEvents() {
+    bindDetailEvents();
+  }
+
   return {
+    bindEvents,
     prepareLibraryFilters,
     refreshLibrary,
     saveCurrentPromptToLibrary,
     handleLibraryAction,
     setOpenLibraryHandler,
+    closeLibraryDetail,
   };
 }
 

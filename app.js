@@ -103,6 +103,7 @@ const libraryController = createLibraryController({
   el,
   api,
   getCategoryConfig,
+  showScreen: uiShell.showScreen,
   onOpenTemplateFromLibrary: (entry) => taskController.openLibraryEntry(entry),
 });
 
@@ -203,6 +204,7 @@ function bindEvents() {
   templateStudioController.bindEvents();
   dashboardController.bindEvents();
   taskController.bindEvents();
+  libraryController.bindEvents();
 
   el('btn-provider').addEventListener('click', async () => {
     await providerController.refreshModelCatalogAndSync().catch(() => {});
@@ -246,6 +248,9 @@ function bindEvents() {
   el('btn-back-home-from-form').addEventListener('click', () => uiShell.showScreen('home'));
   el('btn-back-subcat').addEventListener('click', () => uiShell.showScreen((state.settings.flowMode || 'step') === 'step' ? 'subcategory' : 'home'));
   el('btn-back-home-from-library').addEventListener('click', () => uiShell.showScreen('home'));
+  if (el('btn-back-library-entry')) {
+    el('btn-back-library-entry').addEventListener('click', () => uiShell.showScreen('library'));
+  }
   if (el('home-show-all-templates')) {
     el('home-show-all-templates').addEventListener('click', () => {
       el('btn-templates').click();
@@ -296,6 +301,7 @@ function bindEvents() {
       flowMode,
       resultModeEnabled: generationMode === 'result',
       navLayout,
+      libraryDetailView: document.querySelector('input[name="library-detail-view"]:checked')?.value || 'page',
       copyIncludeMetadata: el('setting-copy-metadata').checked,
       advancedOpen: el('setting-advanced-open').checked,
       showCommunityTemplates: el('setting-show-community').checked,
@@ -325,6 +331,11 @@ function bindEvents() {
   document.querySelectorAll('input[name="nav-layout"]').forEach((node) => {
     node.addEventListener('change', () => {
       queueSettingsSave({ navLayout: node.value });
+    });
+  });
+  document.querySelectorAll('input[name="library-detail-view"]').forEach((node) => {
+    node.addEventListener('change', () => {
+      queueSettingsSave({ libraryDetailView: node.value });
     });
   });
   el('setting-copy-metadata').addEventListener('change', () => {

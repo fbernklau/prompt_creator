@@ -775,6 +775,13 @@
         <div id="library-list" class="library-list top-space tw-library-grid"></div>
       </section>
 
+      <section id="screen-library-entry" class="screen is-hidden tw-library">
+        <div class="step-nav">
+          <button id="btn-back-library-entry" type="button" class="link-btn">&larr; Zur&uuml;ck zur Bibliothek</button>
+        </div>
+        <div id="library-entry-page-content" class="top-space"></div>
+      </section>
+
       <section id="screen-templates" class="screen is-hidden">
         <div class="step-nav">
           <button id="btn-back-home-from-templates" type="button" class="link-btn">&larr; Zur&uuml;ck zur &Uuml;bersicht</button>
@@ -1347,6 +1354,13 @@
         </div>
 
         <div class="panel top-space">
+          <h3>Library-Detailansicht</h3>
+          <label class="radio"><input type="radio" name="library-detail-view" value="page" /> Seitenansicht</label>
+          <label class="radio"><input type="radio" name="library-detail-view" value="modal" /> Modal</label>
+          <small class="hint">Legt fest, wie ein Library-Eintrag bei Kartenklick ge&ouml;ffnet wird.</small>
+        </div>
+
+        <div class="panel top-space">
           <h3>Standardverhalten</h3>
           <label class="checkbox"><input id="setting-copy-metadata" type="checkbox" /><span>Metadata beim Kopieren standardmaessig aktivieren</span></label>
           <label class="checkbox"><input id="setting-advanced-open" type="checkbox" /><span>Erweiterte Optionen standardmaessig offen</span></label>
@@ -1387,6 +1401,15 @@
           <button id="wizard-skip" type="button" class="text-btn">Sp&auml;ter</button>
         </div>
         <small id="wizard-status" class="hint top-space"></small>
+      </div>
+    </div>
+
+    <div id="library-entry-modal" class="modal is-hidden">
+      <div class="modal-card library-entry-modal-card">
+        <div class="inline-actions align-end">
+          <button id="library-entry-modal-close" type="button" class="secondary small">Schlie&szlig;en</button>
+        </div>
+        <div id="library-entry-modal-content" class="top-space"></div>
       </div>
     </div>
 

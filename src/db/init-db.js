@@ -461,6 +461,7 @@ async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
       title TEXT NOT NULL,
+      description_text TEXT,
       prompt_text TEXT NOT NULL,
       fach TEXT NOT NULL,
       handlungsfeld TEXT NOT NULL,
@@ -477,6 +478,10 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS description_text TEXT
   `);
   await pool.query(`
     ALTER TABLE prompt_library

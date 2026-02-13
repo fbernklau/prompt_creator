@@ -25,7 +25,7 @@ function createLibraryRouter() {
       params.push(String(req.query.templateId));
     }
     if (req.query.search) {
-      filters.push(`(l.title ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
+      filters.push(`(l.title ILIKE $${idx} OR COALESCE(l.description_text, '') ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
       params.push(`%${String(req.query.search)}%`);
       idx += 1;
     }
@@ -83,7 +83,7 @@ function createLibraryRouter() {
       }
     }
     if (req.query.search) {
-      filters.push(`(l.title ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
+      filters.push(`(l.title ILIKE $${idx} OR COALESCE(l.description_text, '') ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
       params.push(`%${String(req.query.search)}%`);
       idx += 1;
     }
@@ -116,6 +116,7 @@ function createLibraryRouter() {
   router.post('/library', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
     const {
       title,
+      descriptionText,
       promptText,
       fach,
       handlungsfeld,
@@ -146,12 +147,13 @@ function createLibraryRouter() {
 
     const insertResult = await pool.query(
       `INSERT INTO prompt_library
-         (user_id, title, prompt_text, fach, handlungsfeld, unterkategorie, template_id, provider_kind, provider_model, generation_mode, form_snapshot_json, metaprompt_text, result_text, has_result, is_public)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15)
+         (user_id, title, description_text, prompt_text, fach, handlungsfeld, unterkategorie, template_id, provider_kind, provider_model, generation_mode, form_snapshot_json, metaprompt_text, result_text, has_result, is_public)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16)
        RETURNING id`,
       [
         req.userId,
         String(title),
+        typeof descriptionText === 'string' && descriptionText.trim() ? descriptionText.trim() : null,
         String(promptText),
         String(fach),
         String(handlungsfeld),
@@ -195,6 +197,10 @@ function createLibraryRouter() {
     if (typeof body.title === 'string' && body.title.trim()) {
       fields.push(`title = $${idx++}`);
       values.push(body.title.trim());
+    }
+    if (typeof body.descriptionText === 'string') {
+      fields.push(`description_text = $${idx++}`);
+      values.push(body.descriptionText.trim() || null);
     }
     if (typeof body.promptText === 'string' && body.promptText.trim()) {
       fields.push(`prompt_text = $${idx++}`);
