@@ -1,5 +1,6 @@
 function createUiShell({ el }) {
   const screenIds = ['home', 'subcategory', 'form', 'result', 'library', 'templates', 'admin', 'dashboard'];
+  const drawerIds = ['provider-drawer', 'options-drawer'];
   const screenNavMap = {
     home: 'btn-new-task',
     subcategory: 'btn-new-task',
@@ -12,7 +13,6 @@ function createUiShell({ el }) {
   };
   const drawerNavMap = {
     'provider-drawer': 'btn-provider',
-    'history-drawer': 'btn-history',
     'options-drawer': 'btn-options',
   };
   let currentScreen = 'home';
@@ -36,22 +36,33 @@ function createUiShell({ el }) {
 
   function setVaultStatus(text, type = 'info') {
     const node = el('vault-status');
+    if (!node) return;
     node.textContent = text;
     node.dataset.type = type;
   }
 
   function closeDrawers() {
-    ['provider-drawer', 'history-drawer', 'options-drawer'].forEach((id) => el(id).classList.add('is-hidden'));
-    el('overlay').classList.add('is-hidden');
+    drawerIds.forEach((id) => {
+      const node = el(id);
+      if (node) node.classList.add('is-hidden');
+    });
+    const overlay = el('overlay');
+    if (overlay) overlay.classList.add('is-hidden');
     activeDrawer = null;
     syncActiveNav();
   }
 
   function openDrawer(drawerId) {
-    ['provider-drawer', 'history-drawer', 'options-drawer'].forEach((id) => el(id).classList.add('is-hidden'));
-    el('overlay').classList.add('is-hidden');
-    el(drawerId).classList.remove('is-hidden');
-    el('overlay').classList.remove('is-hidden');
+    const target = el(drawerId);
+    if (!target) return;
+    drawerIds.forEach((id) => {
+      const node = el(id);
+      if (node) node.classList.add('is-hidden');
+    });
+    const overlay = el('overlay');
+    if (overlay) overlay.classList.add('is-hidden');
+    target.classList.remove('is-hidden');
+    if (overlay) overlay.classList.remove('is-hidden');
     activeDrawer = drawerId;
     syncActiveNav();
   }
@@ -59,7 +70,10 @@ function createUiShell({ el }) {
   function showScreen(screenName, { pushHistory = true, replaceHistory = false } = {}) {
     if (!screenIds.includes(screenName)) return;
     const previousScreen = currentScreen;
-    screenIds.forEach((name) => el(`screen-${name}`).classList.toggle('is-hidden', name !== screenName));
+    screenIds.forEach((name) => {
+      const node = el(`screen-${name}`);
+      if (node) node.classList.toggle('is-hidden', name !== screenName);
+    });
     currentScreen = screenName;
     document.body.dataset.screen = screenName;
 

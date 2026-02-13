@@ -8,6 +8,35 @@ function createLibraryRouter() {
   const router = Router();
 
   router.get('/library', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
+    const filters = ['l.user_id = $1'];
+    const params = [req.userId];
+    let idx = 2;
+
+    if (req.query.handlungsfeld) {
+      filters.push(`l.handlungsfeld = $${idx++}`);
+      params.push(String(req.query.handlungsfeld));
+    }
+    if (req.query.unterkategorie) {
+      filters.push(`l.unterkategorie = $${idx++}`);
+      params.push(String(req.query.unterkategorie));
+    }
+    if (req.query.templateId) {
+      filters.push(`l.template_id = $${idx++}`);
+      params.push(String(req.query.templateId));
+    }
+    if (req.query.search) {
+      filters.push(`(l.title ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
+      params.push(`%${String(req.query.search)}%`);
+      idx += 1;
+    }
+    if (req.query.generationMode) {
+      const mode = String(req.query.generationMode).trim().toLowerCase();
+      if (mode === 'prompt' || mode === 'result') {
+        filters.push(`l.generation_mode = $${idx++}`);
+        params.push(mode);
+      }
+    }
+
     const result = await pool.query(
       `SELECT
          l.*,
@@ -21,9 +50,9 @@ function createLibraryRouter() {
          GROUP BY library_id
        ) r ON r.library_id = l.id
        LEFT JOIN prompt_library_ratings ur ON ur.library_id = l.id AND ur.user_id = $1
-       WHERE l.user_id = $1
+       WHERE ${filters.join(' AND ')}
        ORDER BY l.updated_at DESC`,
-      [req.userId]
+      params
     );
 
     res.json(result.rows.map(normalizeLibraryRow));
@@ -42,8 +71,19 @@ function createLibraryRouter() {
       filters.push(`l.unterkategorie = $${idx++}`);
       params.push(String(req.query.unterkategorie));
     }
+    if (req.query.templateId) {
+      filters.push(`l.template_id = $${idx++}`);
+      params.push(String(req.query.templateId));
+    }
+    if (req.query.generationMode) {
+      const mode = String(req.query.generationMode).trim().toLowerCase();
+      if (mode === 'prompt' || mode === 'result') {
+        filters.push(`l.generation_mode = $${idx++}`);
+        params.push(mode);
+      }
+    }
     if (req.query.search) {
-      filters.push(`(l.title ILIKE $${idx} OR l.prompt_text ILIKE $${idx})`);
+      filters.push(`(l.title ILIKE $${idx} OR l.prompt_text ILIKE $${idx} OR COALESCE(l.result_text, '') ILIKE $${idx})`);
       params.push(`%${String(req.query.search)}%`);
       idx += 1;
     }
@@ -74,16 +114,58 @@ function createLibraryRouter() {
   }));
 
   router.post('/library', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {
-    const { title, promptText, fach, handlungsfeld, unterkategorie, isPublic, rating } = req.body || {};
+    const {
+      title,
+      promptText,
+      fach,
+      handlungsfeld,
+      unterkategorie,
+      isPublic,
+      rating,
+      templateId,
+      providerKind,
+      providerModel,
+      generationMode,
+      formSnapshot,
+      metapromptText,
+      resultText,
+      hasResult,
+    } = req.body || {};
     if (!title || !promptText || !fach || !handlungsfeld || !unterkategorie) {
       return res.status(400).json({ error: 'title, promptText, fach, handlungsfeld and unterkategorie are required.' });
     }
 
+    const normalizedGenerationMode = String(generationMode || 'prompt').trim().toLowerCase() === 'result' ? 'result' : 'prompt';
+    const normalizedSnapshot = formSnapshot && typeof formSnapshot === 'object' && !Array.isArray(formSnapshot)
+      ? formSnapshot
+      : {};
+    const normalizedResultText = typeof resultText === 'string' ? resultText : '';
+    const normalizedHasResult = typeof hasResult === 'boolean'
+      ? hasResult
+      : normalizedGenerationMode === 'result' && Boolean(normalizedResultText.trim());
+
     const insertResult = await pool.query(
-      `INSERT INTO prompt_library (user_id, title, prompt_text, fach, handlungsfeld, unterkategorie, is_public)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO prompt_library
+         (user_id, title, prompt_text, fach, handlungsfeld, unterkategorie, template_id, provider_kind, provider_model, generation_mode, form_snapshot_json, metaprompt_text, result_text, has_result, is_public)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15)
        RETURNING id`,
-      [req.userId, String(title), String(promptText), String(fach), String(handlungsfeld), String(unterkategorie), Boolean(isPublic)]
+      [
+        req.userId,
+        String(title),
+        String(promptText),
+        String(fach),
+        String(handlungsfeld),
+        String(unterkategorie),
+        templateId ? String(templateId).trim() : null,
+        providerKind ? String(providerKind).trim().toLowerCase() : null,
+        providerModel ? String(providerModel).trim() : null,
+        normalizedGenerationMode,
+        JSON.stringify(normalizedSnapshot),
+        typeof metapromptText === 'string' && metapromptText.trim() ? metapromptText : String(promptText),
+        normalizedResultText || null,
+        normalizedHasResult,
+        Boolean(isPublic),
+      ]
     );
 
     const libraryId = insertResult.rows[0].id;
@@ -130,6 +212,41 @@ function createLibraryRouter() {
       fields.push(`unterkategorie = $${idx++}`);
       values.push(body.unterkategorie.trim());
     }
+    if (typeof body.templateId === 'string') {
+      fields.push(`template_id = $${idx++}`);
+      values.push(body.templateId.trim() || null);
+    }
+    if (typeof body.providerKind === 'string') {
+      fields.push(`provider_kind = $${idx++}`);
+      values.push(body.providerKind.trim().toLowerCase() || null);
+    }
+    if (typeof body.providerModel === 'string') {
+      fields.push(`provider_model = $${idx++}`);
+      values.push(body.providerModel.trim() || null);
+    }
+    if (typeof body.generationMode === 'string') {
+      const mode = body.generationMode.trim().toLowerCase();
+      if (mode === 'prompt' || mode === 'result') {
+        fields.push(`generation_mode = $${idx++}`);
+        values.push(mode);
+      }
+    }
+    if (body.formSnapshot && typeof body.formSnapshot === 'object' && !Array.isArray(body.formSnapshot)) {
+      fields.push(`form_snapshot_json = $${idx++}::jsonb`);
+      values.push(JSON.stringify(body.formSnapshot));
+    }
+    if (typeof body.metapromptText === 'string') {
+      fields.push(`metaprompt_text = $${idx++}`);
+      values.push(body.metapromptText.trim() || null);
+    }
+    if (typeof body.resultText === 'string') {
+      fields.push(`result_text = $${idx++}`);
+      values.push(body.resultText.trim() || null);
+    }
+    if (typeof body.hasResult === 'boolean') {
+      fields.push(`has_result = $${idx++}`);
+      values.push(body.hasResult);
+    }
     if (typeof body.isPublic === 'boolean') {
       fields.push(`is_public = $${idx++}`);
       values.push(body.isPublic);
@@ -172,6 +289,33 @@ function createLibraryRouter() {
     );
 
     res.json({ ok: true });
+  }));
+
+  router.get('/library/:id/open', authMiddleware, accessMiddleware, requirePermission('library.view_public'), asyncHandler(async (req, res) => {
+    const libraryId = Number(req.params.id);
+    if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
+
+    const result = await pool.query(
+      `SELECT
+         l.*,
+         COALESCE(r.avg_rating, 0) AS avg_rating,
+         COALESCE(r.rating_count, 0) AS rating_count,
+         ur.rating AS my_rating
+       FROM prompt_library l
+       LEFT JOIN (
+         SELECT library_id, ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*) AS rating_count
+         FROM prompt_library_ratings
+         GROUP BY library_id
+       ) r ON r.library_id = l.id
+       LEFT JOIN prompt_library_ratings ur ON ur.library_id = l.id AND ur.user_id = $2
+       WHERE l.id = $1
+         AND (l.user_id = $2 OR l.is_public = TRUE)
+       LIMIT 1`,
+      [libraryId, req.userId]
+    );
+
+    if (!result.rowCount) return res.status(404).json({ error: 'Library entry not found.' });
+    res.json(normalizeLibraryRow(result.rows[0]));
   }));
 
   router.delete('/library/:id', authMiddleware, accessMiddleware, requirePermission('library.manage_own'), asyncHandler(async (req, res) => {

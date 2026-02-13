@@ -1,8 +1,11 @@
 const { Router } = require('express');
+const crypto = require('crypto');
 const { pool } = require('../db/pool');
+const { config } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
+const { encryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
 
 function normalizeRoleKey(value = '') {
   return String(value)
@@ -29,10 +32,61 @@ function parseNonNegativeNumberOrNull(value) {
   return normalized;
 }
 
+function normalizeSystemScopeType(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'user' || normalized === 'role' || normalized === 'group') return normalized;
+  return '';
+}
+
+function normalizeBudgetScopeType(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'key' || normalized === 'user' || normalized === 'group') return normalized;
+  return '';
+}
+
+function normalizeBudgetPeriod(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'daily' || normalized === 'weekly' || normalized === 'monthly') return normalized;
+  return '';
+}
+
+function normalizeBudgetMode(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'soft' || normalized === 'hard' || normalized === 'hybrid') return normalized;
+  return 'hybrid';
+}
+
+function parseWarningRatio(value) {
+  if (value === null || value === undefined || value === '') return 0.9;
+  const normalized = Number(String(value).trim().replace(',', '.'));
+  if (!Number.isFinite(normalized)) return 0.9;
+  return Math.min(Math.max(normalized, 0.1), 1);
+}
+
+function normalizeScopeValue(scopeType, scopeValue) {
+  const raw = String(scopeValue || '').trim();
+  if (!raw) return '';
+  if (scopeType === 'key') return raw;
+  return raw.toLowerCase();
+}
+
+function normalizeSystemKeyId(value = '') {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+  if (raw) return raw;
+  return `sys_${crypto.randomUUID().slice(0, 12)}`;
+}
+
 function createAdminRouter() {
   const router = Router();
   const guard = [authMiddleware, accessMiddleware, requirePermission('rbac.manage')];
   const pricingGuard = [authMiddleware, accessMiddleware, requirePermission('pricing.manage')];
+  const systemKeyGuard = [authMiddleware, accessMiddleware, requirePermission('providers.system_keys.manage')];
+  const budgetGuard = [authMiddleware, accessMiddleware, requirePermission('budgets.manage')];
 
   router.get('/admin/permissions', ...guard, asyncHandler(async (_req, res) => {
     const result = await pool.query(
@@ -300,6 +354,302 @@ function createAdminRouter() {
       [req.userId, pricingId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Pricing entry not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.get('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (_req, res) => {
+    const [keysResult, assignmentsResult] = await Promise.all([
+      pool.query(
+        `SELECT id, system_key_id, name, provider_kind, model_hint, base_url, key_meta, is_active, created_by, updated_by, created_at, updated_at
+         FROM system_provider_keys
+         ORDER BY provider_kind ASC, name ASC`
+      ),
+      pool.query(
+        `SELECT id, system_key_id, scope_type, scope_value, created_by, created_at
+         FROM system_key_assignments
+         ORDER BY system_key_id ASC, scope_type ASC, scope_value ASC`
+      ),
+    ]);
+
+    const byKey = new Map();
+    assignmentsResult.rows.forEach((row) => {
+      const keyId = String(row.system_key_id || '');
+      if (!byKey.has(keyId)) byKey.set(keyId, []);
+      byKey.get(keyId).push({
+        id: Number(row.id),
+        scopeType: row.scope_type,
+        scopeValue: row.scope_value,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+      });
+    });
+
+    res.json(keysResult.rows.map((row) => ({
+      id: Number(row.id),
+      systemKeyId: row.system_key_id,
+      name: row.name,
+      providerKind: row.provider_kind,
+      modelHint: row.model_hint || '',
+      baseUrl: row.base_url || '',
+      hasServerKey: hasServerEncryptedKey(row.key_meta),
+      isActive: Boolean(row.is_active),
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      assignments: byKey.get(String(row.system_key_id || '')) || [],
+    })));
+  }));
+
+  router.post('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const name = String(req.body?.name || '').trim();
+    const providerKind = String(req.body?.providerKind || '').trim().toLowerCase();
+    const modelHint = String(req.body?.modelHint || '').trim();
+    const baseUrl = String(req.body?.baseUrl || '').trim();
+    const apiKey = String(req.body?.apiKey || '').trim();
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    const systemKeyId = normalizeSystemKeyId(req.body?.systemKeyId || '');
+    if (!name || !providerKind) {
+      return res.status(400).json({ error: 'name and providerKind are required.' });
+    }
+    if (!apiKey) {
+      return res.status(400).json({ error: 'apiKey is required when creating a system key.' });
+    }
+
+    const encryptedKey = encryptApiKey(apiKey, config.keyEncryptionSecret);
+    const result = await pool.query(
+      `INSERT INTO system_provider_keys
+         (system_key_id, name, provider_kind, model_hint, base_url, key_meta, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$8)
+       ON CONFLICT (system_key_id)
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         provider_kind = EXCLUDED.provider_kind,
+         model_hint = EXCLUDED.model_hint,
+         base_url = EXCLUDED.base_url,
+         key_meta = EXCLUDED.key_meta,
+         is_active = EXCLUDED.is_active,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()
+       RETURNING id, system_key_id`,
+      [
+        systemKeyId,
+        name,
+        providerKind,
+        modelHint || null,
+        baseUrl || null,
+        JSON.stringify(encryptedKey),
+        isActive,
+        req.userId,
+      ]
+    );
+    res.json({
+      ok: true,
+      id: Number(result.rows[0].id),
+      systemKeyId: result.rows[0].system_key_id,
+    });
+  }));
+
+  router.put('/admin/system-provider-keys/:systemKeyId', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
+    if (!systemKeyId) return res.status(400).json({ error: 'Invalid system key id.' });
+
+    const existing = await pool.query(
+      `SELECT key_meta
+       FROM system_provider_keys
+       WHERE system_key_id = $1`,
+      [systemKeyId]
+    );
+    if (!existing.rowCount) return res.status(404).json({ error: 'System key not found.' });
+    const apiKey = String(req.body?.apiKey || '').trim();
+    const keyMeta = apiKey
+      ? encryptApiKey(apiKey, config.keyEncryptionSecret)
+      : (existing.rows[0].key_meta || {});
+    const name = String(req.body?.name || '').trim();
+    const providerKind = String(req.body?.providerKind || '').trim().toLowerCase();
+    const modelHint = String(req.body?.modelHint || '').trim();
+    const baseUrl = String(req.body?.baseUrl || '').trim();
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    if (!name || !providerKind) {
+      return res.status(400).json({ error: 'name and providerKind are required.' });
+    }
+
+    await pool.query(
+      `UPDATE system_provider_keys
+       SET name = $1,
+           provider_kind = $2,
+           model_hint = $3,
+           base_url = $4,
+           key_meta = $5::jsonb,
+           is_active = $6,
+           updated_by = $7,
+           updated_at = NOW()
+       WHERE system_key_id = $8`,
+      [name, providerKind, modelHint || null, baseUrl || null, JSON.stringify(keyMeta), isActive, req.userId, systemKeyId]
+    );
+    res.json({ ok: true });
+  }));
+
+  router.delete('/admin/system-provider-keys/:systemKeyId', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
+    if (!systemKeyId) return res.status(400).json({ error: 'Invalid system key id.' });
+    const result = await pool.query(
+      `UPDATE system_provider_keys
+       SET is_active = FALSE,
+           updated_by = $1,
+           updated_at = NOW()
+       WHERE system_key_id = $2
+       RETURNING id`,
+      [req.userId, systemKeyId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'System key not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.post('/admin/system-provider-keys/:systemKeyId/assignments', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
+    const scopeType = normalizeSystemScopeType(req.body?.scopeType || '');
+    const scopeValue = normalizeScopeValue(scopeType, req.body?.scopeValue || '');
+    if (!systemKeyId || !scopeType || !scopeValue) {
+      return res.status(400).json({ error: 'systemKeyId, scopeType and scopeValue are required.' });
+    }
+
+    const keyExists = await pool.query(
+      `SELECT id
+       FROM system_provider_keys
+       WHERE system_key_id = $1`,
+      [systemKeyId]
+    );
+    if (!keyExists.rowCount) return res.status(404).json({ error: 'System key not found.' });
+
+    await pool.query(
+      `INSERT INTO system_key_assignments (system_key_id, scope_type, scope_value, created_by)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (system_key_id, scope_type, scope_value) DO NOTHING`,
+      [systemKeyId, scopeType, scopeValue, req.userId]
+    );
+    res.json({ ok: true });
+  }));
+
+  router.delete('/admin/system-provider-keys/:systemKeyId/assignments/:assignmentId', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
+    const assignmentId = Number(req.params.assignmentId);
+    if (!systemKeyId || !Number.isInteger(assignmentId)) {
+      return res.status(400).json({ error: 'Invalid assignment reference.' });
+    }
+    const result = await pool.query(
+      `DELETE FROM system_key_assignments
+       WHERE id = $1 AND system_key_id = $2
+       RETURNING id`,
+      [assignmentId, systemKeyId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Assignment not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.get('/admin/budgets', ...budgetGuard, asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT id, owner_user_id, scope_type, scope_value, period, limit_usd, mode, warning_ratio, is_active, created_by, updated_by, created_at, updated_at
+       FROM budget_policies
+       ORDER BY scope_type ASC, scope_value ASC, period ASC`
+    );
+    res.json(result.rows.map((row) => ({
+      id: Number(row.id),
+      ownerUserId: row.owner_user_id || null,
+      scopeType: row.scope_type,
+      scopeValue: row.scope_value,
+      period: row.period,
+      limitUsd: Number(row.limit_usd || 0),
+      mode: row.mode || 'hybrid',
+      warningRatio: Number(row.warning_ratio || 0.9),
+      isActive: Boolean(row.is_active),
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })));
+  }));
+
+  router.post('/admin/budgets', ...budgetGuard, asyncHandler(async (req, res) => {
+    const scopeType = normalizeBudgetScopeType(req.body?.scopeType || '');
+    const scopeValue = normalizeScopeValue(scopeType, req.body?.scopeValue || '');
+    const period = normalizeBudgetPeriod(req.body?.period || '');
+    const limitUsd = parseNonNegativeNumberOrNull(req.body?.limitUsd);
+    const mode = normalizeBudgetMode(req.body?.mode || 'hybrid');
+    const warningRatio = parseWarningRatio(req.body?.warningRatio);
+    const ownerUserId = req.body?.ownerUserId ? String(req.body.ownerUserId).trim() : null;
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    if (!scopeType || !scopeValue || !period || limitUsd === null) {
+      return res.status(400).json({ error: 'scopeType, scopeValue, period and limitUsd are required.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO budget_policies
+         (owner_user_id, scope_type, scope_value, period, limit_usd, mode, warning_ratio, is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)
+       ON CONFLICT (scope_type, scope_value, period)
+       DO UPDATE SET
+         owner_user_id = EXCLUDED.owner_user_id,
+         limit_usd = EXCLUDED.limit_usd,
+         mode = EXCLUDED.mode,
+         warning_ratio = EXCLUDED.warning_ratio,
+         is_active = EXCLUDED.is_active,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()
+       RETURNING id`,
+      [ownerUserId, scopeType, scopeValue, period, limitUsd, mode, warningRatio, isActive, req.userId]
+    );
+    res.json({ ok: true, id: Number(result.rows[0].id) });
+  }));
+
+  router.put('/admin/budgets/:budgetId', ...budgetGuard, asyncHandler(async (req, res) => {
+    const budgetId = Number(req.params.budgetId);
+    if (!Number.isInteger(budgetId)) return res.status(400).json({ error: 'Invalid budget id.' });
+    const scopeType = normalizeBudgetScopeType(req.body?.scopeType || '');
+    const scopeValue = normalizeScopeValue(scopeType, req.body?.scopeValue || '');
+    const period = normalizeBudgetPeriod(req.body?.period || '');
+    const limitUsd = parseNonNegativeNumberOrNull(req.body?.limitUsd);
+    const mode = normalizeBudgetMode(req.body?.mode || 'hybrid');
+    const warningRatio = parseWarningRatio(req.body?.warningRatio);
+    const ownerUserId = req.body?.ownerUserId ? String(req.body.ownerUserId).trim() : null;
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    if (!scopeType || !scopeValue || !period || limitUsd === null) {
+      return res.status(400).json({ error: 'scopeType, scopeValue, period and limitUsd are required.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE budget_policies
+       SET owner_user_id = $1,
+           scope_type = $2,
+           scope_value = $3,
+           period = $4,
+           limit_usd = $5,
+           mode = $6,
+           warning_ratio = $7,
+           is_active = $8,
+           updated_by = $9,
+           updated_at = NOW()
+       WHERE id = $10
+       RETURNING id`,
+      [ownerUserId, scopeType, scopeValue, period, limitUsd, mode, warningRatio, isActive, req.userId, budgetId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Budget policy not found.' });
+    res.json({ ok: true });
+  }));
+
+  router.delete('/admin/budgets/:budgetId', ...budgetGuard, asyncHandler(async (req, res) => {
+    const budgetId = Number(req.params.budgetId);
+    if (!Number.isInteger(budgetId)) return res.status(400).json({ error: 'Invalid budget id.' });
+    const result = await pool.query(
+      `UPDATE budget_policies
+       SET is_active = FALSE,
+           updated_by = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id`,
+      [req.userId, budgetId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Budget policy not found.' });
     res.json({ ok: true });
   }));
 

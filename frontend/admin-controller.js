@@ -41,6 +41,10 @@ function createAdminController({
     selectedRoleId: null,
     pricingEntries: [],
     selectedPricingId: null,
+    systemKeys: [],
+    selectedSystemKeyId: '',
+    budgets: [],
+    selectedBudgetId: null,
     activeTab: 'roles',
     activeModelProvider: 'openai',
   };
@@ -95,9 +99,19 @@ function createAdminController({
     return [...providers].filter(Boolean);
   }
 
-  function setStatus(message = '', { pricing = false } = {}) {
+  function setStatus(message = '', { pricing = false, systemKey = false, budget = false } = {}) {
     if (pricing) {
       const node = el('admin-pricing-status');
+      if (node) node.textContent = message;
+      return;
+    }
+    if (systemKey) {
+      const node = el('admin-system-key-status');
+      if (node) node.textContent = message;
+      return;
+    }
+    if (budget) {
+      const node = el('admin-budget-status');
       if (node) node.textContent = message;
       return;
     }
@@ -105,9 +119,11 @@ function createAdminController({
   }
 
   function setActiveAdminTab(tabKey) {
-    const canManagePricing = hasPermission('pricing.manage');
+    const canManageModelAdmin = hasPermission('pricing.manage')
+      || hasPermission('providers.system_keys.manage')
+      || hasPermission('budgets.manage');
     const requested = String(tabKey || '').trim();
-    const nextTab = (!canManagePricing && requested === 'models') ? 'roles' : (requested || 'roles');
+    const nextTab = (!canManageModelAdmin && requested === 'models') ? 'roles' : (requested || 'roles');
     adminState.activeTab = nextTab;
 
     const tabs = {
@@ -134,11 +150,13 @@ function createAdminController({
       showScreen('home');
     }
 
-    const pricingVisible = hasPermission('pricing.manage');
+    const modelAdminVisible = hasPermission('pricing.manage')
+      || hasPermission('providers.system_keys.manage')
+      || hasPermission('budgets.manage');
     document.querySelectorAll('#admin-tab-nav [data-admin-tab="models"]').forEach((button) => {
-      button.classList.toggle('is-hidden', !pricingVisible);
+      button.classList.toggle('is-hidden', !modelAdminVisible);
     });
-    if (!pricingVisible && adminState.activeTab === 'models') {
+    if (!modelAdminVisible && adminState.activeTab === 'models') {
       setActiveAdminTab('roles');
     }
   }
@@ -222,7 +240,7 @@ function createAdminController({
     el('admin-role-name').value = role.roleName;
     el('admin-role-description').value = role.description || '';
     renderPermissionChecklist(role.permissionKeys || []);
-    el('admin-role-system').textContent = role.isSystem ? 'Systemrolle (nicht loeschbar)' : 'Benutzerdefinierte Rolle';
+    el('admin-role-system').textContent = role.isSystem ? 'Systemrolle (nicht löschbar)' : 'Benutzerdefinierte Rolle';
   }
 
   function renderBindings() {
@@ -257,6 +275,174 @@ function createAdminController({
     el('admin-pricing-active').value = 'true';
   }
 
+  function clearSystemKeyForm() {
+    adminState.selectedSystemKeyId = '';
+    el('admin-system-key-id').value = '';
+    el('admin-system-key-name').value = '';
+    el('admin-system-key-provider-kind').value = 'openai';
+    el('admin-system-key-model-hint').value = '';
+    el('admin-system-key-base-url').value = '';
+    el('admin-system-key-api-key').value = '';
+    el('admin-system-key-active').value = 'true';
+    el('admin-system-key-assign-type').value = 'user';
+    el('admin-system-key-assign-value').value = '';
+  }
+
+  function clearBudgetForm() {
+    adminState.selectedBudgetId = null;
+    el('admin-budget-scope-type').value = 'user';
+    el('admin-budget-scope-value').value = '';
+    el('admin-budget-period').value = 'monthly';
+    el('admin-budget-limit-usd').value = '';
+    el('admin-budget-mode').value = 'hybrid';
+    el('admin-budget-warning-ratio').value = '0.9';
+    el('admin-budget-active').value = 'true';
+    el('admin-budget-owner-user').value = '';
+  }
+
+  function renderSystemKeyList() {
+    const container = el('admin-system-key-list');
+    if (!container) return;
+    if (!hasPermission('providers.system_keys.manage')) {
+      container.innerHTML = '<p class="hint">Keine Berechtigung für systemweite API-Keys.</p>';
+      return;
+    }
+    const keys = Array.isArray(adminState.systemKeys) ? adminState.systemKeys : [];
+    if (!keys.length) {
+      container.innerHTML = '<p class="hint">Noch keine System-Keys vorhanden.</p>';
+      return;
+    }
+
+    container.innerHTML = keys
+      .map((key) => `
+        <div class="admin-model-provider-card">
+          <div class="admin-model-provider-head">
+            <h4>${escapeHtml(key.name)} <small class="hint">(${escapeHtml(key.systemKeyId)})</small></h4>
+            <div class="inline-actions">
+              <button type="button" class="secondary small" data-edit-system-key="${escapeHtml(key.systemKeyId)}">Bearbeiten</button>
+              <button type="button" class="secondary small" data-deactivate-system-key="${escapeHtml(key.systemKeyId)}">${key.isActive ? 'Deaktivieren' : 'Aktivieren'}</button>
+            </div>
+          </div>
+          <small class="hint">Provider: ${escapeHtml(key.providerKind)} | Modell-Hinweis: ${escapeHtml(key.modelHint || '-')} | Base URL: ${escapeHtml(key.baseUrl || '-')} | Server-Key: ${key.hasServerKey ? 'gesetzt' : 'leer'}</small>
+          <div class="top-space">
+            <strong>Zuweisungen</strong>
+            <ul class="provider-list top-space">
+              ${(key.assignments || []).length
+    ? key.assignments.map((assignment) => `
+                  <li>
+                    <span><strong>${escapeHtml(assignment.scopeType)}</strong>: ${escapeHtml(assignment.scopeValue)}</span>
+                    <button type="button" class="secondary small" data-delete-system-key-assignment="${key.systemKeyId}:${assignment.id}">Löschen</button>
+                  </li>
+                `).join('')
+    : '<li><span>Keine Zuweisungen.</span></li>'}
+            </ul>
+          </div>
+        </div>
+      `)
+      .join('');
+
+    container.querySelectorAll('[data-edit-system-key]').forEach((button) => {
+      button.onclick = () => {
+        const keyId = button.dataset.editSystemKey;
+        const entry = keys.find((row) => row.systemKeyId === keyId);
+        if (!entry) return;
+        adminState.selectedSystemKeyId = entry.systemKeyId;
+        el('admin-system-key-id').value = entry.systemKeyId;
+        el('admin-system-key-name').value = entry.name || '';
+        el('admin-system-key-provider-kind').value = entry.providerKind || 'openai';
+        el('admin-system-key-model-hint').value = entry.modelHint || '';
+        el('admin-system-key-base-url').value = entry.baseUrl || '';
+        el('admin-system-key-api-key').value = '';
+        el('admin-system-key-active').value = entry.isActive ? 'true' : 'false';
+        setStatus(`System-Key ${entry.systemKeyId} geladen.`, { systemKey: true });
+      };
+    });
+
+    container.querySelectorAll('[data-deactivate-system-key]').forEach((button) => {
+      button.onclick = () => deactivateSystemKey(button.dataset.deactivateSystemKey).catch((error) => alert(error.message));
+    });
+    container.querySelectorAll('[data-delete-system-key-assignment]').forEach((button) => {
+      button.onclick = () => {
+        const [systemKeyId, assignmentId] = String(button.dataset.deleteSystemKeyAssignment || '').split(':');
+        if (!systemKeyId || !assignmentId) return;
+        removeSystemKeyAssignment(systemKeyId, assignmentId).catch((error) => alert(error.message));
+      };
+    });
+  }
+
+  function renderBudgetList() {
+    const container = el('admin-budget-list');
+    if (!container) return;
+    if (!hasPermission('budgets.manage')) {
+      container.innerHTML = '<p class="hint">Keine Berechtigung für Budget-Policies.</p>';
+      return;
+    }
+    const budgets = Array.isArray(adminState.budgets) ? adminState.budgets : [];
+    if (!budgets.length) {
+      container.innerHTML = '<p class="hint">Noch keine Budget-Policies vorhanden.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Scope</th>
+              <th>Periode</th>
+              <th>Limit USD</th>
+              <th>Modus</th>
+              <th>Warnung</th>
+              <th>Status</th>
+              <th>Owner</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${budgets.map((entry) => `
+              <tr>
+                <td><strong>${escapeHtml(entry.scopeType)}</strong>: ${escapeHtml(entry.scopeValue)}</td>
+                <td>${escapeHtml(entry.period)}</td>
+                <td>${Number(entry.limitUsd || 0).toFixed(4)}</td>
+                <td>${escapeHtml(entry.mode || 'hybrid')}</td>
+                <td>${Number(entry.warningRatio || 0.9).toFixed(2)}</td>
+                <td>${entry.isActive ? 'aktiv' : 'inaktiv'}</td>
+                <td>${escapeHtml(entry.ownerUserId || '-')}</td>
+                <td>
+                  <div class="inline-actions">
+                    <button type="button" class="secondary small" data-edit-budget="${entry.id}">Bearbeiten</button>
+                    <button type="button" class="secondary small" data-deactivate-budget="${entry.id}">${entry.isActive ? 'Deaktivieren' : 'Aktivieren'}</button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.querySelectorAll('[data-edit-budget]').forEach((button) => {
+      button.onclick = () => {
+        const budgetId = Number(button.dataset.editBudget);
+        const entry = budgets.find((row) => Number(row.id) === budgetId);
+        if (!entry) return;
+        adminState.selectedBudgetId = budgetId;
+        el('admin-budget-scope-type').value = entry.scopeType || 'user';
+        el('admin-budget-scope-value').value = entry.scopeValue || '';
+        el('admin-budget-period').value = entry.period || 'monthly';
+        el('admin-budget-limit-usd').value = String(entry.limitUsd ?? '');
+        el('admin-budget-mode').value = entry.mode || 'hybrid';
+        el('admin-budget-warning-ratio').value = String(entry.warningRatio ?? 0.9);
+        el('admin-budget-active').value = entry.isActive ? 'true' : 'false';
+        el('admin-budget-owner-user').value = entry.ownerUserId || '';
+        setStatus(`Budget-Policy ${budgetId} geladen.`, { budget: true });
+      };
+    });
+    container.querySelectorAll('[data-deactivate-budget]').forEach((button) => {
+      button.onclick = () => deactivateBudget(Number(button.dataset.deactivateBudget)).catch((error) => alert(error.message));
+    });
+  }
+
   function renderModelProviderTabs() {
     const container = el('admin-model-provider-tabs');
     if (!container) return;
@@ -289,7 +475,7 @@ function createAdminController({
     const container = el('admin-model-provider-groups');
     if (!container) return;
     if (!hasPermission('pricing.manage')) {
-      container.innerHTML = '<p class="hint">Keine Berechtigung fuer Model Administration.</p>';
+      container.innerHTML = '<p class="hint">Keine Berechtigung für Model Administration.</p>';
       return;
     }
 
@@ -302,7 +488,7 @@ function createAdminController({
       <div class="admin-model-provider-card">
         <div class="admin-model-provider-head">
           <h4>${escapeHtml(provider)} (${rows.length})</h4>
-          <button type="button" class="secondary small" id="admin-model-new-for-provider">Neues Modell fuer ${escapeHtml(provider)}</button>
+          <button type="button" class="secondary small" id="admin-model-new-for-provider">Neues Modell für ${escapeHtml(provider)}</button>
         </div>
         <div class="table-wrap">
           <table class="data-table">
@@ -372,7 +558,7 @@ function createAdminController({
                       </td>
                     </tr>
                   `).join('')
-    : '<tr><td colspan="7">Noch keine Modelle fuer diesen Provider.</td></tr>'}
+    : '<tr><td colspan="7">Noch keine Modelle für diesen Provider.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -463,6 +649,137 @@ function createAdminController({
     }
   }
 
+  async function saveSystemKey() {
+    if (!hasPermission('providers.system_keys.manage')) {
+      alert('Keine Berechtigung für systemweite API-Keys.');
+      return;
+    }
+
+    const systemKeyIdInput = String(el('admin-system-key-id').value || '').trim();
+    const payload = {
+      systemKeyId: systemKeyIdInput || undefined,
+      name: String(el('admin-system-key-name').value || '').trim(),
+      providerKind: String(el('admin-system-key-provider-kind').value || '').trim().toLowerCase(),
+      modelHint: String(el('admin-system-key-model-hint').value || '').trim(),
+      baseUrl: String(el('admin-system-key-base-url').value || '').trim(),
+      apiKey: String(el('admin-system-key-api-key').value || '').trim(),
+      isActive: el('admin-system-key-active').value === 'true',
+    };
+    if (!payload.name || !payload.providerKind) {
+      alert('Name und Provider sind erforderlich.');
+      return;
+    }
+
+    if (adminState.selectedSystemKeyId || systemKeyIdInput) {
+      const targetId = adminState.selectedSystemKeyId || systemKeyIdInput;
+      await api(`/api/admin/system-provider-keys/${encodeURIComponent(targetId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      setStatus(`System-Key ${targetId} gespeichert.`, { systemKey: true });
+    } else {
+      if (!payload.apiKey) {
+        alert('Beim Anlegen ist ein API-Key erforderlich.');
+        return;
+      }
+      await api('/api/admin/system-provider-keys', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setStatus('System-Key angelegt.', { systemKey: true });
+    }
+    clearSystemKeyForm();
+    await loadAdminData();
+  }
+
+  async function addSystemKeyAssignment() {
+    if (!hasPermission('providers.system_keys.manage')) return;
+    const systemKeyId = adminState.selectedSystemKeyId || String(el('admin-system-key-id').value || '').trim();
+    if (!systemKeyId) {
+      alert('Bitte zuerst einen System-Key auswählen oder die ID eintragen.');
+      return;
+    }
+    const scopeType = String(el('admin-system-key-assign-type').value || '').trim();
+    const scopeValue = String(el('admin-system-key-assign-value').value || '').trim();
+    if (!scopeType || !scopeValue) {
+      alert('Zuweisungstyp und -wert sind erforderlich.');
+      return;
+    }
+    await api(`/api/admin/system-provider-keys/${encodeURIComponent(systemKeyId)}/assignments`, {
+      method: 'POST',
+      body: JSON.stringify({ scopeType, scopeValue }),
+    });
+    el('admin-system-key-assign-value').value = '';
+    setStatus(`Zuweisung für ${systemKeyId} gespeichert.`, { systemKey: true });
+    await loadAdminData();
+  }
+
+  async function removeSystemKeyAssignment(systemKeyId, assignmentId) {
+    await api(`/api/admin/system-provider-keys/${encodeURIComponent(systemKeyId)}/assignments/${encodeURIComponent(assignmentId)}`, {
+      method: 'DELETE',
+    });
+    setStatus(`Zuweisung entfernt (${systemKeyId}).`, { systemKey: true });
+    await loadAdminData();
+  }
+
+  async function deactivateSystemKey(systemKeyId) {
+    if (!systemKeyId) return;
+    await api(`/api/admin/system-provider-keys/${encodeURIComponent(systemKeyId)}`, {
+      method: 'DELETE',
+    });
+    setStatus(`System-Key ${systemKeyId} deaktiviert.`, { systemKey: true });
+    await loadAdminData();
+  }
+
+  async function saveBudgetPolicy() {
+    if (!hasPermission('budgets.manage')) {
+      alert('Keine Berechtigung für Budget-Policies.');
+      return;
+    }
+    const payload = {
+      scopeType: String(el('admin-budget-scope-type').value || '').trim(),
+      scopeValue: String(el('admin-budget-scope-value').value || '').trim(),
+      period: String(el('admin-budget-period').value || '').trim(),
+      limitUsd: parseOptionalNonNegativeNumber(el('admin-budget-limit-usd').value),
+      mode: String(el('admin-budget-mode').value || 'hybrid').trim(),
+      warningRatio: parseOptionalNonNegativeNumber(el('admin-budget-warning-ratio').value),
+      isActive: el('admin-budget-active').value === 'true',
+      ownerUserId: String(el('admin-budget-owner-user').value || '').trim() || null,
+    };
+    if (!payload.scopeType || !payload.scopeValue || !payload.period || Number.isNaN(payload.limitUsd) || payload.limitUsd === null) {
+      alert('Scope, Wert, Periode und Limit sind erforderlich.');
+      return;
+    }
+    if (payload.warningRatio === null || Number.isNaN(payload.warningRatio)) {
+      payload.warningRatio = 0.9;
+    }
+
+    if (adminState.selectedBudgetId) {
+      await api(`/api/admin/budgets/${encodeURIComponent(String(adminState.selectedBudgetId))}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      setStatus(`Budget-Policy ${adminState.selectedBudgetId} gespeichert.`, { budget: true });
+    } else {
+      await api('/api/admin/budgets', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setStatus('Budget-Policy angelegt.', { budget: true });
+    }
+    clearBudgetForm();
+    await loadAdminData();
+  }
+
+  async function deactivateBudget(budgetId) {
+    if (!Number.isInteger(budgetId)) return;
+    await api(`/api/admin/budgets/${encodeURIComponent(String(budgetId))}`, {
+      method: 'DELETE',
+    });
+    setStatus(`Budget-Policy ${budgetId} deaktiviert.`, { budget: true });
+    await loadAdminData();
+  }
+
   async function loadAdminData() {
     if (!hasPermission('rbac.manage')) return;
     const requests = [
@@ -470,10 +787,25 @@ function createAdminController({
       api('/api/admin/roles'),
       api('/api/admin/group-role-bindings'),
     ];
-    if (hasPermission('pricing.manage')) {
+    const canManagePricing = hasPermission('pricing.manage');
+    const canManageSystemKeys = hasPermission('providers.system_keys.manage');
+    const canManageBudgets = hasPermission('budgets.manage');
+
+    if (canManagePricing) {
       requests.push(api('/api/admin/model-pricing'));
     }
-    const [permissions, roles, bindings, pricingEntries = []] = await Promise.all(requests);
+    if (canManageSystemKeys) {
+      requests.push(api('/api/admin/system-provider-keys'));
+    }
+    if (canManageBudgets) {
+      requests.push(api('/api/admin/budgets'));
+    }
+    const responses = await Promise.all(requests);
+    const [permissions, roles, bindings] = responses;
+    let cursor = 3;
+    const pricingEntries = canManagePricing ? (responses[cursor++] || []) : [];
+    const systemKeys = canManageSystemKeys ? (responses[cursor++] || []) : [];
+    const budgets = canManageBudgets ? (responses[cursor++] || []) : [];
     adminState = {
       permissions,
       roles,
@@ -483,6 +815,10 @@ function createAdminController({
         ? pricingEntries.map((entry) => ({ ...entry, id: String(entry.id) }))
         : [],
       selectedPricingId: adminState.selectedPricingId,
+      systemKeys: Array.isArray(systemKeys) ? systemKeys : [],
+      selectedSystemKeyId: adminState.selectedSystemKeyId || '',
+      budgets: Array.isArray(budgets) ? budgets : [],
+      selectedBudgetId: adminState.selectedBudgetId,
       activeTab: adminState.activeTab || 'roles',
       activeModelProvider: adminState.activeModelProvider || 'openai',
     };
@@ -491,14 +827,18 @@ function createAdminController({
     renderBindings();
     renderModelProviderTabs();
     renderPricingList();
+    renderSystemKeyList();
+    renderBudgetList();
     clearPricingForm();
+    clearSystemKeyForm();
+    clearBudgetForm();
     ensureAdminVisible();
     setActiveAdminTab(adminState.activeTab);
   }
 
   async function openAdminScreen() {
     if (!hasPermission('rbac.manage')) {
-      alert('Keine Berechtigung fuer Administration.');
+      alert('Keine Berechtigung für Administration.');
       return;
     }
     await loadAdminData();
@@ -571,7 +911,7 @@ function createAdminController({
     await api(`/api/admin/roles/${roleId}`, { method: 'DELETE' });
     adminState.selectedRoleId = null;
     await loadAdminData();
-    setStatus('Rolle geloescht.');
+    setStatus('Rolle gelöscht.');
   }
 
   async function addBinding() {
@@ -593,12 +933,12 @@ function createAdminController({
   async function removeBinding(bindingId) {
     await api(`/api/admin/group-role-bindings/${encodeURIComponent(bindingId)}`, { method: 'DELETE' });
     await loadAdminData();
-    setStatus('Gruppenbindung geloescht.');
+    setStatus('Gruppenbindung gelöscht.');
   }
 
   async function savePricingEntry() {
     if (!hasPermission('pricing.manage')) {
-      alert('Keine Berechtigung fuer Model Administration.');
+      alert('Keine Berechtigung für Model Administration.');
       return;
     }
 
@@ -664,6 +1004,21 @@ function createAdminController({
     }
     if (el('admin-pricing-clear')) {
       el('admin-pricing-clear').addEventListener('click', clearPricingForm);
+    }
+    if (el('admin-system-key-save')) {
+      el('admin-system-key-save').addEventListener('click', () => saveSystemKey().catch((error) => alert(error.message)));
+    }
+    if (el('admin-system-key-add-assignment')) {
+      el('admin-system-key-add-assignment').addEventListener('click', () => addSystemKeyAssignment().catch((error) => alert(error.message)));
+    }
+    if (el('admin-system-key-clear')) {
+      el('admin-system-key-clear').addEventListener('click', clearSystemKeyForm);
+    }
+    if (el('admin-budget-save')) {
+      el('admin-budget-save').addEventListener('click', () => saveBudgetPolicy().catch((error) => alert(error.message)));
+    }
+    if (el('admin-budget-clear')) {
+      el('admin-budget-clear').addEventListener('click', clearBudgetForm);
     }
   }
 

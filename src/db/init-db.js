@@ -465,10 +465,50 @@ async function initDb() {
       fach TEXT NOT NULL,
       handlungsfeld TEXT NOT NULL,
       unterkategorie TEXT NOT NULL,
+      template_id TEXT,
+      provider_kind TEXT,
+      provider_model TEXT,
+      generation_mode TEXT NOT NULL DEFAULT 'prompt' CHECK (generation_mode IN ('prompt', 'result')),
+      form_snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      metaprompt_text TEXT,
+      result_text TEXT,
+      has_result BOOLEAN NOT NULL DEFAULT FALSE,
       is_public BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS template_id TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS provider_kind TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS provider_model TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS generation_mode TEXT NOT NULL DEFAULT 'prompt'
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS form_snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS metaprompt_text TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS result_text TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_library
+    ADD COLUMN IF NOT EXISTS has_result BOOLEAN NOT NULL DEFAULT FALSE
   `);
 
   await pool.query(`
@@ -524,10 +564,13 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS provider_generation_events (
       id BIGSERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
+      user_groups_json JSONB NOT NULL DEFAULT '[]'::jsonb,
       provider_id TEXT NOT NULL,
       provider_kind TEXT NOT NULL,
       provider_model TEXT,
       key_fingerprint TEXT,
+      effective_key_type TEXT NOT NULL DEFAULT 'user' CHECK (effective_key_type IN ('user', 'system', 'shared_test')),
+      effective_key_id TEXT,
       template_id TEXT NOT NULL,
       success BOOLEAN NOT NULL DEFAULT FALSE,
       latency_ms INTEGER NOT NULL DEFAULT 0,
@@ -550,7 +593,19 @@ async function initDb() {
   `);
   await pool.query(`
     ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS user_groups_json JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
     ADD COLUMN IF NOT EXISTS key_fingerprint TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS effective_key_type TEXT NOT NULL DEFAULT 'user'
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS effective_key_id TEXT
   `);
   await pool.query(`
     ALTER TABLE provider_generation_events
@@ -596,6 +651,70 @@ async function initDb() {
       template_uid TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(user_id, template_uid)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS system_provider_keys (
+      id BIGSERIAL PRIMARY KEY,
+      system_key_id TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      provider_kind TEXT NOT NULL,
+      model_hint TEXT,
+      base_url TEXT,
+      key_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS system_key_assignments (
+      id BIGSERIAL PRIMARY KEY,
+      system_key_id TEXT NOT NULL REFERENCES system_provider_keys(system_key_id) ON DELETE CASCADE,
+      scope_type TEXT NOT NULL CHECK (scope_type IN ('user', 'role', 'group')),
+      scope_value TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(system_key_id, scope_type, scope_value)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS budget_policies (
+      id BIGSERIAL PRIMARY KEY,
+      owner_user_id TEXT,
+      scope_type TEXT NOT NULL CHECK (scope_type IN ('key', 'user', 'group')),
+      scope_value TEXT NOT NULL,
+      period TEXT NOT NULL CHECK (period IN ('daily', 'weekly', 'monthly')),
+      limit_usd NUMERIC(14,8) NOT NULL CHECK (limit_usd >= 0),
+      mode TEXT NOT NULL DEFAULT 'hybrid' CHECK (mode IN ('soft', 'hard', 'hybrid')),
+      warning_ratio NUMERIC(5,4) NOT NULL DEFAULT 0.9000 CHECK (warning_ratio >= 0.1000 AND warning_ratio <= 1.0000),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(scope_type, scope_value, period)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS budget_events (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      policy_id BIGINT REFERENCES budget_policies(id) ON DELETE SET NULL,
+      scope_type TEXT NOT NULL,
+      scope_value TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('warn', 'block')),
+      message TEXT NOT NULL,
+      projected_cost_usd NUMERIC(14,8),
+      current_spend_usd NUMERIC(14,8),
+      limit_usd NUMERIC(14,8),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
@@ -737,13 +856,20 @@ async function initDb() {
 
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_user ON prompt_library(user_id, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_public ON prompt_library(is_public, updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_template ON prompt_library(template_id, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_groups ON provider_generation_events USING GIN (user_groups_json)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_provider ON provider_generation_events(provider_kind, success, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_model ON provider_generation_events(provider_kind, provider_model, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_keyfp ON provider_generation_events(user_id, key_fingerprint, created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_effective_key ON provider_generation_events(effective_key_type, effective_key_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_cost ON provider_generation_events(user_id, total_cost_usd DESC, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_model_pricing_catalog_lookup ON provider_model_pricing_catalog(provider_kind, is_active, model)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_system_provider_keys_kind ON system_provider_keys(provider_kind, is_active, updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_system_key_assignments_scope ON system_key_assignments(scope_type, LOWER(scope_value))');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_budget_policies_scope ON budget_policies(scope_type, LOWER(scope_value), period, is_active)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_budget_events_user ON budget_events(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_user ON template_favorites(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_template ON template_favorites(template_uid)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_rbac_group_name ON rbac_group_role_bindings(LOWER(group_name))');

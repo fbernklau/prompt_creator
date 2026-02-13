@@ -15,6 +15,7 @@ const config = {
   googleTestApiKey: process.env.GOOGLE_TEST_API_KEY || '',
   googleTestAllowedUsers: parseCsv(process.env.GOOGLE_TEST_ALLOWED_USERS || ''),
   googleTestAllowedGroups: parseCsv(process.env.GOOGLE_TEST_ALLOWED_GROUPS || ''),
+  authLogoutUrl: process.env.AUTH_LOGOUT_URL || '',
   settingsDefaults: {
     theme: 'system',
     flowMode: null,

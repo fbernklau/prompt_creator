@@ -18,6 +18,7 @@ let presetOptions = { ...DEFAULT_PRESET_OPTIONS };
 
 const state = {
   currentUser: null,
+  logoutUrl: '',
   access: { roles: [], permissions: [] },
   settings: { ...SETTINGS_DEFAULTS },
   providers: [],
@@ -61,12 +62,6 @@ const providerController = createProviderController({
     await queueSettingsSave(partial, { refreshCatalog: false, showStatus: false });
   },
 });
-const libraryController = createLibraryController({
-  state,
-  el,
-  api,
-  getCategoryConfig,
-});
 const adminController = createAdminController({
   state,
   el,
@@ -103,6 +98,13 @@ const taskController = createTaskController({
   showScreen: uiShell.showScreen,
   saveHistory: historyController.saveHistory,
 });
+const libraryController = createLibraryController({
+  state,
+  el,
+  api,
+  getCategoryConfig,
+  onOpenTemplateFromLibrary: (entry) => taskController.openLibraryEntry(entry),
+});
 
 function hideSetupWizard() {
   el('setup-wizard-modal').classList.add('is-hidden');
@@ -122,11 +124,15 @@ function shouldShowSetupWizard() {
 async function loadServerData() {
   const me = await api('/api/me');
   state.currentUser = me.userId;
+  state.logoutUrl = String(me.logoutUrl || '').trim();
   state.access = {
     roles: Array.isArray(me.roles) ? me.roles : [],
     permissions: Array.isArray(me.permissions) ? me.permissions : [],
   };
   el('current-user').textContent = `Benutzer: ${state.currentUser} | Rollen: ${(state.access.roles || []).join(', ') || 'keine'}`;
+  if (el('btn-logout')) {
+    el('btn-logout').classList.toggle('is-hidden', !state.logoutUrl);
+  }
 
   state.settings = await api('/api/settings');
   state.providers = await api('/api/providers');
@@ -202,11 +208,13 @@ function bindEvents() {
     await providerController.refreshModelCatalogAndSync().catch(() => {});
     await dashboardController.openDashboard('providers');
   });
-  el('btn-history').addEventListener('click', () => {
-    historyController.renderHistory();
-    uiShell.openDrawer('history-drawer');
-  });
   el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => alert(error.message)));
+  if (el('btn-logout')) {
+    el('btn-logout').addEventListener('click', () => {
+      if (!state.logoutUrl) return;
+      window.location.assign(state.logoutUrl);
+    });
+  }
   el('btn-library').addEventListener('click', async () => {
     uiShell.showScreen('library');
     await libraryController.refreshLibrary();
@@ -245,7 +253,6 @@ function bindEvents() {
   }
 
   el('close-provider-drawer').addEventListener('click', uiShell.closeDrawers);
-  el('close-history-drawer').addEventListener('click', uiShell.closeDrawers);
   el('close-options-drawer').addEventListener('click', uiShell.closeDrawers);
   el('overlay').addEventListener('click', uiShell.closeDrawers);
 
@@ -348,7 +355,7 @@ function bindEvents() {
 
   el('wizard-open-provider').addEventListener('click', () => {
     dashboardController.openDashboard('providers').catch((error) => alert(error.message));
-    el('wizard-status').textContent = 'Dashboard geoeffnet. Bitte Modell, Key und Base URL setzen.';
+    el('wizard-status').textContent = 'Dashboard geöffnet. Bitte Modell, Key und Base URL setzen.';
   });
   el('wizard-test-provider').addEventListener('click', async () => {
     el('wizard-status').textContent = 'Teste aktiven Provider...';

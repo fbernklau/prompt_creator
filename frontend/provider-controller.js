@@ -85,7 +85,7 @@ function createProviderController({
   }
 
   function redactKeyState(provider) {
-    if (provider.hasServerKey) return 'server-verschluesselt';
+    if (provider.hasServerKey) return 'server-verschlüsselt';
     if (provider.canUseSharedTestKey) return 'shared test key';
     return 'kein Key';
   }
@@ -214,7 +214,7 @@ function createProviderController({
     }
 
     if (catalogModels.length > 0) {
-      hint.textContent = `${getProviderLabel(kind)}: Empfohlene Modelle geladen. Fuer eigene IDs "Custom" waehlen.`;
+      hint.textContent = `${getProviderLabel(kind)}: Empfohlene Modelle geladen. Für eigene IDs "Custom" wählen.`;
     } else {
       hint.textContent = `${getProviderLabel(kind)}: Modell frei definierbar.`;
     }
@@ -240,6 +240,7 @@ function createProviderController({
       autoCheckbox.checked = false;
       autoCheckbox.disabled = true;
       baseInput.readOnly = false;
+      baseInput.classList.remove('is-locked-field');
       if (Object.values(PROVIDER_BASE_URLS).includes(baseInput.value.trim())) baseInput.value = '';
       baseInput.placeholder = 'https://api.example.com/v1';
       hint.textContent = 'Custom API: Base URL frei editierbar.';
@@ -251,16 +252,18 @@ function createProviderController({
     if (autoCheckbox.checked) {
       baseInput.value = recommendedBaseUrl;
       baseInput.readOnly = true;
+      baseInput.classList.add('is-locked-field');
       hint.textContent = `Empfohlene URL aktiv: ${recommendedBaseUrl}`;
       return;
     }
 
     baseInput.readOnly = false;
+    baseInput.classList.remove('is-locked-field');
     hint.textContent = 'Empfohlene URL deaktiviert: eigene Base URL verwenden.';
   }
 
   function initializeProviderForm() {
-    setVaultStatus('Server-Key-Schutz aktiv: API-Keys werden nur serverseitig verschluesselt gespeichert.', 'ok');
+    setVaultStatus('Server-Key-Schutz aktiv: API-Keys werden nur serverseitig verschlüsselt gespeichert.', 'ok');
     el('provider-kind').addEventListener('change', () => {
       syncProviderModelUi();
       syncProviderBaseUi();
@@ -292,7 +295,7 @@ function createProviderController({
     el('provider-key').value = '';
     el('provider-key').placeholder = provider.hasServerKey
       ? 'Leer lassen = vorhandenen Key beibehalten'
-      : 'API-Key fuer diesen Provider';
+      : 'API-Key für diesen Provider';
     el('provider-base').value = provider.baseUrl || '';
     el('provider-pricing-mode').value = provider.pricingMode === 'custom' ? 'custom' : 'catalog';
     el('provider-pricing-input').value = provider.inputPricePerMillion ?? '';
@@ -308,7 +311,7 @@ function createProviderController({
   function clearProviderForm() {
     state.editProviderId = null;
     el('provider-form').reset();
-    el('provider-key').placeholder = 'API-Key (wird serverseitig verschluesselt)';
+    el('provider-key').placeholder = 'API-Key (wird serverseitig verschlüsselt)';
     el('provider-auto-base').checked = true;
     el('provider-pricing-mode').value = 'catalog';
     el('provider-pricing-input').value = '';
@@ -377,7 +380,7 @@ function createProviderController({
           <span><strong>${provider.name}</strong> | ${provider.kind} | ${provider.model} | ${redactKeyState(provider)}</span>
           <span class="inline-actions">
             <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
-            <button type="button" class="secondary small" data-delete-provider="${provider.id}">Loeschen</button>
+            <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
           </span>
         </li>
       `
@@ -408,11 +411,11 @@ function createProviderController({
   }
 
   async function unlockVault() {
-    setVaultStatus('Nicht mehr erforderlich: Keys werden serverseitig verschluesselt.', 'info');
+    setVaultStatus('Nicht mehr erforderlich: Keys werden serverseitig verschlüsselt.', 'info');
   }
 
   async function lockVault() {
-    setVaultStatus('Nicht mehr erforderlich: Keys bleiben serverseitig geschuetzt.', 'info');
+    setVaultStatus('Nicht mehr erforderlich: Keys bleiben serverseitig geschützt.', 'info');
   }
 
   async function handleProviderSubmit(event) {
@@ -428,7 +431,7 @@ function createProviderController({
     const keyInput = el('provider-key').value.trim();
 
     if (!model) {
-      throw new Error('Bitte ein Modell waehlen oder bei Custom ein eigenes Modell eintragen.');
+      throw new Error('Bitte ein Modell wählen oder bei Custom ein eigenes Modell eintragen.');
     }
 
     const provider = {

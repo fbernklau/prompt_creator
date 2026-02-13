@@ -21,6 +21,33 @@ function normalizeSet(values = []) {
   return new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean));
 }
 
+function uniqueList(values = []) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function normalizeBudgetMode(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'soft' || normalized === 'hard' || normalized === 'hybrid') return normalized;
+  return 'hybrid';
+}
+
+function normalizeBudgetPeriod(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'daily' || normalized === 'weekly' || normalized === 'monthly') return normalized;
+  return 'monthly';
+}
+
+function periodToIntervalLiteral(period = 'monthly') {
+  const normalized = normalizeBudgetPeriod(period);
+  if (normalized === 'daily') return '1 day';
+  if (normalized === 'weekly') return '7 days';
+  return '30 days';
+}
+
+function asLowerList(values = []) {
+  return uniqueList(values.map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean));
+}
+
 function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
@@ -158,6 +185,222 @@ function calculateUsageCost(usage = {}, pricing = null) {
     pricingOutputPerMillion: outputPricePerMillion,
     pricingCurrency: pricing.currency || 'USD',
   };
+}
+
+async function estimateCompletionRatio({ userId, providerKind, providerModel }) {
+  const result = await pool.query(
+    `SELECT AVG((completion_tokens::numeric / NULLIF(prompt_tokens, 0))) AS ratio
+     FROM provider_generation_events
+     WHERE user_id = $1
+       AND provider_kind = $2
+       AND provider_model = $3
+       AND success = TRUE
+       AND prompt_tokens > 0
+       AND completion_tokens >= 0
+       AND created_at >= NOW() - ('30 days'::interval)`,
+    [userId, providerKind, providerModel]
+  );
+  const ratio = Number(result.rows[0]?.ratio);
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1.25;
+  return Math.min(Math.max(ratio, 0.2), 6);
+}
+
+async function estimateProjectedUsageAndCost({
+  userId,
+  provider,
+  pricing,
+  promptText,
+}) {
+  const promptTokens = Math.max(estimateTokenCount(promptText), 1);
+  const ratio = await estimateCompletionRatio({
+    userId,
+    providerKind: provider.kind,
+    providerModel: provider.model,
+  });
+  const completionTokens = Math.max(Math.round(promptTokens * ratio), 1);
+  const usage = {
+    promptTokens: asNonNegativeInt(promptTokens),
+    completionTokens: asNonNegativeInt(completionTokens),
+    totalTokens: asNonNegativeInt(promptTokens + completionTokens),
+  };
+  const cost = calculateUsageCost(usage, pricing);
+  return {
+    ratio,
+    usage,
+    cost,
+    projectedCostUsd: Number(cost.totalCostUsd || 0),
+  };
+}
+
+async function listApplicableBudgetPolicies({
+  userId,
+  userGroups = [],
+  keyFingerprint = '',
+}) {
+  const groups = asLowerList(userGroups);
+  const normalizedFingerprint = String(keyFingerprint || '').trim();
+  const result = await pool.query(
+    `SELECT id, owner_user_id, scope_type, scope_value, period, limit_usd, mode, warning_ratio, is_active
+     FROM budget_policies
+     WHERE is_active = TRUE
+       AND (owner_user_id IS NULL OR owner_user_id = $1)
+       AND (
+         (scope_type = 'user' AND LOWER(scope_value) = LOWER($1))
+         OR (scope_type = 'group' AND (array_length($2::text[], 1) > 0) AND LOWER(scope_value) = ANY($2::text[]))
+         OR (scope_type = 'key' AND $3 <> '' AND scope_value = $3)
+       )`,
+    [userId, groups, normalizedFingerprint]
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    ownerUserId: row.owner_user_id || null,
+    scopeType: row.scope_type,
+    scopeValue: row.scope_value,
+    period: normalizeBudgetPeriod(row.period),
+    limitUsd: Number(row.limit_usd || 0),
+    mode: normalizeBudgetMode(row.mode),
+    warningRatio: Number(row.warning_ratio || 0.9),
+    isActive: Boolean(row.is_active),
+  }));
+}
+
+async function resolveBudgetSpendUsd({ policy }) {
+  const intervalLiteral = periodToIntervalLiteral(policy.period);
+  if (policy.scopeType === 'user') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE user_id = $1
+         AND created_at >= NOW() - ($2::interval)`,
+      [policy.scopeValue, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+  if (policy.scopeType === 'group') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE user_groups_json ? $1
+         AND created_at >= NOW() - ($2::interval)`,
+      [policy.scopeValue, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+  if (policy.scopeType === 'key') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE key_fingerprint = $1
+         AND created_at >= NOW() - ($2::interval)`,
+      [policy.scopeValue, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+  return 0;
+}
+
+async function recordBudgetEvent({
+  userId,
+  policy,
+  action,
+  message,
+  projectedCostUsd,
+  currentSpendUsd,
+  limitUsd,
+}) {
+  await pool.query(
+    `INSERT INTO budget_events
+       (user_id, policy_id, scope_type, scope_value, action, message, projected_cost_usd, current_spend_usd, limit_usd)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      userId,
+      policy?.id || null,
+      policy?.scopeType || 'user',
+      policy?.scopeValue || userId,
+      action,
+      message,
+      projectedCostUsd ?? null,
+      currentSpendUsd ?? null,
+      limitUsd ?? null,
+    ]
+  );
+}
+
+function budgetLabel(policy) {
+  return `${policy.scopeType}:${policy.scopeValue} (${policy.period})`;
+}
+
+async function enforceBudgetPolicies({
+  req,
+  keyFingerprint = '',
+  estimatedIncrementUsd = 0,
+  phaseLabel = 'Generierung',
+  onWarning = null,
+}) {
+  const incrementUsd = Number(estimatedIncrementUsd);
+  if (!Number.isFinite(incrementUsd) || incrementUsd <= 0) return [];
+
+  const policies = await listApplicableBudgetPolicies({
+    userId: req.userId,
+    userGroups: req.userGroups || [],
+    keyFingerprint,
+  });
+  if (!policies.length) return [];
+
+  const warnings = [];
+  for (const policy of policies) {
+    const spendUsd = await resolveBudgetSpendUsd({ policy });
+    const limitUsd = Number(policy.limitUsd || 0);
+    const warningRatio = Number(policy.warningRatio || 0.9);
+    const warningThreshold = limitUsd * warningRatio;
+    const projectedUsd = spendUsd + incrementUsd;
+    const mode = normalizeBudgetMode(policy.mode);
+
+    const shouldWarn = projectedUsd >= warningThreshold;
+    const shouldBlock = (mode === 'hard' && projectedUsd > limitUsd)
+      || (mode === 'hybrid' && spendUsd >= limitUsd);
+
+    if (shouldWarn) {
+      const message = `${phaseLabel}: Budget-Hinweis für ${budgetLabel(policy)} — aktuell $${spendUsd.toFixed(4)}, prognostiziert $${projectedUsd.toFixed(4)} bei Limit $${limitUsd.toFixed(4)}.`;
+      warnings.push({
+        policyId: policy.id,
+        scopeType: policy.scopeType,
+        scopeValue: policy.scopeValue,
+        period: policy.period,
+        mode,
+        message,
+        spendUsd,
+        projectedUsd,
+        limitUsd,
+      });
+      if (typeof onWarning === 'function') onWarning(message);
+      await recordBudgetEvent({
+        userId: req.userId,
+        policy,
+        action: 'warn',
+        message,
+        projectedCostUsd: projectedUsd,
+        currentSpendUsd: spendUsd,
+        limitUsd,
+      });
+    }
+
+    if (shouldBlock) {
+      const message = `${phaseLabel}: Budget-Limit erreicht für ${budgetLabel(policy)} (aktuell $${spendUsd.toFixed(4)} / Limit $${limitUsd.toFixed(4)}).`;
+      await recordBudgetEvent({
+        userId: req.userId,
+        policy,
+        action: 'block',
+        message,
+        projectedCostUsd: projectedUsd,
+        currentSpendUsd: spendUsd,
+        limitUsd,
+      });
+      throw httpError(402, message);
+    }
+  }
+
+  return warnings;
 }
 
 function combineUsageSummaries(...entries) {
@@ -439,6 +682,46 @@ async function getProviderForUser(req, providerId) {
   return providerResult.rows[0] || null;
 }
 
+async function findAssignedSystemKey(req, provider) {
+  const groups = asLowerList(req.userGroups || []);
+  const roles = asLowerList(req.access?.roles || []);
+  const result = await pool.query(
+    `SELECT
+       sk.system_key_id,
+       sk.name,
+       sk.provider_kind,
+       sk.model_hint,
+       sk.base_url,
+       sk.key_meta,
+       a.scope_type,
+       a.scope_value
+     FROM system_provider_keys sk
+     JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
+     WHERE sk.is_active = TRUE
+       AND sk.provider_kind = $1
+       AND (
+         (a.scope_type = 'user' AND LOWER(a.scope_value) = LOWER($2))
+         OR (a.scope_type = 'group' AND (array_length($3::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($3::text[]))
+         OR (a.scope_type = 'role' AND (array_length($4::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($4::text[]))
+       )
+     ORDER BY
+       CASE a.scope_type
+         WHEN 'user' THEN 0
+         WHEN 'role' THEN 1
+         ELSE 2
+       END,
+       CASE
+         WHEN sk.model_hint IS NOT NULL AND sk.model_hint <> '' AND LOWER(sk.model_hint) = LOWER($5) THEN 0
+         WHEN sk.model_hint IS NULL OR sk.model_hint = '' THEN 1
+         ELSE 2
+       END,
+       sk.updated_at DESC
+     LIMIT 1`,
+    [provider.kind, req.userId, groups, roles, provider.model]
+  );
+  return result.rows[0] || null;
+}
+
 function buildRuntimeTemplate(resolvedTemplate, templateOverride) {
   let runtimeTemplate = {
     id: resolvedTemplate.templateUid,
@@ -540,29 +823,37 @@ async function resolveGenerationContext(req, payload = {}) {
 
 async function logGenerationEvent({
   userId,
+  userGroups = [],
   provider,
   templateId,
   success,
   latencyMs,
   errorType,
+  effectiveKeyType = 'user',
+  effectiveKeyId = null,
   keyFingerprint = null,
   usage = null,
   costSummary = null,
 }) {
   const usageSafe = usage || {};
   const costSafe = costSummary || {};
+  const normalizedGroups = uniqueList((userGroups || []).map((entry) => String(entry || '').trim()).filter(Boolean));
+  const safeTemplateId = String(templateId || 'unknown');
 
   await pool.query(
     `INSERT INTO provider_generation_events
-       (user_id, provider_id, provider_kind, provider_model, key_fingerprint, template_id, success, latency_ms, prompt_tokens, completion_tokens, total_tokens, input_cost_usd, output_cost_usd, total_cost_usd, pricing_source, pricing_input_per_million, pricing_output_per_million, error_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+       (user_id, user_groups_json, provider_id, provider_kind, provider_model, key_fingerprint, effective_key_type, effective_key_id, template_id, success, latency_ms, prompt_tokens, completion_tokens, total_tokens, input_cost_usd, output_cost_usd, total_cost_usd, pricing_source, pricing_input_per_million, pricing_output_per_million, error_type)
+     VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
     [
       userId,
+      JSON.stringify(normalizedGroups),
       provider.provider_id,
       provider.kind,
       provider.model,
       keyFingerprint,
-      templateId,
+      String(effectiveKeyType || 'user'),
+      effectiveKeyId ? String(effectiveKeyId) : null,
+      safeTemplateId,
       Boolean(success),
       Math.max(Number(latencyMs) || 0, 0),
       asNonNegativeInt(usageSafe.promptTokens),
@@ -582,15 +873,29 @@ async function logGenerationEvent({
 async function resolveProviderCredential(req, provider) {
   let apiKey = getStoredApiKey(provider);
   let keySource = 'provider';
+  let effectiveKeyType = 'user';
+  let effectiveKeyId = provider.provider_id;
+  let systemKey = null;
   if (!apiKey && provider.kind === 'google' && isSharedGoogleAllowed(req)) {
     apiKey = config.googleTestApiKey;
     keySource = 'shared_google_test';
+    effectiveKeyType = 'shared_test';
+    effectiveKeyId = 'google_test_shared';
+  }
+  if (!apiKey) {
+    systemKey = await findAssignedSystemKey(req, provider);
+    if (systemKey && hasServerEncryptedKey(systemKey.key_meta)) {
+      apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);
+      keySource = `system:${systemKey.system_key_id}`;
+      effectiveKeyType = 'system';
+      effectiveKeyId = systemKey.system_key_id;
+    }
   }
   if (!apiKey) {
     throw httpError(400, 'Kein gueltiger API-Key verfuegbar. Bitte Provider-Key neu speichern oder Testzugang nutzen.');
   }
 
-  const baseUrl = provider.base_url || getRecommendedBaseUrl(provider.kind);
+  const baseUrl = provider.base_url || systemKey?.base_url || getRecommendedBaseUrl(provider.kind);
   if (!baseUrl) {
     throw httpError(400, 'Provider base URL fehlt.');
   }
@@ -599,6 +904,9 @@ async function resolveProviderCredential(req, provider) {
     apiKey,
     keySource,
     baseUrl,
+    effectiveKeyType,
+    effectiveKeyId,
+    systemKeyName: systemKey?.name || null,
   };
 }
 
@@ -716,6 +1024,7 @@ function createGenerateRouter() {
     let metapromptForProvider = '';
     let handoffPrompt = '';
     let resultOutput = null;
+    const budgetWarnings = [];
 
     try {
       metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
@@ -725,6 +1034,19 @@ function createGenerateRouter() {
       metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
         ? metapromptOverride.trim()
         : context.metaprompt;
+      const metapromptEstimated = await estimateProjectedUsageAndCost({
+        userId: req.userId,
+        provider: metapromptProvider,
+        pricing: metapromptPricing,
+        promptText: metapromptForProvider,
+      });
+      const metapromptBudgetWarnings = await enforceBudgetPolicies({
+        req,
+        keyFingerprint: metapromptKeyFingerprint,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        phaseLabel: 'Metaprompt-Phase',
+      });
+      budgetWarnings.push(...metapromptBudgetWarnings);
 
       const callMetapromptProvider = async (metapromptText) => {
         const result = await callProviderDetailed({
@@ -774,6 +1096,19 @@ function createGenerateRouter() {
         const resultPricing = await resolvePricingForProvider(resultProvider);
         resultKeyFingerprint = buildKeyFingerprint(resultCredential.apiKey);
         resultCost = calculateUsageCost(resultUsage, resultPricing);
+        const resultEstimated = await estimateProjectedUsageAndCost({
+          userId: req.userId,
+          provider: resultProvider,
+          pricing: resultPricing,
+          promptText: handoffPrompt,
+        });
+        const resultBudgetWarnings = await enforceBudgetPolicies({
+          req,
+          keyFingerprint: resultKeyFingerprint,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          phaseLabel: 'Direktes Ergebnis',
+        });
+        budgetWarnings.push(...resultBudgetWarnings);
 
         const resultCall = await callProviderDetailed({
           kind: resultProvider.kind,
@@ -807,11 +1142,14 @@ function createGenerateRouter() {
 
       await logGenerationEvent({
         userId: req.userId,
+        userGroups: req.userGroups || [],
         provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
         latencyMs: Date.now() - startedAt,
         errorType: null,
+        effectiveKeyType: metapromptCredential?.effectiveKeyType,
+        effectiveKeyId: metapromptCredential?.effectiveKeyId,
         keyFingerprint: metapromptKeyFingerprint,
         usage: metapromptUsage,
         costSummary: metapromptCost,
@@ -819,11 +1157,14 @@ function createGenerateRouter() {
       if (mode === 'result' && resultProvider) {
         await logGenerationEvent({
           userId: req.userId,
+          userGroups: req.userGroups || [],
           provider: resultProvider,
           templateId: context.resolvedTemplate.templateUid,
           success: true,
           latencyMs: Date.now() - startedAt,
           errorType: null,
+          effectiveKeyType: resultCredential?.effectiveKeyType,
+          effectiveKeyId: resultCredential?.effectiveKeyId,
           keyFingerprint: resultKeyFingerprint,
           usage: resultUsage,
           costSummary: resultCost,
@@ -872,6 +1213,9 @@ function createGenerateRouter() {
           model: metapromptProvider.model,
           baseUrl: metapromptCredential.baseUrl,
           keySource: metapromptCredential.keySource,
+          effectiveKeyType: metapromptCredential.effectiveKeyType,
+          effectiveKeyId: metapromptCredential.effectiveKeyId,
+          systemKeyName: metapromptCredential.systemKeyName,
         },
         providers: {
           metaprompt: {
@@ -881,6 +1225,9 @@ function createGenerateRouter() {
             model: metapromptProvider.model,
             baseUrl: metapromptCredential.baseUrl,
             keySource: metapromptCredential.keySource,
+            effectiveKeyType: metapromptCredential.effectiveKeyType,
+            effectiveKeyId: metapromptCredential.effectiveKeyId,
+            systemKeyName: metapromptCredential.systemKeyName,
           },
           result: mode === 'result' && resultProvider && resultCredential
             ? {
@@ -890,6 +1237,9 @@ function createGenerateRouter() {
               model: resultProvider.model,
               baseUrl: resultCredential.baseUrl,
               keySource: resultCredential.keySource,
+              effectiveKeyType: resultCredential.effectiveKeyType,
+              effectiveKeyId: resultCredential.effectiveKeyId,
+              systemKeyName: resultCredential.systemKeyName,
             }
             : null,
         },
@@ -903,6 +1253,10 @@ function createGenerateRouter() {
           metaprompt: metapromptCost,
           result: mode === 'result' ? resultCost : null,
         },
+        budget: {
+          mode: 'hybrid',
+          warnings: budgetWarnings,
+        },
       });
     } catch (error) {
       let finalError = error;
@@ -912,11 +1266,14 @@ function createGenerateRouter() {
       try {
         await logGenerationEvent({
           userId: req.userId,
+          userGroups: req.userGroups || [],
           provider: metapromptProvider,
           templateId: context?.resolvedTemplate?.templateUid || templateId || null,
           success: false,
           latencyMs: Date.now() - startedAt,
           errorType: finalError?.message || 'generation_failed',
+          effectiveKeyType: metapromptCredential?.effectiveKeyType,
+          effectiveKeyId: metapromptCredential?.effectiveKeyId,
           keyFingerprint: metapromptKeyFingerprint,
           usage: metapromptUsage,
           costSummary: metapromptCost,
@@ -924,11 +1281,14 @@ function createGenerateRouter() {
         if (mode === 'result' && resultProvider) {
           await logGenerationEvent({
             userId: req.userId,
+            userGroups: req.userGroups || [],
             provider: resultProvider,
             templateId: context?.resolvedTemplate?.templateUid || templateId || null,
             success: false,
             latencyMs: Date.now() - startedAt,
             errorType: finalError?.message || 'generation_failed',
+            effectiveKeyType: resultCredential?.effectiveKeyType,
+            effectiveKeyId: resultCredential?.effectiveKeyId,
             keyFingerprint: resultKeyFingerprint,
             usage: resultUsage,
             costSummary: resultCost,
@@ -955,6 +1315,9 @@ function createGenerateRouter() {
     let metapromptCost = calculateUsageCost(metapromptUsage, null);
     let resultCost = calculateUsageCost(resultUsage, null);
     let mode = 'prompt';
+    let metapromptCredential = null;
+    let resultCredential = null;
+    const budgetWarnings = [];
 
     try {
       const {
@@ -1009,13 +1372,29 @@ function createGenerateRouter() {
         templateOverride,
       });
 
-      const metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
+      metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
       const metapromptPricing = await resolvePricingForProvider(metapromptProvider);
       metapromptKeyFingerprint = buildKeyFingerprint(metapromptCredential.apiKey);
       metapromptCost = calculateUsageCost(metapromptUsage, metapromptPricing);
       const metapromptForProvider = typeof metapromptOverride === 'string' && metapromptOverride.trim()
         ? metapromptOverride.trim()
         : context.metaprompt;
+      const metapromptEstimated = await estimateProjectedUsageAndCost({
+        userId: req.userId,
+        provider: metapromptProvider,
+        pricing: metapromptPricing,
+        promptText: metapromptForProvider,
+      });
+      const metapromptBudgetWarnings = await enforceBudgetPolicies({
+        req,
+        keyFingerprint: metapromptKeyFingerprint,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        phaseLabel: 'Metaprompt-Phase',
+        onWarning: (message) => {
+          writeStreamEvent(res, 'status', { stage: 'budget', message });
+        },
+      });
+      budgetWarnings.push(...metapromptBudgetWarnings);
 
       let streamedHandoffPrompt = '';
       const callMetapromptProvider = async (metapromptText, { streamOutput = false } = {}) => {
@@ -1106,7 +1485,6 @@ function createGenerateRouter() {
       }
 
       let resultOutput = null;
-      let resultCredential = null;
       if (mode === 'result' && resultProvider) {
         stage = 'result_provider_call';
         writeStreamEvent(res, 'status', {
@@ -1117,6 +1495,22 @@ function createGenerateRouter() {
         const resultPricing = await resolvePricingForProvider(resultProvider);
         resultKeyFingerprint = buildKeyFingerprint(resultCredential.apiKey);
         resultCost = calculateUsageCost(resultUsage, resultPricing);
+        const resultEstimated = await estimateProjectedUsageAndCost({
+          userId: req.userId,
+          provider: resultProvider,
+          pricing: resultPricing,
+          promptText: handoffPrompt,
+        });
+        const resultBudgetWarnings = await enforceBudgetPolicies({
+          req,
+          keyFingerprint: resultKeyFingerprint,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          phaseLabel: 'Direktes Ergebnis',
+          onWarning: (message) => {
+            writeStreamEvent(res, 'status', { stage: 'budget', message });
+          },
+        });
+        budgetWarnings.push(...resultBudgetWarnings);
 
         const resultCall = await callProviderDetailedStream({
           kind: resultProvider.kind,
@@ -1154,11 +1548,14 @@ function createGenerateRouter() {
 
       await logGenerationEvent({
         userId: req.userId,
+        userGroups: req.userGroups || [],
         provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
         latencyMs: Date.now() - startedAt,
         errorType: null,
+        effectiveKeyType: metapromptCredential?.effectiveKeyType,
+        effectiveKeyId: metapromptCredential?.effectiveKeyId,
         keyFingerprint: metapromptKeyFingerprint,
         usage: metapromptUsage,
         costSummary: metapromptCost,
@@ -1166,11 +1563,14 @@ function createGenerateRouter() {
       if (mode === 'result' && resultProvider) {
         await logGenerationEvent({
           userId: req.userId,
+          userGroups: req.userGroups || [],
           provider: resultProvider,
           templateId: context.resolvedTemplate.templateUid,
           success: true,
           latencyMs: Date.now() - startedAt,
           errorType: null,
+          effectiveKeyType: resultCredential?.effectiveKeyType,
+          effectiveKeyId: resultCredential?.effectiveKeyId,
           keyFingerprint: resultKeyFingerprint,
           usage: resultUsage,
           costSummary: resultCost,
@@ -1224,6 +1624,9 @@ function createGenerateRouter() {
           model: metapromptProvider.model,
           baseUrl: metapromptCredential.baseUrl,
           keySource: metapromptCredential.keySource,
+          effectiveKeyType: metapromptCredential.effectiveKeyType,
+          effectiveKeyId: metapromptCredential.effectiveKeyId,
+          systemKeyName: metapromptCredential.systemKeyName,
         },
         providers: {
           metaprompt: {
@@ -1233,6 +1636,9 @@ function createGenerateRouter() {
             model: metapromptProvider.model,
             baseUrl: metapromptCredential.baseUrl,
             keySource: metapromptCredential.keySource,
+            effectiveKeyType: metapromptCredential.effectiveKeyType,
+            effectiveKeyId: metapromptCredential.effectiveKeyId,
+            systemKeyName: metapromptCredential.systemKeyName,
           },
           result: mode === 'result' && resultProvider && resultCredential
             ? {
@@ -1242,6 +1648,9 @@ function createGenerateRouter() {
               model: resultProvider.model,
               baseUrl: resultCredential.baseUrl,
               keySource: resultCredential.keySource,
+              effectiveKeyType: resultCredential.effectiveKeyType,
+              effectiveKeyId: resultCredential.effectiveKeyId,
+              systemKeyName: resultCredential.systemKeyName,
             }
             : null,
         },
@@ -1255,6 +1664,10 @@ function createGenerateRouter() {
           metaprompt: metapromptCost,
           result: mode === 'result' ? resultCost : null,
         },
+        budget: {
+          mode: 'hybrid',
+          warnings: budgetWarnings,
+        },
       });
       return res.end();
     } catch (error) {
@@ -1266,11 +1679,14 @@ function createGenerateRouter() {
         try {
           await logGenerationEvent({
             userId: req.userId,
+            userGroups: req.userGroups || [],
             provider: metapromptProvider,
             templateId: context.resolvedTemplate.templateUid,
             success: false,
             latencyMs: Date.now() - startedAt,
             errorType: finalError?.message || 'generation_failed',
+            effectiveKeyType: metapromptCredential?.effectiveKeyType,
+            effectiveKeyId: metapromptCredential?.effectiveKeyId,
             keyFingerprint: metapromptKeyFingerprint,
             usage: metapromptUsage,
             costSummary: metapromptCost,
@@ -1278,11 +1694,14 @@ function createGenerateRouter() {
           if (mode === 'result' && resultProvider) {
             await logGenerationEvent({
               userId: req.userId,
+              userGroups: req.userGroups || [],
               provider: resultProvider,
               templateId: context.resolvedTemplate.templateUid,
               success: false,
               latencyMs: Date.now() - startedAt,
               errorType: finalError?.message || 'generation_failed',
+              effectiveKeyType: resultCredential?.effectiveKeyType,
+              effectiveKeyId: resultCredential?.effectiveKeyId,
               keyFingerprint: resultKeyFingerprint,
               usage: resultUsage,
               costSummary: resultCost,

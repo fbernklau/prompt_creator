@@ -58,6 +58,11 @@ function createTaskController({
   state.templateDiscovery.tagPickerOpen = Boolean(state.templateDiscovery.tagPickerOpen);
   state.templateCoverageAudit = state.templateCoverageAudit || { issues: [] };
   state.previousGeneratedPrompt = state.previousGeneratedPrompt || '';
+  state.generatedResult = state.generatedResult || '';
+  state.generatedMetaPrompt = state.generatedMetaPrompt || '';
+  state.generatedMetaDetails = state.generatedMetaDetails || null;
+  state.lastGenerationPayload = state.lastGenerationPayload || null;
+  state.lastGenerationFormSnapshot = state.lastGenerationFormSnapshot || null;
   state.compactFlow = state.compactFlow || {
     editingCategory: false,
     editingTemplate: false,
@@ -214,6 +219,7 @@ function createTaskController({
     const select = el(selectId);
     const customInput = el(customId);
     const customWrap = customInput?.closest('label') || null;
+    if (!select) return;
     const options = Array.isArray(values) ? [...values] : [];
     if (!options.includes('__custom__')) options.push('__custom__');
     if (includeRange && !options.includes('__range__')) {
@@ -224,7 +230,7 @@ function createTaskController({
 
     select.innerHTML = options
       .map((value) => {
-        if (!value) return '<option value="">Bitte waehlen...</option>';
+        if (!value) return '<option value="">Bitte wählen...</option>';
         if (value === '__range__') return '<option value="__range__">Von - bis</option>';
         if (value === '__custom__') return '<option value="__custom__">Custom...</option>';
         return `<option value="${value}">${value}</option>`;
@@ -235,7 +241,7 @@ function createTaskController({
     const rangeStart = includeRange ? el('zeitrahmen-range-start') : null;
     const rangeEnd = includeRange ? el('zeitrahmen-range-end') : null;
 
-    const syncCustomState = () => {
+    const syncCustomState = ({ shouldFocus = false } = {}) => {
       const isCustom = select.value === '__custom__';
       const isRange = includeRange && select.value === '__range__';
       if (customWrap) customWrap.classList.toggle('is-hidden', !isCustom || !!isRange);
@@ -245,6 +251,9 @@ function createTaskController({
         customInput.placeholder = isCustom
           ? 'Eigener Wert'
           : 'Nur bei Custom aktiv';
+        if (isCustom && shouldFocus) {
+          window.requestAnimationFrame(() => customInput.focus());
+        }
       }
 
       if (includeRange && rangeWrap && rangeStart && rangeEnd) {
@@ -256,7 +265,17 @@ function createTaskController({
       }
     };
 
-    select.addEventListener('change', syncCustomState);
+    select.addEventListener('change', () => syncCustomState({ shouldFocus: true }));
+    if (customInput) {
+      customInput.addEventListener('input', () => {
+        const hasValue = customInput.value.trim().length > 0;
+        if (!hasValue) return;
+        if (select.value !== '__custom__') {
+          select.value = '__custom__';
+          syncCustomState();
+        }
+      });
+    }
     syncCustomState();
   }
 
@@ -321,11 +340,11 @@ function createTaskController({
 
   function dynamicFieldDefaultHelp(field = {}) {
     const type = String(field.type || 'text').toLowerCase();
-    if (type === 'textarea') return 'Nutze Stichpunkte oder kurze Saetze mit konkreten Angaben.';
-    if (type === 'select') return 'Waehle eine Option oder nutze einen eigenen Wert.';
-    if (type === 'multiselect') return 'Mehrere Optionen moeglich; eigene Werte koennen ergaenzt werden.';
-    if (type === 'checkbox') return 'Aktivieren, wenn fuer den Prompt relevant.';
-    return 'Kurze, konkrete Angabe fuer den Prompt-Kontext.';
+    if (type === 'textarea') return 'Nutze Stichpunkte oder kurze Sätze mit konkreten Angaben.';
+    if (type === 'select') return 'Wähle eine Option oder nutze einen eigenen Wert.';
+    if (type === 'multiselect') return 'Mehrere Optionen möglich; eigene Werte können ergänzt werden.';
+    if (type === 'checkbox') return 'Aktivieren, wenn für den Prompt relevant.';
+    return 'Kurze, konkrete Angabe für den Prompt-Kontext.';
   }
 
   function allowsCustomDynamicValue(field = {}) {
@@ -376,8 +395,86 @@ function createTaskController({
 
   function setGenerationStatus(text = '', type = 'info') {
     const node = el('generation-status');
+    if (!node) return;
     node.textContent = text;
     node.dataset.type = type;
+  }
+
+  function setResultReadyBanner(text = '', stateType = 'ok') {
+    const node = el('result-ready-banner');
+    if (!node) return;
+    const normalized = String(text || '').trim();
+    node.textContent = normalized;
+    node.dataset.state = stateType;
+    node.classList.toggle('is-hidden', !normalized);
+  }
+
+  function setProgressBarValue(nodeId, percent = 0) {
+    const node = el(nodeId);
+    if (!node) return;
+    const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+    node.style.width = `${clamped}%`;
+    node.dataset.progress = String(clamped);
+  }
+
+  function setProgressLabel(nodeId, text = '', type = 'info') {
+    const node = el(nodeId);
+    if (!node) return;
+    node.textContent = text;
+    node.dataset.type = type;
+  }
+
+  function updateResultProgress(stage = '', statusText = '', runMode = 'prompt') {
+    const normalizedStage = String(stage || '').trim();
+    const normalizedMode = runMode === 'result' ? 'result' : 'prompt';
+    const directRow = el('result-progress-direct-row');
+    if (directRow) directRow.classList.toggle('is-hidden', normalizedMode !== 'result');
+
+    if (!normalizedStage) return;
+    const metaStageMap = {
+      input: { percent: 8, label: 'Eingaben werden geprüft…' },
+      metaprompt: { percent: 18, label: 'Metaprompt wird vorbereitet…' },
+      provider_call: { percent: 42, label: 'Metaprompt wird erzeugt…' },
+      postprocess: { percent: normalizedMode === 'result' ? 68 : 82, label: 'Metaprompt wird finalisiert…' },
+      finalize: { percent: normalizedMode === 'result' ? 92 : 100, label: normalizedMode === 'result' ? 'Abschluss läuft…' : 'Metaprompt fertig.' },
+    };
+    const directStageMap = {
+      result_provider_call: { percent: 62, label: 'Direktes Ergebnis wird erzeugt…' },
+      finalize: { percent: 100, label: 'Direktes Ergebnis fertig.' },
+    };
+
+    if (metaStageMap[normalizedStage]) {
+      const entry = metaStageMap[normalizedStage];
+      setProgressBarValue('result-progress-meta-bar', entry.percent);
+      setProgressLabel('result-progress-meta-status', statusText || entry.label, normalizedStage === 'finalize' ? 'ok' : 'info');
+    } else if (normalizedStage === 'budget') {
+      setProgressLabel('result-progress-meta-status', statusText || 'Budget-Hinweis erkannt.', 'info');
+    } else if (normalizedStage === 'error') {
+      setProgressLabel('result-progress-meta-status', statusText || 'Fehler bei der Metaprompt-Generierung.', 'error');
+    }
+
+    if (normalizedMode === 'result') {
+      if (directStageMap[normalizedStage]) {
+        const entry = directStageMap[normalizedStage];
+        setProgressBarValue('result-progress-direct-bar', entry.percent);
+        setProgressLabel('result-progress-direct-status', statusText || entry.label, normalizedStage === 'finalize' ? 'ok' : 'info');
+      } else if (normalizedStage === 'budget') {
+        setProgressLabel('result-progress-direct-status', statusText || 'Budget-Hinweis erkannt.', 'info');
+      } else if (normalizedStage === 'error') {
+        setProgressLabel('result-progress-direct-status', statusText || 'Fehler bei der Result-Generierung.', 'error');
+      }
+    }
+  }
+
+  function resetResultProgress(runMode = 'prompt') {
+    const normalizedMode = runMode === 'result' ? 'result' : 'prompt';
+    const directRow = el('result-progress-direct-row');
+    if (directRow) directRow.classList.toggle('is-hidden', normalizedMode !== 'result');
+    setProgressBarValue('result-progress-meta-bar', 0);
+    setProgressBarValue('result-progress-direct-bar', 0);
+    setProgressLabel('result-progress-meta-status', 'wartet', 'info');
+    setProgressLabel('result-progress-direct-status', 'wartet', 'info');
+    setResultReadyBanner('', 'ok');
   }
 
   function getGlobalGenerationMode() {
@@ -496,7 +593,7 @@ function createTaskController({
     const categoryNames = Object.keys(categoryConfig)
       .filter((categoryName) => !visibleCategorySet || visibleCategorySet.has(categoryName));
     if (!categoryNames.length) {
-      grid.innerHTML = '<div class="hint panel panel-soft">Keine passenden Kategorien fuer die aktuelle Suche/Tag-Auswahl.</div>';
+      grid.innerHTML = '<div class="hint panel panel-soft">Keine passenden Kategorien für die aktuelle Suche/Tag-Auswahl.</div>';
       return;
     }
     grid.innerHTML = categoryNames
@@ -579,6 +676,56 @@ function createTaskController({
     });
   }
 
+  function renderHomeSearchResults(templates = [], { active = false } = {}) {
+    const section = el('home-search-results-section');
+    const list = el('home-search-results');
+    const status = el('home-search-results-status');
+    if (!section || !list || !status) return;
+
+    if (!active || !templates.length) {
+      section.classList.add('is-hidden');
+      list.innerHTML = '';
+      status.textContent = '';
+      return;
+    }
+
+    const grouped = templates.reduce((acc, template) => {
+      const categoryName = String(template?.categoryName || 'Weitere').trim() || 'Weitere';
+      if (!acc.has(categoryName)) acc.set(categoryName, []);
+      acc.get(categoryName).push(template);
+      return acc;
+    }, new Map());
+
+    list.innerHTML = [...grouped.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'de'))
+      .map(([categoryName, entries]) => `
+        <div class="tw-home-search-group">
+          <h4>${categoryName} <small>(${entries.length})</small></h4>
+          <div class="tw-home-search-group-list">
+            ${entries.map((template) => `
+              <button
+                type="button"
+                class="tw-home-search-result-card"
+                data-open-template="${template.templateUid}"
+              >
+                <strong>${template.title}</strong>
+                <small>${template.subcategoryName}</small>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `)
+      .join('');
+
+    list.querySelectorAll('[data-open-template]').forEach((button) => {
+      button.addEventListener('click', () => openTemplateFromDiscovery(button.dataset.openTemplate));
+    });
+
+    const searchSuffix = state.templateDiscovery.search ? `für "${state.templateDiscovery.search}"` : 'über Tags';
+    status.textContent = `${templates.length} Treffer ${searchSuffix}.`;
+    section.classList.remove('is-hidden');
+  }
+
   function renderTagChips(templates = []) {
     const counts = new Map();
     templates.forEach((template) => {
@@ -642,7 +789,7 @@ function createTaskController({
     const selectedTags = normalizeTagList(state.templateDiscovery.activeTags || []);
     const hasFilterMode = Boolean(state.templateDiscovery.search) || selectedTags.length > 0;
 
-    const recommended = hasFilterMode ? templates.slice(0, 24) : templates.slice(0, 3);
+    const recommended = templates.slice(0, 3);
     const recent = templates
       .filter((template) => template.isRecent)
       .sort((a, b) => {
@@ -659,21 +806,11 @@ function createTaskController({
     renderQuickTemplateList(
       'home-recommended-list',
       recommended,
-      hasFilterMode ? 'Keine Treffer fuer Suche/Tags.' : 'Noch keine Empfehlungen verfuegbar.'
+      hasFilterMode ? 'Keine Treffer für Suche/Tags.' : 'Noch keine Empfehlungen verfügbar.'
     );
     renderQuickTemplateList('home-recent-list', recent, 'Noch keine zuletzt genutzten Templates.');
     renderQuickTemplateList('home-favorites-list', favorites, 'Noch keine Favoriten markiert.');
-
-    const recommendedTitle = el('home-discovery-title-recommended');
-    if (recommendedTitle) {
-      recommendedTitle.innerHTML = hasFilterMode
-        ? '<span class="material-icons-round text-primary text-[18px]">search</span>Suchergebnisse'
-        : '<span class="material-icons-round text-primary text-[18px]">recommend</span>Empfohlen';
-    }
-    const recentColumn = el('home-discovery-col-recent');
-    const favoritesColumn = el('home-discovery-col-favorites');
-    if (recentColumn) recentColumn.classList.toggle('is-hidden', hasFilterMode);
-    if (favoritesColumn) favoritesColumn.classList.toggle('is-hidden', hasFilterMode);
+    renderHomeSearchResults(templates, { active: hasFilterMode });
 
     renderCategoryGrid(hasFilterMode ? templates : null);
 
@@ -738,7 +875,7 @@ function createTaskController({
           const favorite = Boolean(discoveryEntry?.isFavorite);
           const badge = (template?.tags || [])[0] || 'template';
           return `
-            <div class="tw-subcat-card clickable-card" data-subcategory="${subcategory}" role="button" tabindex="0" aria-label="${subcategory} auswaehlen">
+            <div class="tw-subcat-card clickable-card" data-subcategory="${subcategory}" role="button" tabindex="0" aria-label="${subcategory} auswählen">
               <div class="tw-subcat-card-head">
                 <span class="tw-subcat-card-meta">
                   <span class="tw-subcat-badge">${short}</span>
@@ -814,7 +951,7 @@ function createTaskController({
     const categoryConfig = getCategoryConfig();
     const cfg = categoryConfig[state.selectedCategory];
     el('form-category-title').textContent = cfg?.title || '';
-    el('form-subcategory-title').textContent = state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template waehlen' : '');
+    el('form-subcategory-title').textContent = state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template wählen' : '');
     const template = state.selectedCategory && state.selectedSubcategory
       ? getTemplateConfig(state.selectedCategory, state.selectedSubcategory)
       : null;
@@ -852,7 +989,7 @@ function createTaskController({
 
     const categories = Object.entries(categoryConfig);
     categorySelect.innerHTML = [
-      '<option value="">Bitte Handlungsfeld waehlen...</option>',
+      '<option value="">Bitte Handlungsfeld wählen...</option>',
       ...categories.map(([categoryName, cfg]) => `<option value="${categoryName}">${cfg.title}</option>`),
     ].join('');
     categorySelect.value = state.selectedCategory || '';
@@ -862,13 +999,13 @@ function createTaskController({
       const category = categoryConfig[state.selectedCategory];
       templateStep.classList.remove('is-hidden');
       templateSelect.innerHTML = [
-        '<option value="">Bitte Template waehlen...</option>',
+        '<option value="">Bitte Template wählen...</option>',
         ...(category.unterkategorien || []).map((entry) => `<option value="${entry}">${entry}</option>`),
       ].join('');
       templateSelect.value = state.selectedSubcategory || '';
     } else {
       templateStep.classList.add('is-hidden');
-      templateSelect.innerHTML = '<option value="">Bitte Template waehlen...</option>';
+      templateSelect.innerHTML = '<option value="">Bitte Template wählen...</option>';
       state.selectedSubcategory = null;
     }
 
@@ -877,7 +1014,7 @@ function createTaskController({
     editCategoryBtn.classList.toggle('is-hidden', !categoryCollapsed);
     categorySummary.classList.toggle('is-hidden', !categoryCollapsed);
     categorySummary.textContent = categoryCollapsed
-      ? `Ausgewaehlt: ${categoryConfig[state.selectedCategory]?.title || state.selectedCategory}`
+      ? `Ausgewählt: ${categoryConfig[state.selectedCategory]?.title || state.selectedCategory}`
       : '';
 
     const templateSelected = !!state.selectedSubcategory;
@@ -885,12 +1022,12 @@ function createTaskController({
     setCompactStepCollapsed(templateStep, templateCollapsed);
     editTemplateBtn.classList.toggle('is-hidden', !templateCollapsed);
     templateSummary.classList.toggle('is-hidden', !templateCollapsed);
-    templateSummary.textContent = templateCollapsed ? `Ausgewaehlt: ${state.selectedSubcategory}` : '';
+    templateSummary.textContent = templateCollapsed ? `Ausgewählt: ${state.selectedSubcategory}` : '';
 
     const formReady = templateSelected;
     setFormSectionsVisibility(formReady);
     if (!formReady) {
-      setGenerationStatus('Bitte zuerst ein Template in der Kompaktansicht waehlen.', 'info');
+      setGenerationStatus('Bitte zuerst ein Template in der Kompaktansicht wählen.', 'info');
     } else {
       setGenerationStatus('', 'ok');
     }
@@ -977,7 +1114,7 @@ function createTaskController({
         input = document.createElement('select');
         const options = Array.isArray(field.options) ? [...field.options] : [];
         if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
-        input.innerHTML = `<option value="">Bitte waehlen...</option>${options
+        input.innerHTML = `<option value="">Bitte wählen...</option>${options
           .map((opt) => {
             if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
             return `<option value="${opt}">${opt}</option>`;
@@ -1026,8 +1163,8 @@ function createTaskController({
         const placeholderHint = field.placeholder ? ` Beispiel: ${field.placeholder}` : '';
         const customHint = allowCustom
           ? (field.type === 'multiselect'
-            ? ' Eigene Werte (kommagetrennt) sind zusaetzlich moeglich.'
-            : ' Eigener Wert ist alternativ moeglich.')
+            ? ' Eigene Werte (kommagetrennt) sind zusätzlich möglich.'
+            : ' Eigener Wert ist alternativ möglich.')
           : '';
         hint.textContent = `${requiredHint} ${explanation}${optionHint ? ` ${optionHint}` : ''}${placeholderHint}${customHint}`;
         wrap.appendChild(hint);
@@ -1047,7 +1184,7 @@ function createTaskController({
             : 'Eigener Wert (optional)'));
         wrap.appendChild(customInput);
 
-        const syncCustomVisibility = () => {
+        const syncCustomVisibility = ({ shouldFocus = false } = {}) => {
           let isCustomSelected = false;
           if (field.type === 'select') {
             isCustomSelected = input.value === '__custom__';
@@ -1058,8 +1195,25 @@ function createTaskController({
           customInput.disabled = !isCustomSelected;
           customInput.required = Boolean(field.required && field.type === 'select' && isCustomSelected);
           if (!isCustomSelected) customInput.value = '';
+          if (isCustomSelected && shouldFocus) {
+            window.requestAnimationFrame(() => customInput.focus());
+          }
         };
-        input.addEventListener('change', syncCustomVisibility);
+        input.addEventListener('change', () => syncCustomVisibility({ shouldFocus: true }));
+        customInput.addEventListener('input', () => {
+          const hasValue = customInput.value.trim().length > 0;
+          if (!hasValue) return;
+          if (field.type === 'select' && input.value !== '__custom__') {
+            input.value = '__custom__';
+            syncCustomVisibility();
+          } else if (field.type === 'multiselect') {
+            const customOption = [...input.options].find((option) => option.value === '__custom__');
+            if (customOption && !customOption.selected) {
+              customOption.selected = true;
+              syncCustomVisibility();
+            }
+          }
+        });
         syncCustomVisibility();
       }
 
@@ -1169,7 +1323,7 @@ function createTaskController({
     const requiredDynamic = fields.filter((field) => field.required).map((field) => field.id);
     const required = [...requiredBaseSet, ...requiredDynamic];
     el('validation-hint').textContent = required.length
-      ? `Pflichtfelder fuer ${templateTitle}: ${required.join(', ')}`
+      ? `Pflichtfelder für ${templateTitle}: ${required.join(', ')}`
       : '';
   }
 
@@ -1262,7 +1416,7 @@ function createTaskController({
 
   function collectGenerationContext({ validate = true } = {}) {
     if (!state.selectedCategory || !state.selectedSubcategory) {
-      if (validate) alert('Bitte zuerst Kategorie und Template auswaehlen.');
+      if (validate) alert('Bitte zuerst Kategorie und Template auswählen.');
       return null;
     }
     const dynamicValues = collectDynamicValues();
@@ -1349,6 +1503,12 @@ function createTaskController({
       }
     });
 
+    const form = el('prompt-form');
+    if (form) {
+      form.querySelectorAll('select').forEach((node) => {
+        node.dispatchEvent(new Event('change'));
+      });
+    }
     ['zeitrahmen-select', 'niveau-select', 'rahmen-select', 'ergebnisformat-select', 'ton-select'].forEach((id) => {
       const select = el(id);
       if (select) {
@@ -1406,6 +1566,8 @@ function createTaskController({
     el('result-meta').textContent = '';
     if (el('result-direct-meta')) el('result-direct-meta').textContent = '';
     if (el('result-direct-panel')) el('result-direct-panel').classList.add('is-hidden');
+    if (el('result-metadata-panel')) el('result-metadata-panel').classList.add('is-hidden');
+    if (el('result-metadata-list')) el('result-metadata-list').innerHTML = '';
     el('library-title').value = '';
     el('library-rating').value = '';
     el('library-public').checked = false;
@@ -1422,10 +1584,16 @@ function createTaskController({
     if (el('result-detail-fach')) el('result-detail-fach').textContent = '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = '-';
     if (el('form-template-description')) el('form-template-description').textContent = '';
+    state.generatedResult = '';
+    state.generatedMetaPrompt = '';
+    state.generatedMetaDetails = null;
+    state.lastGenerationPayload = null;
+    state.lastGenerationFormSnapshot = null;
     setResultUsageSummary(null);
     setResultCostSummary(null);
     setUsageSummary('result-direct', null);
     setCostSummary('result-direct', null);
+    resetResultProgress(getRunGenerationMode());
     resetRunModeOverride();
     renderCompactFlowPanel();
     showScreen('home');
@@ -1457,6 +1625,38 @@ function createTaskController({
     renderDynamicFields();
     resetRunModeOverride();
     showScreen('form');
+  }
+
+  function openLibraryEntry(entry = {}) {
+    const categoryName = String(entry.handlungsfeld || '').trim();
+    const subcategoryName = String(entry.unterkategorie || '').trim();
+    const categoryConfig = getCategoryConfig();
+    const category = categoryConfig[categoryName];
+    if (!category || !subcategoryName) {
+      alert('Der gespeicherte Bibliothekseintrag kann nicht mehr auf ein vorhandenes Template gemappt werden.');
+      return false;
+    }
+
+    const validTemplate = (category.unterkategorien || []).includes(subcategoryName);
+    if (!validTemplate) {
+      alert('Das gespeicherte Template ist in dieser Version nicht mehr vorhanden.');
+      return false;
+    }
+
+    openForm(categoryName, subcategoryName);
+    const snapshot = entry.formSnapshot && typeof entry.formSnapshot === 'object'
+      ? (entry.formSnapshot.values ? entry.formSnapshot : { values: entry.formSnapshot, activeId: null })
+      : null;
+    if (snapshot) {
+      restorePromptFormValues(snapshot);
+    } else {
+      if (el('fach')) el('fach').value = String(entry.fach || '');
+      if (el('schulstufe')) el('schulstufe').value = String(entry.schulstufe || '');
+      if (el('ziel')) el('ziel').value = String(entry.ziel || '');
+    }
+    setRunModeToggle(entry.generationMode === 'result' ? 'result' : getGlobalGenerationMode());
+    setGenerationStatus('Template aus Bibliothek geladen. Eingaben prüfen und neu generieren.', 'ok');
+    return true;
   }
 
   function syncAdvancedSectionUi() {
@@ -1501,7 +1701,69 @@ function createTaskController({
     };
   }
 
-  function applyGenerationResult(generation, context, { priorPrompt = null } = {}) {
+  function buildResultMetadataEntries(generation = {}) {
+    const mode = String(generation?.mode || 'prompt').trim() || 'prompt';
+    const metapromptProvider = generation?.providers?.metaprompt || generation?.provider || null;
+    const resultProvider = generation?.providers?.result || null;
+    const entries = [];
+
+    if (metapromptProvider) {
+      entries.push({
+        label: 'Metaprompt-Provider',
+        value: `${metapromptProvider.name} (${metapromptProvider.kind}, ${metapromptProvider.model})`,
+      });
+      entries.push({
+        label: 'Metaprompt Key-Quelle',
+        value: metapromptProvider.keySource || '-',
+      });
+    }
+    entries.push({
+      label: 'Template-ID',
+      value: generation.templateId || '-',
+    });
+    entries.push({
+      label: 'Generierungsmodus',
+      value: mode === 'result' ? 'Direktes Ergebnis' : 'Prompt',
+    });
+
+    if (mode === 'result' && resultProvider) {
+      entries.push({
+        label: 'Result-Provider',
+        value: `${resultProvider.name} (${resultProvider.kind}, ${resultProvider.model})`,
+      });
+      entries.push({
+        label: 'Result Key-Quelle',
+        value: resultProvider.keySource || '-',
+      });
+    }
+
+    const budgetWarnings = Array.isArray(generation?.budget?.warnings) ? generation.budget.warnings : [];
+    if (budgetWarnings.length) {
+      entries.push({
+        label: 'Budget-Hinweise',
+        value: `${budgetWarnings.length} Hinweis(e) im Lauf`,
+      });
+    }
+    return entries;
+  }
+
+  function renderResultMetadataPanel(generation = {}) {
+    const panel = el('result-metadata-panel');
+    const list = el('result-metadata-list');
+    if (!panel || !list) return;
+    const entries = buildResultMetadataEntries(generation);
+    if (!entries.length) {
+      panel.classList.add('is-hidden');
+      list.innerHTML = '';
+      return;
+    }
+    list.innerHTML = entries
+      .map((entry) => `<li><strong>${entry.label}:</strong> <span>${entry.value}</span></li>`)
+      .join('');
+    panel.classList.remove('is-hidden');
+  }
+
+  function applyGenerationResult(generation, context, { priorPrompt = null, formSnapshot = null } = {}) {
     const mode = String(generation?.mode || '').trim() || 'prompt';
     const metapromptProvider = generation?.providers?.metaprompt || generation.provider;
     const resultProvider = generation?.providers?.result || null;
@@ -1516,9 +1778,19 @@ function createTaskController({
 
     const previousPromptValue = priorPrompt !== null ? String(priorPrompt || '') : (state.generatedPrompt || '');
     state.previousGeneratedPrompt = previousPromptValue;
+    state.generatedMetaPrompt = String(generation?.metaprompt || '').trim();
     state.generatedPrompt = handoffPrompt;
     state.generatedResult = directResult;
     state.generatedMeta = providerMeta;
+    state.generatedMetaDetails = {
+      mode,
+      templateId: generation.templateId,
+      providers: generation.providers || null,
+      provider: generation.provider || null,
+      budget: generation.budget || null,
+    };
+    state.lastGenerationPayload = generation;
+    state.lastGenerationFormSnapshot = formSnapshot || snapshotPromptFormValues();
     state.lastPromptContext = {
       fach: context.baseFields.fach,
       handlungsfeld: context.baseFields.handlungsfeld,
@@ -1541,6 +1813,16 @@ function createTaskController({
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
     if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = context.baseFields.schulstufe || '-';
+    renderResultMetadataPanel(generation);
+    setProgressBarValue('result-progress-meta-bar', 100);
+    setProgressLabel('result-progress-meta-status', 'Metaprompt abgeschlossen.', 'ok');
+    if (mode === 'result') {
+      setProgressBarValue('result-progress-direct-bar', 100);
+      setProgressLabel('result-progress-direct-status', 'Direktes Ergebnis abgeschlossen.', 'ok');
+      setResultReadyBanner('Metaprompt und direktes Ergebnis sind bereit.', 'ok');
+    } else {
+      setResultReadyBanner('Dein KI-Prompt ist bereit.', 'ok');
+    }
     el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
     el('save-library-status').textContent = '';
     el('result-compare-panel').classList.add('is-hidden');
@@ -1556,16 +1838,18 @@ function createTaskController({
     }
   }
 
-  async function generatePromptLegacy(context, activeProvider) {
+  async function generatePromptLegacy(context, activeProvider, formSnapshot = null) {
     const priorPrompt = state.generatedPrompt || '';
     const runMode = getRunGenerationMode();
     let stage = 'metaprompt';
+    resetResultProgress(runMode);
     setGenerating(
       true,
       context.metapromptOverride
         ? `Schritt 1/${runMode === 'result' ? '5' : '4'}: Bearbeitete Metaprompt wird vorbereitet...`
         : `Schritt 1/${runMode === 'result' ? '5' : '4'}: Metaprompt wird aus Template-Daten erstellt...`
     );
+    updateResultProgress('metaprompt', 'Metaprompt wird vorbereitet…', runMode);
 
     try {
       stage = 'provider_call';
@@ -1573,6 +1857,7 @@ function createTaskController({
         `Schritt 2/${runMode === 'result' ? '5' : '4'}: Anfrage an ${activeProvider.name} (${activeProvider.model}) wird gesendet...`,
         'info'
       );
+      updateResultProgress(stage, `Anfrage an ${activeProvider.name} wird gesendet…`, runMode);
       const generation = await api('/api/generate', {
         method: 'POST',
         body: JSON.stringify(buildGenerationRequestPayload(context, activeProvider.id, runMode)),
@@ -1580,10 +1865,12 @@ function createTaskController({
 
       stage = 'postprocess';
       setGenerationStatus(`Schritt ${runMode === 'result' ? '4/5' : '3/4'}: Provider-Antwort wird verarbeitet und Ergebnis aufbereitet...`, 'info');
-      applyGenerationResult(generation, context, { priorPrompt });
+      updateResultProgress(stage, 'Metaprompt wird finalisiert…', runMode);
+      applyGenerationResult(generation, context, { priorPrompt, formSnapshot });
 
       stage = 'finalize';
       setGenerationStatus(`Schritt ${runMode === 'result' ? '5/5' : '4/4'}: Verlauf und Discovery werden aktualisiert...`, 'info');
+      updateResultProgress(stage, 'Abschluss läuft…', runMode);
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
@@ -1597,6 +1884,8 @@ function createTaskController({
         postprocess: 'Antwortverarbeitung',
         finalize: 'Abschluss',
       }[stage] || 'Generierung';
+      updateResultProgress('error', `Fehler: ${error.message}`, runMode);
+      setResultReadyBanner('', 'error');
       setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
       resetRunModeOverride();
       throw error;
@@ -1607,19 +1896,20 @@ function createTaskController({
     event.preventDefault();
     const context = collectGenerationContext({ validate: true });
     if (!context) return;
+    const generationFormSnapshot = snapshotPromptFormValues();
     const runMode = getRunGenerationMode();
 
     const metapromptProviderId = String(state.settings?.metapromptProviderId || state.activeId || '').trim();
     const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
       || state.providers.find((provider) => provider.id === state.activeId);
     if (!activeProvider) {
-      alert('Bitte zuerst einen aktiven Provider auswaehlen.');
+      alert('Bitte zuerst einen aktiven Provider auswählen.');
       return;
     }
     state.activeId = activeProvider.id;
 
     if (typeof apiStream !== 'function') {
-      await generatePromptLegacy(context, activeProvider);
+      await generatePromptLegacy(context, activeProvider, generationFormSnapshot);
       return;
     }
 
@@ -1632,8 +1922,13 @@ function createTaskController({
 
     setGenerating(true, `Schritt 1/${runMode === 'result' ? '5' : '4'}: Metaprompt wird vorbereitet...`);
     showScreen('result');
+    resetResultProgress(runMode);
+    updateResultProgress('metaprompt', 'Metaprompt wird vorbereitet…', runMode);
     state.generatedPrompt = '';
     state.generatedResult = '';
+    state.generatedMetaPrompt = '';
+    state.generatedMetaDetails = null;
+    state.lastGenerationPayload = null;
     el('result').value = '';
     if (el('result-direct-output')) el('result-direct-output').value = '';
     el('result-meta').textContent = 'Generierung gestartet...';
@@ -1648,6 +1943,8 @@ function createTaskController({
     el('result-variant-status').textContent = '';
     el('btn-open-templates-from-result').classList.add('is-hidden');
     el('save-library-status').textContent = '';
+    if (el('result-metadata-panel')) el('result-metadata-panel').classList.add('is-hidden');
+    if (el('result-metadata-list')) el('result-metadata-list').innerHTML = '';
 
     try {
       await apiStream('/api/generate/stream', {
@@ -1661,6 +1958,7 @@ function createTaskController({
             stage = String(payload.stage || stage || '').trim() || stage;
             const statusMessage = String(payload.message || '').trim();
             setGenerationStatus(statusMessage, 'info');
+            updateResultProgress(stage, statusMessage, runMode);
             if (statusMessage) {
               if (stage === 'result_provider_call' && el('result-direct-meta')) {
                 el('result-direct-meta').textContent = statusMessage;
@@ -1678,6 +1976,11 @@ function createTaskController({
             const resultNode = el('result');
             resultNode.value = streamHandoffDraft;
             resultNode.scrollTop = resultNode.scrollHeight;
+            const metaBar = el('result-progress-meta-bar');
+            const currentProgress = Number(metaBar?.dataset.progress || 0);
+            if (Number.isFinite(currentProgress) && currentProgress < 86) {
+              setProgressBarValue('result-progress-meta-bar', Math.min(86, currentProgress + 1));
+            }
             return;
           }
 
@@ -1696,6 +1999,11 @@ function createTaskController({
             if (!resultNode) return;
             resultNode.value = streamResultDraft;
             resultNode.scrollTop = resultNode.scrollHeight;
+            const directBar = el('result-progress-direct-bar');
+            const currentProgress = Number(directBar?.dataset.progress || 0);
+            if (Number.isFinite(currentProgress) && currentProgress < 95) {
+              setProgressBarValue('result-progress-direct-bar', Math.min(95, currentProgress + 1));
+            }
             return;
           }
 
@@ -1724,7 +2032,10 @@ function createTaskController({
       }
 
       stage = 'postprocess';
-      applyGenerationResult(streamDonePayload, context, { priorPrompt });
+      applyGenerationResult(streamDonePayload, context, {
+        priorPrompt,
+        formSnapshot: generationFormSnapshot,
+      });
 
       stage = 'finalize';
       await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
@@ -1737,8 +2048,8 @@ function createTaskController({
         || message.includes('cannot post /api/generate/stream')
         || message.includes('not found');
       if (missingStreamEndpoint && stage === 'metaprompt') {
-        setGenerationStatus('Streaming-Endpunkt nicht verfuegbar, wechsle auf Standard-Generierung...', 'info');
-        await generatePromptLegacy(context, activeProvider);
+        setGenerationStatus('Streaming-Endpunkt nicht verfügbar, wechsle auf Standard-Generierung...', 'info');
+        await generatePromptLegacy(context, activeProvider, generationFormSnapshot);
         return;
       }
 
@@ -1750,6 +2061,8 @@ function createTaskController({
         postprocess: 'Antwortverarbeitung',
         finalize: 'Abschluss',
       }[stage] || 'Generierung';
+      updateResultProgress('error', `Fehler: ${error.message}`, runMode);
+      setResultReadyBanner('', 'error');
       setGenerating(false, `Fehler (${stageLabel}): ${error.message}`);
       resetRunModeOverride();
       throw error;
@@ -1758,7 +2071,14 @@ function createTaskController({
 
   function buildCopyText(includeMetadata) {
     if (!includeMetadata || !state.generatedMeta) return state.generatedPrompt;
-    return `${state.generatedPrompt}\n\n---\n${state.generatedMeta}`;
+    const entries = buildResultMetadataEntries(state.lastGenerationPayload || {});
+    if (!entries.length) {
+      return `${state.generatedPrompt}\n\n---\n${state.generatedMeta}`;
+    }
+    const details = entries
+      .map((entry) => `- ${entry.label}: ${entry.value}`)
+      .join('\n');
+    return `${state.generatedPrompt}\n\n---\nMetadata (technischer Laufkontext, kein Inhaltsteil des Prompts):\n${details}`;
   }
 
   function copyTextWithFeedback(text, buttonId) {
@@ -1931,6 +2251,7 @@ function createTaskController({
     setupAdvancedPresets,
     syncAdvancedSectionUi,
     syncFlowModeUi,
+    openLibraryEntry,
   };
 }
 

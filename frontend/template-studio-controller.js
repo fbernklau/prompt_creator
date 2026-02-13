@@ -10,6 +10,11 @@ function createTemplateStudioController({
     nodes: [],
     tags: [],
     selectedTemplateUid: null,
+    wizard: {
+      enabled: true,
+      mode: 'existing',
+      step: 1,
+    },
   };
 
   function hasPermission(key) {
@@ -43,10 +48,10 @@ function createTemplateStudioController({
     if (!text) return [];
     try {
       const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) throw new Error('Dynamic Fields muessen ein JSON-Array sein.');
+      if (!Array.isArray(parsed)) throw new Error('Dynamic Fields müssen ein JSON-Array sein.');
       return parsed;
     } catch (error) {
-      throw new Error(`Dynamic Fields JSON ist ungueltig: ${error.message}`);
+      throw new Error(`Dynamic Fields JSON ist ungültig: ${error.message}`);
     }
   }
 
@@ -64,9 +69,80 @@ function createTemplateStudioController({
     return state.templateStudio.templates.find((entry) => entry.templateUid === uid) || null;
   }
 
+  function syncWizardStateFromUi() {
+    const enabled = Boolean(el('template-wizard-enabled')?.checked);
+    const selectedMode = document.querySelector('input[name="template-wizard-mode"]:checked')?.value;
+    const mode = selectedMode === 'scratch' ? 'scratch' : 'existing';
+    const step = Math.min(Math.max(Number(state.templateStudio.wizard?.step || 1), 1), 3);
+    state.templateStudio.wizard = {
+      enabled,
+      mode,
+      step,
+    };
+  }
+
+  function wizardStepLabel(step) {
+    if (step === 1) return 'Schritt 1/3: Basisdaten';
+    if (step === 2) return 'Schritt 2/3: Felddefinition';
+    return 'Schritt 3/3: Review & Aktionen';
+  }
+
+  function wizardStepHint(mode, step) {
+    if (step === 1) {
+      return mode === 'existing'
+        ? 'Wähle eine Vorlage aus der Liste und passe Titel/Scope/Beschreibung an.'
+        : 'Lege den Grundrahmen des Templates fest (Titel, Scope, Profil, Beschreibung).';
+    }
+    if (step === 2) {
+      return 'Definiere Pflicht- und optionale Felder, Taxonomie sowie Prompt-Modus.';
+    }
+    return 'Prüfe Change-/Review-Notizen und speichere das Template.';
+  }
+
+  function syncWizardUi() {
+    syncWizardStateFromUi();
+    const wizard = state.templateStudio.wizard;
+    const label = el('template-wizard-step-label');
+    const hint = el('template-wizard-hint');
+    const prevButton = el('template-wizard-prev');
+    const nextButton = el('template-wizard-next');
+    const modeControls = document.querySelectorAll('input[name="template-wizard-mode"]');
+    const listPanel = el('template-list-panel');
+    const nodeTagPanel = el('template-node-tag-panel');
+    const editorLabels = document.querySelectorAll('#template-editor-grid [data-template-step]');
+    const editorActions = el('template-editor-actions');
+
+    if (label) label.textContent = wizard.enabled ? wizardStepLabel(wizard.step) : 'Wizard deaktiviert';
+    if (hint) hint.textContent = wizard.enabled ? wizardStepHint(wizard.mode, wizard.step) : 'Alle Bereiche sind gleichzeitig sichtbar.';
+    if (prevButton) prevButton.disabled = !wizard.enabled || wizard.step <= 1;
+    if (nextButton) {
+      nextButton.disabled = !wizard.enabled || wizard.step >= 3;
+      nextButton.textContent = wizard.step >= 3 ? 'Nächster Schritt' : 'Nächster Schritt';
+    }
+    modeControls.forEach((node) => {
+      node.disabled = !wizard.enabled;
+    });
+
+    if (listPanel) listPanel.classList.toggle('is-hidden', wizard.enabled && wizard.mode === 'scratch');
+    if (nodeTagPanel) nodeTagPanel.classList.toggle('is-hidden', wizard.enabled && wizard.step < 3);
+
+    editorLabels.forEach((labelNode) => {
+      const step = Number(labelNode.dataset.templateStep || 1);
+      labelNode.classList.toggle('is-hidden', wizard.enabled && step !== wizard.step);
+    });
+
+    if (editorActions) editorActions.classList.toggle('is-hidden', wizard.enabled && wizard.step < 3);
+  }
+
+  function setWizardStep(step) {
+    const clamped = Math.min(Math.max(Number(step || 1), 1), 3);
+    state.templateStudio.wizard.step = clamped;
+    syncWizardUi();
+  }
+
   function renderNodeOptions() {
     const baseOptions = ['<option value="">(kein Parent)</option>'];
-    const nodeOptions = ['<option value="">Bitte waehlen...</option>'];
+    const nodeOptions = ['<option value="">Bitte wählen...</option>'];
     state.templateStudio.nodes.forEach((node) => {
       const prefix = node.parentId ? '↳ ' : '';
       const suffix = ` [${node.scope}]`;
@@ -78,7 +154,7 @@ function createTemplateStudioController({
   }
 
   function renderTagCatalog() {
-    const options = ['<option value="">(auswaehlen)</option>'];
+    const options = ['<option value="">(auswählen)</option>'];
     state.templateStudio.tags.forEach((tag) => {
       const suffix = tag.isOfficial ? ' [official]' : '';
       options.push(`<option value="${tag.key}">${tag.key}${suffix}</option>`);
@@ -88,7 +164,7 @@ function createTemplateStudioController({
 
   function clearEditorSelection() {
     state.templateStudio.selectedTemplateUid = null;
-    el('template-selected-id').textContent = 'Ausgewaehlt: -';
+    el('template-selected-id').textContent = 'Ausgewählt: -';
     el('template-form-title').value = '';
     el('template-form-description').value = '';
     el('template-form-profile').value = '';
@@ -109,7 +185,7 @@ function createTemplateStudioController({
       return;
     }
     state.templateStudio.selectedTemplateUid = template.templateUid;
-    el('template-selected-id').textContent = `Ausgewaehlt: ${template.templateUid} (${template.scope}/${template.reviewState})`;
+    el('template-selected-id').textContent = `Ausgewählt: ${template.templateUid} (${template.scope}/${template.reviewState})`;
     el('template-form-title').value = template.title || '';
     el('template-form-description').value = template.description || '';
     el('template-form-profile').value = template.profile || '';
@@ -180,6 +256,7 @@ function createTemplateStudioController({
     if (selected) fillEditorFromTemplate(selected);
     else clearEditorSelection();
     renderTemplateList();
+    syncWizardUi();
   }
 
   function buildTemplatePayloadFromForm() {
@@ -203,7 +280,7 @@ function createTemplateStudioController({
 
   async function openScreenAndLoad() {
     if (!hasPermission('templates.read')) {
-      alert('Keine Berechtigung fuer Template Studio.');
+      alert('Keine Berechtigung für Template Studio.');
       return;
     }
     await loadData();
@@ -261,7 +338,7 @@ function createTemplateStudioController({
   async function updateTemplate() {
     const selected = selectedTemplate();
     if (!selected) {
-      alert('Bitte zuerst ein Template auswaehlen.');
+      alert('Bitte zuerst ein Template auswählen.');
       return;
     }
     const payload = buildTemplatePayloadFromForm();
@@ -277,7 +354,7 @@ function createTemplateStudioController({
   async function submitTemplate() {
     const selected = selectedTemplate();
     if (!selected) {
-      alert('Bitte zuerst ein Template auswaehlen.');
+      alert('Bitte zuerst ein Template auswählen.');
       return;
     }
     await api(`/api/templates/${encodeURIComponent(selected.templateUid)}/submit`, {
@@ -292,7 +369,7 @@ function createTemplateStudioController({
   async function reviewSelected(decision) {
     const selected = selectedTemplate();
     if (!selected) {
-      alert('Bitte zuerst ein Template auswaehlen.');
+      alert('Bitte zuerst ein Template auswählen.');
       return;
     }
     await api(`/api/templates/${encodeURIComponent(selected.templateUid)}/review`, {
@@ -311,7 +388,7 @@ function createTemplateStudioController({
   async function cloneAsPersonal() {
     const selected = selectedTemplate();
     if (!selected) {
-      alert('Bitte zuerst ein Template auswaehlen.');
+      alert('Bitte zuerst ein Template auswählen.');
       return;
     }
     const payload = buildTemplatePayloadFromForm();
@@ -330,7 +407,7 @@ function createTemplateStudioController({
   async function saveRating() {
     const selected = selectedTemplate();
     if (!selected) {
-      alert('Bitte zuerst ein Template auswaehlen.');
+      alert('Bitte zuerst ein Template auswählen.');
       return;
     }
     const rating = Number(el('template-rating-value').value);
@@ -373,6 +450,34 @@ function createTemplateStudioController({
     el('template-approve').addEventListener('click', () => reviewSelected('approve').catch((error) => alert(error.message)));
     el('template-reject').addEventListener('click', () => reviewSelected('reject').catch((error) => alert(error.message)));
     el('template-rate').addEventListener('click', () => saveRating().catch((error) => alert(error.message)));
+
+    if (el('template-wizard-enabled')) {
+      el('template-wizard-enabled').addEventListener('change', () => {
+        syncWizardUi();
+      });
+    }
+    document.querySelectorAll('input[name="template-wizard-mode"]').forEach((node) => {
+      node.addEventListener('change', () => {
+        syncWizardStateFromUi();
+        if (state.templateStudio.wizard.mode === 'scratch') {
+          clearEditorSelection();
+          renderTemplateList();
+        }
+        state.templateStudio.wizard.step = 1;
+        syncWizardUi();
+      });
+    });
+    if (el('template-wizard-prev')) {
+      el('template-wizard-prev').addEventListener('click', () => {
+        setWizardStep(state.templateStudio.wizard.step - 1);
+      });
+    }
+    if (el('template-wizard-next')) {
+      el('template-wizard-next').addEventListener('click', () => {
+        setWizardStep(state.templateStudio.wizard.step + 1);
+      });
+    }
+    syncWizardUi();
   }
 
   return {

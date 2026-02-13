@@ -10,6 +10,16 @@ function clampRating(value) {
 }
 
 function normalizeLibraryRow(row) {
+  let snapshot = {};
+  if (row.form_snapshot_json && typeof row.form_snapshot_json === 'object') {
+    snapshot = row.form_snapshot_json;
+  } else if (typeof row.form_snapshot_json === 'string') {
+    try {
+      snapshot = JSON.parse(row.form_snapshot_json);
+    } catch (_error) {
+      snapshot = {};
+    }
+  }
   return {
     id: row.id,
     userId: row.user_id,
@@ -18,6 +28,14 @@ function normalizeLibraryRow(row) {
     fach: row.fach,
     handlungsfeld: row.handlungsfeld,
     unterkategorie: row.unterkategorie,
+    templateId: row.template_id || null,
+    providerKind: row.provider_kind || null,
+    providerModel: row.provider_model || null,
+    generationMode: row.generation_mode || 'prompt',
+    formSnapshot: snapshot,
+    metapromptText: row.metaprompt_text || row.prompt_text,
+    resultText: row.result_text || '',
+    hasResult: Boolean(row.has_result),
     isPublic: row.is_public,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

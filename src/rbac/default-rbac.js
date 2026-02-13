@@ -23,6 +23,9 @@ const DEFAULT_PERMISSIONS = [
   { key: 'admin.access', description: 'Access admin interface.' },
   { key: 'rbac.manage', description: 'Manage roles, permissions and group-role bindings.' },
   { key: 'pricing.manage', description: 'Manage provider model pricing catalog.' },
+  { key: 'providers.system_keys.manage', description: 'Manage system-wide provider keys and assignments.' },
+  { key: 'budgets.manage', description: 'Manage global budget policies (user/group/key).' },
+  { key: 'budgets.manage_own', description: 'Manage personal budget policies for own usage.' },
 ];
 
 const DEFAULT_ROLES = [
@@ -47,6 +50,7 @@ const DEFAULT_ROLES = [
       'templates.nodes.manage_own',
       'tags.read',
       'tags.manage_own',
+      'budgets.manage_own',
     ],
   },
   {
@@ -81,6 +85,8 @@ const DEFAULT_ROLES = [
       'tags.moderate',
       'admin.access',
       'pricing.manage',
+      'providers.system_keys.manage',
+      'budgets.manage',
     ],
   },
   {

@@ -36,11 +36,13 @@
           <button id="btn-library" data-nav-id="btn-library" type="button" class="text-btn nav-btn">Bibliothek</button>
           <button id="btn-dashboard" data-nav-id="btn-dashboard" type="button" class="text-btn nav-btn">Dashboard</button>
           <button id="btn-templates" data-nav-id="btn-templates" type="button" class="text-btn nav-btn is-hidden">Templates</button>
-          <button id="btn-history" data-nav-id="btn-history" type="button" class="text-btn nav-btn">Verlauf</button>
           <button id="btn-provider" data-nav-id="btn-provider" type="button" class="text-btn nav-btn">API-Provider</button>
           <button id="btn-options" data-nav-id="btn-options" type="button" class="text-btn nav-btn">Optionen</button>
           <button id="btn-admin" data-nav-id="btn-admin" type="button" class="text-btn nav-btn is-hidden">Admin</button>
-          <span class="user-chip" id="current-user">Benutzer: lade...</span>
+          <div class="user-chip-wrap">
+            <span class="user-chip" id="current-user">Benutzer: lade...</span>
+            <button id="btn-logout" type="button" class="text-btn user-logout-btn is-hidden">Logout</button>
+          </div>
         </div>
       </div>
     </header>
@@ -89,6 +91,13 @@
             </div>
           </div>
           <div id="home-tag-chips" class="tw-home-tags"></div>
+        </section>
+        <section id="home-search-results-section" class="panel tw-home-search-results is-hidden">
+          <div class="tw-home-search-results-head">
+            <h3>Suchergebnisse</h3>
+            <small id="home-search-results-status" class="hint"></small>
+          </div>
+          <div id="home-search-results" class="tw-home-search-results-list"></div>
         </section>
 
         <div id="category-grid" class="tw-home-category-grid"></div>
@@ -164,7 +173,7 @@
               <div id="flow-step-category" class="tw-compact-step">
                 <div class="tw-compact-step-head">
                   <strong>1. Handlungsfeld</strong>
-                  <button id="flow-edit-category" type="button" class="text-btn small is-hidden">Aendern</button>
+                  <button id="flow-edit-category" type="button" class="text-btn small is-hidden">&Auml;ndern</button>
                 </div>
                 <div class="tw-compact-step-body top-space">
                   <label for="flow-category-select" class="sr-only">Handlungsfeld</label>
@@ -176,7 +185,7 @@
               <div id="flow-step-template" class="tw-compact-step is-hidden">
                 <div class="tw-compact-step-head">
                   <strong>2. Template</strong>
-                  <button id="flow-edit-template" type="button" class="text-btn small is-hidden">Aendern</button>
+                  <button id="flow-edit-template" type="button" class="text-btn small is-hidden">&Auml;ndern</button>
                 </div>
                 <div class="tw-compact-step-body top-space">
                   <label for="flow-template-select" class="sr-only">Template</label>
@@ -322,7 +331,9 @@
                   <span class="tw-run-mode-option">Direktes Ergebnis</span>
                 </label>
               </div>
-              <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
+              <div class="tw-form-generate-actions">
+                <button id="generate-submit" type="submit" class="cta">Prompt generieren</button>
+              </div>
               <small id="generation-status" class="hint"></small>
             </div>
 
@@ -344,7 +355,7 @@
               </div>
               <label class="checkbox top-space">
                 <input id="use-preview-metaprompt" type="checkbox" />
-                <span>Bearbeitete Metaprompt direkt fuer Generierung verwenden</span>
+                <span>Bearbeitete Metaprompt direkt f&uuml;r Generierung verwenden</span>
               </label>
             </div>
           </div>
@@ -388,7 +399,27 @@
             </div>
           </aside>
           <div class="tw-result-main">
-            <div class="result-banner">Dein KI-Prompt ist bereit!</div>
+            <div id="result-ready-banner" class="result-banner is-hidden"></div>
+            <div id="result-progress-panel" class="panel result-progress-panel">
+              <div id="result-progress-meta-row" class="result-progress-row">
+                <div class="result-progress-head">
+                  <strong>Metaprompt</strong>
+                  <small id="result-progress-meta-status" class="hint">wartet</small>
+                </div>
+                <div class="result-progress-bar-track">
+                  <div id="result-progress-meta-bar" class="result-progress-bar"></div>
+                </div>
+              </div>
+              <div id="result-progress-direct-row" class="result-progress-row is-hidden">
+                <div class="result-progress-head">
+                  <strong>Direktes Ergebnis</strong>
+                  <small id="result-progress-direct-status" class="hint">wartet</small>
+                </div>
+                <div class="result-progress-bar-track">
+                  <div id="result-progress-direct-bar" class="result-progress-bar"></div>
+                </div>
+              </div>
+            </div>
 
             <div class="panel top-space result-prompt-panel">
               <div class="tw-result-main-head">
@@ -410,6 +441,13 @@
                   <button id="copy-prompt-meta" type="button" class="secondary">Kopieren (mit Metadata)</button>
                   <button id="copy-prompt-clean" type="button" class="secondary">Kopieren</button>
                 </div>
+              </div>
+              <div id="result-metadata-panel" class="result-metadata-panel is-hidden">
+                <div class="result-metadata-head">
+                  <strong>Metadata</strong>
+                  <small class="hint">Beinhaltet technischen Laufkontext (Provider, Modell, Key-Quelle, Template, Modus).</small>
+                </div>
+                <ul id="result-metadata-list" class="result-metadata-list"></ul>
               </div>
               <div class="result-prompt-box top-space">
                 <textarea id="result" rows="16" readonly></textarea>
@@ -509,6 +547,7 @@
         <div id="dashboard-tab-nav" class="chip-row top-space dashboard-tab-nav">
           <button type="button" class="secondary is-active" data-dashboard-tab="providers">API-Provider</button>
           <button type="button" class="secondary" data-dashboard-tab="usage">Usage Stats</button>
+          <button type="button" class="secondary" data-dashboard-tab="history">Verlauf</button>
           <button type="button" class="secondary" data-dashboard-tab="options">Optionen</button>
         </div>
 
@@ -559,6 +598,16 @@
           </div>
           <div class="grid-2 top-space">
             <div class="panel">
+              <h3>Input Tokens</h3>
+              <p id="usage-prompt-tokens" class="metric">0</p>
+            </div>
+            <div class="panel">
+              <h3>Output Tokens</h3>
+              <p id="usage-completion-tokens" class="metric">0</p>
+            </div>
+          </div>
+          <div class="grid-2 top-space">
+            <div class="panel">
               <h3>Tokens gesamt</h3>
               <p id="usage-total-tokens" class="metric">0</p>
             </div>
@@ -578,6 +627,8 @@
                     <th>Requests</th>
                     <th>Success Rate</th>
                     <th>Ø Latenz</th>
+                    <th>Input</th>
+                    <th>Output</th>
                     <th>Tokens</th>
                     <th>Kosten (USD)</th>
                     <th>Letzter Fehler</th>
@@ -596,6 +647,71 @@
           <div class="panel top-space">
             <h3>Top Templates</h3>
             <ul id="usage-template-list" class="provider-list top-space"></ul>
+          </div>
+
+          <div id="usage-budget-panel" class="panel top-space is-hidden">
+            <h3>Eigene Budget-Policies</h3>
+            <small class="hint">Persönliche Limits für User oder Key (daily/weekly/monthly).</small>
+            <div class="grid-3 top-space">
+              <label>Scope
+                <select id="usage-budget-scope-type">
+                  <option value="user">user</option>
+                  <option value="key">key</option>
+                </select>
+              </label>
+              <label>Scope-Wert
+                <input id="usage-budget-scope-value" placeholder="bei user leer lassen; bei key: sha256:..." />
+              </label>
+              <label>Periode
+                <select id="usage-budget-period">
+                  <option value="daily">daily</option>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly" selected>monthly</option>
+                </select>
+              </label>
+              <label>Limit USD
+                <input id="usage-budget-limit-usd" type="number" min="0" step="0.000001" />
+              </label>
+              <label>Modus
+                <select id="usage-budget-mode">
+                  <option value="hybrid" selected>hybrid</option>
+                  <option value="soft">soft</option>
+                  <option value="hard">hard</option>
+                </select>
+              </label>
+              <label>Warnschwelle (0.1-1.0)
+                <input id="usage-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
+              </label>
+              <label>Aktiv
+                <select id="usage-budget-active">
+                  <option value="true" selected>Ja</option>
+                  <option value="false">Nein</option>
+                </select>
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="usage-budget-save" type="button">Budget speichern</button>
+              <button id="usage-budget-clear" type="button" class="secondary">Form leeren</button>
+              <small id="usage-budget-status" class="hint"></small>
+            </div>
+            <div class="grid-2 top-space">
+              <div>
+                <h4>Eigene Policies</h4>
+                <ul id="usage-budget-own-list" class="provider-list top-space"></ul>
+              </div>
+              <div>
+                <h4>Effektiv aktiv</h4>
+                <ul id="usage-budget-effective-list" class="provider-list top-space"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="dashboard-tab-history" class="dashboard-tab-panel top-space is-hidden">
+          <div class="panel">
+            <h3>Prompt-Verlauf</h3>
+            <small class="hint">Zuletzt erzeugte Prompts mit Zeitstempel.</small>
+            <ul id="history-list" class="history-list top-space"></ul>
           </div>
         </div>
 
@@ -643,6 +759,16 @@
             <label>Unterkategorie
               <select id="lib-filter-subcategory"></select>
             </label>
+            <label>Template
+              <select id="lib-filter-template"></select>
+            </label>
+            <label>Modus
+              <select id="lib-filter-mode">
+                <option value="">Alle</option>
+                <option value="prompt">Prompt</option>
+                <option value="result">Direktes Ergebnis</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -655,6 +781,30 @@
         </div>
         <h2>Template Studio</h2>
         <p class="subline">Pers&ouml;nliche Templates erstellen, Varianten speichern, zur Review einreichen und Community/Official verwalten.</p>
+
+        <div id="template-wizard-panel" class="panel top-space">
+          <div class="panel-title-row">
+            <h3>Template Wizard</h3>
+            <label class="checkbox">
+              <input id="template-wizard-enabled" type="checkbox" checked />
+              <span>Gef&uuml;hrten Modus verwenden</span>
+            </label>
+          </div>
+          <div id="template-wizard-controls" class="inline-actions top-space">
+            <label class="radio">
+              <input type="radio" name="template-wizard-mode" value="existing" checked />
+              <span>Mit bestehender Vorlage starten</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="template-wizard-mode" value="scratch" />
+              <span>Neu von Grund auf</span>
+            </label>
+            <button id="template-wizard-prev" type="button" class="secondary small">Zur&uuml;ck</button>
+            <button id="template-wizard-next" type="button" class="secondary small">N&auml;chster Schritt</button>
+            <small id="template-wizard-step-label" class="hint"></small>
+          </div>
+          <small id="template-wizard-hint" class="hint top-space"></small>
+        </div>
 
         <div class="panel top-space">
           <h3>Filter</h3>
@@ -698,12 +848,12 @@
           </div>
         </div>
 
-        <div class="panel top-space">
+        <div id="template-list-panel" class="panel top-space">
           <h3>Template Liste</h3>
           <div id="template-list" class="list-cards"></div>
         </div>
 
-        <div class="grid-2 top-space">
+        <div id="template-node-tag-panel" class="grid-2 top-space">
           <div class="panel">
             <h3>Taxonomie Node erstellen</h3>
             <label>Parent Node
@@ -755,65 +905,65 @@
           </div>
         </div>
 
-        <div class="panel top-space">
+        <div id="template-editor-panel" class="panel top-space">
           <h3>Template Editor</h3>
           <small id="template-selected-id" class="hint">Ausgew&auml;hlt: -</small>
-          <div class="grid-2 top-space">
-            <label>Title
+          <div id="template-editor-grid" class="grid-2 top-space">
+            <label data-template-step="1">Title
               <input id="template-form-title" placeholder="Template Titel" />
             </label>
-            <label>Scope
+            <label data-template-step="1">Scope
               <select id="template-form-scope">
                 <option value="personal">personal</option>
                 <option value="community">community</option>
                 <option value="official">official</option>
               </select>
             </label>
-            <label>Node
+            <label data-template-step="1">Node
               <select id="template-form-node"></select>
             </label>
-            <label>Profil
+            <label data-template-step="1">Profil
               <input id="template-form-profile" placeholder="unterrichtsnah | kommunikation | organisation_admin" />
             </label>
-            <label class="span-2">Beschreibung
+            <label class="span-2" data-template-step="1">Beschreibung
               <textarea id="template-form-description" rows="2"></textarea>
             </label>
-            <label class="span-2">Required Base Fields (CSV)
+            <label class="span-2" data-template-step="2">Required Base Fields (CSV)
               <input id="template-form-required-base" placeholder="fach,schulstufe,ziel" />
             </label>
-            <label class="span-2">Optional Base Fields (CSV)
+            <label class="span-2" data-template-step="2">Optional Base Fields (CSV)
               <input id="template-form-optional-base" placeholder="zeitrahmen,niveau,rahmen,ergebnisformat,ton,rueckfragen" />
             </label>
-            <label class="span-2">Tags (CSV)
+            <label class="span-2" data-template-step="2">Tags (CSV)
               <input id="template-form-tags" placeholder="differenzierung,planung" />
             </label>
-            <label>Prompt Mode
+            <label data-template-step="2">Prompt Mode
               <select id="template-form-prompt-mode">
                 <option value="schema">schema</option>
                 <option value="custom">custom</option>
               </select>
             </label>
-            <label>Taxonomy Path (CSV)
+            <label data-template-step="2">Taxonomy Path (CSV)
               <input id="template-form-taxonomy-path" placeholder="Jahresplanung,Semesterplanung" />
             </label>
-            <label class="span-2">Dynamic Fields (JSON Array)
+            <label class="span-2" data-template-step="2">Dynamic Fields (JSON Array)
               <textarea id="template-form-dynamic-fields" rows="6" placeholder='[{"id":"lernziel","label":"Lernziel","type":"text","required":true}]'></textarea>
             </label>
-            <label class="span-2">Base Prompt (nur bei custom)
+            <label class="span-2" data-template-step="2">Base Prompt (nur bei custom)
               <textarea id="template-form-base-prompt" rows="6"></textarea>
             </label>
-            <label class="span-2">Change Note
-              <input id="template-form-change-note" placeholder="Kurzbeschreibung der Aenderung" />
+            <label class="span-2" data-template-step="3">Change Note
+              <input id="template-form-change-note" placeholder="Kurzbeschreibung der &Auml;nderung" />
             </label>
-            <label class="span-2">Review Note
-              <input id="template-form-review-note" placeholder="Optionaler Kommentar fuer Review" />
+            <label class="span-2" data-template-step="3">Review Note
+              <input id="template-form-review-note" placeholder="Optionaler Kommentar f&uuml;r Review" />
             </label>
           </div>
-          <div class="inline-actions top-space">
+          <div id="template-editor-actions" class="inline-actions top-space">
             <button id="template-create" type="button">Template erstellen</button>
             <button id="template-update" type="button" class="secondary">Neue Version speichern</button>
             <button id="template-submit" type="button" class="secondary">Zur Review einreichen</button>
-            <button id="template-clone" type="button" class="secondary">Als persoenliche Variante speichern</button>
+            <button id="template-clone" type="button" class="secondary">Als pers&ouml;nliche Variante speichern</button>
             <button id="template-approve" type="button" class="secondary">Approve</button>
             <button id="template-reject" type="button" class="secondary">Reject</button>
             <button id="template-rate" type="button" class="secondary">Bewertung speichern</button>
@@ -867,7 +1017,7 @@
               <small id="admin-role-system" class="hint"></small>
               <div class="inline-actions top-space">
                 <button id="admin-save-role" type="button">Rolle speichern</button>
-                <button id="admin-delete-role" type="button" class="secondary">Rolle loeschen</button>
+                <button id="admin-delete-role" type="button" class="secondary">Rolle l&ouml;schen</button>
               </div>
             </div>
           </div>
@@ -960,6 +1110,116 @@
             </div>
             <div id="admin-model-provider-groups" class="top-space"></div>
           </div>
+
+          <div id="admin-system-keys-panel" class="panel top-space">
+            <div class="panel-title-row">
+              <h3>Systemweite API-Keys</h3>
+              <small class="hint">Aktive Schlüssel können Usern, Rollen oder Gruppen zugewiesen werden.</small>
+            </div>
+            <div class="grid-3 top-space">
+              <label>System Key ID
+                <input id="admin-system-key-id" placeholder="optional, z. B. pc_google_main" />
+              </label>
+              <label>Name
+                <input id="admin-system-key-name" placeholder="z. B. Schulkontingent Google" />
+              </label>
+              <label>Provider
+                <select id="admin-system-key-provider-kind">
+                  <option value="openai">openai</option>
+                  <option value="anthropic">anthropic</option>
+                  <option value="google">google</option>
+                  <option value="mistral">mistral</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label>Modell-Hinweis (optional)
+                <input id="admin-system-key-model-hint" placeholder="z. B. gemini-3-flash-preview" />
+              </label>
+              <label>Base URL (optional)
+                <input id="admin-system-key-base-url" placeholder="https://api.example.com/v1" />
+              </label>
+              <label>API-Key
+                <input id="admin-system-key-api-key" type="password" placeholder="leer lassen = bestehenden Key behalten (bei Update)" />
+              </label>
+              <label>Aktiv
+                <select id="admin-system-key-active">
+                  <option value="true" selected>Ja</option>
+                  <option value="false">Nein</option>
+                </select>
+              </label>
+              <label>Zuweisungstyp
+                <select id="admin-system-key-assign-type">
+                  <option value="user">user</option>
+                  <option value="role">role</option>
+                  <option value="group">group</option>
+                </select>
+              </label>
+              <label>Zuweisungswert
+                <input id="admin-system-key-assign-value" placeholder="z. B. teachers oder benutzername" />
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="admin-system-key-save" type="button">System-Key speichern</button>
+              <button id="admin-system-key-add-assignment" type="button" class="secondary">Zuweisung hinzufügen</button>
+              <button id="admin-system-key-clear" type="button" class="secondary">Form leeren</button>
+              <small id="admin-system-key-status" class="hint"></small>
+            </div>
+            <div id="admin-system-key-list" class="top-space"></div>
+          </div>
+
+          <div id="admin-budget-panel" class="panel top-space">
+            <div class="panel-title-row">
+              <h3>Budget Policies (Hybrid)</h3>
+              <small class="hint">Warnung vor Limit, Blockierung nach Regel.</small>
+            </div>
+            <div class="grid-3 top-space">
+              <label>Scope
+                <select id="admin-budget-scope-type">
+                  <option value="user">user</option>
+                  <option value="group">group</option>
+                  <option value="key">key</option>
+                </select>
+              </label>
+              <label>Scope-Wert
+                <input id="admin-budget-scope-value" placeholder="z. B. teachers oder sha256:..." />
+              </label>
+              <label>Periode
+                <select id="admin-budget-period">
+                  <option value="daily">daily</option>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly" selected>monthly</option>
+                </select>
+              </label>
+              <label>Limit USD
+                <input id="admin-budget-limit-usd" type="number" min="0" step="0.000001" placeholder="z. B. 10.00" />
+              </label>
+              <label>Modus
+                <select id="admin-budget-mode">
+                  <option value="hybrid" selected>hybrid</option>
+                  <option value="soft">soft</option>
+                  <option value="hard">hard</option>
+                </select>
+              </label>
+              <label>Warnschwelle (0.1-1.0)
+                <input id="admin-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
+              </label>
+              <label>Aktiv
+                <select id="admin-budget-active">
+                  <option value="true" selected>Ja</option>
+                  <option value="false">Nein</option>
+                </select>
+              </label>
+              <label>Owner User (optional)
+                <input id="admin-budget-owner-user" placeholder="leer = global" />
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="admin-budget-save" type="button">Budget speichern</button>
+              <button id="admin-budget-clear" type="button" class="secondary">Form leeren</button>
+              <small id="admin-budget-status" class="hint"></small>
+            </div>
+            <div id="admin-budget-list" class="top-space"></div>
+          </div>
         </div>
       </section>
     </main>
@@ -982,7 +1242,7 @@
       </div>
       <div class="drawer-body">
         <div class="panel">
-          <p class="subline">API-Keys werden serverseitig verschluesselt gespeichert und nie im Klartext angezeigt.</p>
+          <p class="subline">API-Keys werden serverseitig verschl&uuml;sselt gespeichert und nie im Klartext angezeigt.</p>
           <div class="inline-actions top-space">
             <button id="unlock-vault" type="button">Hinweis anzeigen</button>
             <button id="lock-vault" type="button" class="secondary">Status aktualisieren</button>
@@ -1053,16 +1313,6 @@
       </div>
     </aside>
 
-    <aside id="history-drawer" class="drawer is-hidden">
-      <div class="drawer-head">
-        <h2>Prompt-Verlauf</h2>
-        <button id="close-history-drawer" type="button" class="text-btn">Schliessen</button>
-      </div>
-      <div class="drawer-body">
-        <ul id="history-list" class="history-list"></ul>
-      </div>
-    </aside>
-
     <aside id="options-drawer" class="drawer is-hidden">
       <div class="drawer-head">
         <h2>Optionen</h2>
@@ -1112,7 +1362,7 @@
 
     <div id="flow-choice-modal" class="modal is-hidden">
       <div class="modal-card">
-        <h2>Ansicht waehlen</h2>
+        <h2>Ansicht w&auml;hlen</h2>
         <p class="subline">Du kannst das spaeter jederzeit unter Optionen aendern.</p>
         <div class="inline-actions top-space">
           <button id="choose-flow-step" type="button">Schrittweise Ansicht</button>
