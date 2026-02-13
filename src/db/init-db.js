@@ -805,6 +805,8 @@ async function initDb() {
       budget_mode TEXT NOT NULL DEFAULT 'hybrid' CHECK (budget_mode IN ('soft', 'hard', 'hybrid')),
       budget_warning_ratio NUMERIC(5,4) NOT NULL DEFAULT 0.9000 CHECK (budget_warning_ratio >= 0.1000 AND budget_warning_ratio <= 1.0000),
       budget_is_active BOOLEAN NOT NULL DEFAULT FALSE,
+      per_user_budget_limit_usd NUMERIC(14,8),
+      per_user_budget_period TEXT NOT NULL DEFAULT 'monthly' CHECK (per_user_budget_period IN ('daily', 'weekly', 'monthly')),
       created_by TEXT NOT NULL,
       updated_by TEXT NOT NULL DEFAULT 'system',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -912,6 +914,14 @@ async function initDb() {
   `);
   await pool.query(`
     ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS per_user_budget_limit_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS per_user_budget_period TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
     ADD COLUMN IF NOT EXISTS updated_by TEXT
   `);
   await pool.query(`
@@ -945,6 +955,11 @@ async function initDb() {
   `);
   await pool.query(`
     UPDATE system_key_assignments
+    SET per_user_budget_period = 'monthly'
+    WHERE per_user_budget_period IS NULL OR per_user_budget_period NOT IN ('daily', 'weekly', 'monthly')
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
     SET updated_by = created_by
     WHERE updated_by IS NULL
   `);
@@ -975,6 +990,10 @@ async function initDb() {
   `);
   await pool.query(`
     ALTER TABLE system_key_assignments
+    ALTER COLUMN per_user_budget_period SET DEFAULT 'monthly'
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
     ALTER COLUMN updated_by SET DEFAULT 'system'
   `);
   await pool.query(`
@@ -1000,6 +1019,10 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE system_key_assignments
     ALTER COLUMN budget_is_active SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN per_user_budget_period SET NOT NULL
   `);
   await pool.query(`
     ALTER TABLE system_key_assignments

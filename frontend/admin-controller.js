@@ -50,6 +50,7 @@ function createAdminController({
     selectedPricingId: null,
     systemKeys: [],
     selectedSystemKeyId: '',
+    openSystemKeyId: '',
     budgets: [],
     selectedBudgetId: null,
     systemKeysEnabled: true,
@@ -400,136 +401,155 @@ function createAdminController({
     }
 
     container.innerHTML = keys
-      .map((key) => `
-        <div class="admin-model-provider-card">
-          <div class="admin-model-provider-head">
-            <h4>${escapeHtml(key.name)} <small class="hint">(${escapeHtml(key.systemKeyId)})</small></h4>
-            <div class="inline-actions">
-              <button type="button" class="secondary small" data-save-system-key-row="${escapeHtml(key.systemKeyId)}">Speichern</button>
-            </div>
-          </div>
-          <small class="hint">
-            Provider: <strong>${escapeHtml(key.providerKind)}</strong> |
-            Requests: ${Number(key.usage?.totalRequests || 0)} |
-            Used: ${formatUsd(key.usage?.spendUsd || 0)} |
-            Budget: ${key.budgetIsActive ? `${formatUsd(key.usage?.spendUsd || 0)} / ${formatUsd(key.budgetLimitUsd || 0)} (${escapeHtml(key.budgetPeriod || 'monthly')})` : 'inaktiv'}
-          </small>
-          <div class="grid-3 top-space">
-            <label>Name
-              <input type="text" data-system-key-name="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.name || '')}" />
-            </label>
-            <label>Provider
-              <select data-system-key-provider-kind="${escapeHtml(key.systemKeyId)}">
-                <option value="openai" ${key.providerKind === 'openai' ? 'selected' : ''}>openai</option>
-                <option value="anthropic" ${key.providerKind === 'anthropic' ? 'selected' : ''}>anthropic</option>
-                <option value="google" ${key.providerKind === 'google' ? 'selected' : ''}>google</option>
-                <option value="mistral" ${key.providerKind === 'mistral' ? 'selected' : ''}>mistral</option>
-                <option value="custom" ${key.providerKind === 'custom' ? 'selected' : ''}>custom</option>
-              </select>
-            </label>
-            <label>Modell-Hinweis
-              <input type="text" data-system-key-model-hint="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.modelHint || '')}" placeholder="optional" />
-            </label>
-            <label class="span-2">Base URL
-              <input type="text" data-system-key-base-url="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.baseUrl || '')}" placeholder="optional" />
-            </label>
-            <label>API-Key (optional)
-              <input type="password" data-system-key-api-key="${escapeHtml(key.systemKeyId)}" placeholder="leer = vorhandenen Key behalten" />
-            </label>
-            <label>Global aktiv
-              <span class="admin-toggle">
+      .map((key) => {
+        const isOpen = adminState.openSystemKeyId === key.systemKeyId;
+        const keyLimitValue = key.budgetLimitUsd ?? '';
+        const keyPeriod = key.budgetPeriod || 'monthly';
+        const keyUsed = Number(key.usage?.spendUsd || 0);
+        const keyBudgetLabel = keyLimitValue !== '' && keyLimitValue !== null
+          ? `${formatUsd(keyUsed)} / ${formatUsd(key.budgetLimitUsd || 0)}`
+          : `${formatUsd(keyUsed)} / unbegrenzt`;
+        return `
+          <div class="admin-model-provider-card">
+            <div class="admin-assignment-row">
+              <div class="span-col">
+                <strong>${escapeHtml(key.name)} <small class="hint">(${escapeHtml(key.systemKeyId)})</small></strong><br/>
+                <small>${escapeHtml(key.providerKind)} | Requests: ${Number(key.usage?.totalRequests || 0)}</small>
+              </div>
+              <label>Budget
+                <input type="number" min="0" step="0.000001" data-system-key-budget-limit="${escapeHtml(key.systemKeyId)}" value="${keyLimitValue}" placeholder="leer = unbegrenzt" />
+              </label>
+              <label>Periode
+                <select data-system-key-budget-period="${escapeHtml(key.systemKeyId)}">
+                  <option value="daily" ${keyPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                  <option value="weekly" ${keyPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                  <option value="monthly" ${keyPeriod === 'monthly' ? 'selected' : ''}>monthly</option>
+                </select>
+              </label>
+              <small>${keyBudgetLabel}</small>
+              <label class="admin-toggle">
                 <input type="checkbox" data-system-key-active="${escapeHtml(key.systemKeyId)}" ${key.isActive ? 'checked' : ''} />
                 <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
                 <span class="admin-toggle-text">${key.isActive ? 'Aktiv' : 'Inaktiv'}</span>
+              </label>
+              <span class="inline-actions">
+                <button type="button" class="secondary small" data-toggle-system-key-details="${escapeHtml(key.systemKeyId)}">${isOpen ? 'Schließen' : 'Bearbeiten'}</button>
+                <button type="button" class="secondary small" data-save-system-key-row="${escapeHtml(key.systemKeyId)}">Speichern</button>
               </span>
-            </label>
-            <label>Budget aktiv
-              <span class="admin-toggle">
-                <input type="checkbox" data-system-key-budget-active="${escapeHtml(key.systemKeyId)}" ${key.budgetIsActive ? 'checked' : ''} />
-                <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                <span class="admin-toggle-text">${key.budgetIsActive ? 'Aktiv' : 'Inaktiv'}</span>
-              </span>
-            </label>
-            <label>Budget Limit USD
-              <input type="number" min="0" step="0.000001" data-system-key-budget-limit="${escapeHtml(key.systemKeyId)}" value="${key.budgetLimitUsd ?? ''}" placeholder="optional" />
-            </label>
-            <label>Budget Periode
-              <select data-system-key-budget-period="${escapeHtml(key.systemKeyId)}">
-                <option value="daily" ${key.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
-                <option value="weekly" ${key.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
-                <option value="monthly" ${(!key.budgetPeriod || key.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
-              </select>
-            </label>
-          </div>
-          <small class="hint" data-system-key-row-status="${escapeHtml(key.systemKeyId)}"></small>
-          <div class="top-space">
-            <div class="panel-title-row">
-              <strong>Zuweisungen</strong>
-              <div class="inline-actions">
-                <select data-system-key-assign-type="${escapeHtml(key.systemKeyId)}">
-                  <option value="global">global</option>
-                  <option value="user">user</option>
-                  <option value="role">role</option>
-                  <option value="group">group</option>
-                </select>
-                <input data-system-key-assign-value="${escapeHtml(key.systemKeyId)}" placeholder="z. B. teachers oder username" />
+            </div>
+
+            <div class="top-space ${isOpen ? '' : 'is-hidden'}" data-system-key-details="${escapeHtml(key.systemKeyId)}">
+              <div class="grid-3">
+                <label>Name
+                  <input type="text" data-system-key-name="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.name || '')}" />
+                </label>
+                <label>Provider
+                  <select data-system-key-provider-kind="${escapeHtml(key.systemKeyId)}">
+                    <option value="openai" ${key.providerKind === 'openai' ? 'selected' : ''}>openai</option>
+                    <option value="anthropic" ${key.providerKind === 'anthropic' ? 'selected' : ''}>anthropic</option>
+                    <option value="google" ${key.providerKind === 'google' ? 'selected' : ''}>google</option>
+                    <option value="mistral" ${key.providerKind === 'mistral' ? 'selected' : ''}>mistral</option>
+                    <option value="custom" ${key.providerKind === 'custom' ? 'selected' : ''}>custom</option>
+                  </select>
+                </label>
+                <label>Modell-Hinweis
+                  <input type="text" data-system-key-model-hint="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.modelHint || '')}" placeholder="z. B. gpt-4.1" />
+                </label>
+                <label class="span-2">Base URL
+                  <input type="text" data-system-key-base-url="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.baseUrl || '')}" placeholder="optional" />
+                </label>
+                <label>API-Key (optional)
+                  <input type="password" data-system-key-api-key="${escapeHtml(key.systemKeyId)}" placeholder="leer = vorhandenen Key behalten" />
+                </label>
               </div>
-            </div>
-            <ul class="provider-list top-space">
-              ${(key.assignments || []).length
-    ? key.assignments.map((assignment) => `
-                  <li class="admin-assignment-row">
-                    <div class="span-col">
-                      <strong>${escapeHtml(assignment.scopeType)}</strong>: ${escapeHtml(assignment.scopeValue)}<br/>
-                      <small class="hint">
-                        Requests: ${Number(assignment.usage?.totalRequests || 0)} |
-                        Used: ${formatUsd(assignment.usage?.spendUsd || 0)} |
-                        Budget: ${assignment.budgetIsActive ? `${formatUsd(assignment.usage?.spendUsd || 0)} / ${formatUsd(assignment.budgetLimitUsd || 0)} (${escapeHtml(assignment.budgetPeriod || 'monthly')})` : 'inaktiv'}
-                      </small>
-                    </div>
-                    <label class="admin-toggle">
-                      <input type="checkbox" data-assignment-active="${key.systemKeyId}:${assignment.id}" ${assignment.isActive ? 'checked' : ''} />
-                      <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                      <span class="admin-toggle-text">${assignment.isActive ? 'Aktiv' : 'Inaktiv'}</span>
-                    </label>
-                    <label>Budget aktiv
-                      <span class="admin-toggle">
-                        <input type="checkbox" data-assignment-budget-active="${key.systemKeyId}:${assignment.id}" ${assignment.budgetIsActive ? 'checked' : ''} />
-                        <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                        <span class="admin-toggle-text">${assignment.budgetIsActive ? 'Aktiv' : 'Inaktiv'}</span>
-                      </span>
-                    </label>
-                    <label>Limit USD
-                      <input type="number" min="0" step="0.000001" data-assignment-budget-limit="${key.systemKeyId}:${assignment.id}" value="${assignment.budgetLimitUsd ?? ''}" placeholder="optional" />
-                    </label>
-                    <label>Periode
-                      <select data-assignment-budget-period="${key.systemKeyId}:${assignment.id}">
-                        <option value="daily" ${assignment.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
-                        <option value="weekly" ${assignment.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
-                        <option value="monthly" ${(!assignment.budgetPeriod || assignment.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
-                      </select>
-                    </label>
-                    <span class="inline-actions">
-                      <button type="button" class="secondary small" data-save-system-key-assignment="${key.systemKeyId}:${assignment.id}">Speichern</button>
-                      <button type="button" class="secondary small" data-delete-system-key-assignment="${key.systemKeyId}:${assignment.id}">Löschen</button>
-                    </span>
-                  </li>
-                `).join('')
-    : '<li><span>Keine Zuweisungen.</span></li>'}
-            </ul>
-            <div class="inline-actions top-space">
-              <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(key.systemKeyId)}">Zuweisung hinzufügen</button>
+
+              <div class="top-space">
+                <strong>Zuweisungen</strong>
+                <ul class="provider-list top-space">
+                  ${(key.assignments || []).length
+      ? key.assignments.map((assignment) => `
+                      <li class="admin-assignment-row">
+                        <div class="span-col">
+                          <strong>${escapeHtml(assignment.scopeType)}:${escapeHtml(assignment.scopeValue)}</strong><br/>
+                          <small>Used/Total: ${formatUsd(assignment.usage?.spendUsd || 0)} / ${assignment.budgetLimitUsd !== null ? formatUsd(assignment.budgetLimitUsd || 0) : 'unbegrenzt'}</small><br/>
+                          <small>Pro Nutzer: ${assignment.perUserBudgetLimitUsd !== null ? `${formatUsd(assignment.perUserBudgetLimitUsd || 0)} (${escapeHtml(assignment.perUserBudgetPeriod || 'monthly')})` : 'unbegrenzt'}</small>
+                        </div>
+                        <label>Budget
+                          <input type="number" min="0" step="0.000001" data-assignment-budget-limit="${key.systemKeyId}:${assignment.id}" value="${assignment.budgetLimitUsd ?? ''}" placeholder="leer = unbegrenzt" />
+                        </label>
+                        <label>Periode
+                          <select data-assignment-budget-period="${key.systemKeyId}:${assignment.id}">
+                            <option value="daily" ${assignment.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                            <option value="weekly" ${assignment.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                            <option value="monthly" ${(!assignment.budgetPeriod || assignment.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+                          </select>
+                        </label>
+                        <label>Pro Nutzer Budget
+                          <input type="number" min="0" step="0.000001" data-assignment-per-user-budget-limit="${key.systemKeyId}:${assignment.id}" value="${assignment.perUserBudgetLimitUsd ?? ''}" placeholder="leer = unbegrenzt" />
+                        </label>
+                        <label>Pro Nutzer Periode
+                          <select data-assignment-per-user-budget-period="${key.systemKeyId}:${assignment.id}">
+                            <option value="daily" ${assignment.perUserBudgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                            <option value="weekly" ${assignment.perUserBudgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                            <option value="monthly" ${(!assignment.perUserBudgetPeriod || assignment.perUserBudgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+                          </select>
+                        </label>
+                        <label class="admin-toggle">
+                          <input type="checkbox" data-assignment-active="${key.systemKeyId}:${assignment.id}" ${assignment.isActive ? 'checked' : ''} />
+                          <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                          <span class="admin-toggle-text">${assignment.isActive ? 'Aktiv' : 'Inaktiv'}</span>
+                        </label>
+                        <span class="inline-actions">
+                          <button type="button" class="secondary small" data-save-system-key-assignment="${key.systemKeyId}:${assignment.id}">Speichern</button>
+                          <button type="button" class="secondary small" data-delete-system-key-assignment="${key.systemKeyId}:${assignment.id}">Löschen</button>
+                        </span>
+                      </li>
+                    `).join('')
+      : '<li><span>Keine Zuweisungen.</span></li>'}
+                </ul>
+                <div class="inline-actions top-space">
+                  <select data-system-key-assign-type="${escapeHtml(key.systemKeyId)}">
+                    <option value="global">global</option>
+                    <option value="user">user</option>
+                    <option value="role">role</option>
+                    <option value="group">group</option>
+                  </select>
+                  <span data-system-key-assign-value-wrap="${escapeHtml(key.systemKeyId)}">
+                    <input data-system-key-assign-value="${escapeHtml(key.systemKeyId)}" placeholder="z. B. teachers oder username" />
+                  </span>
+                  <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(key.systemKeyId)}">Zuweisung hinzufügen</button>
+                </div>
+              </div>
+              <small class="hint top-space" data-system-key-row-status="${escapeHtml(key.systemKeyId)}"></small>
             </div>
           </div>
-        </div>
-      `)
+        `;
+      })
       .join('');
 
     container.querySelectorAll('[data-save-system-key-row]').forEach((button) => {
       button.onclick = () => saveSystemKeyRow(button.dataset.saveSystemKeyRow).catch((error) => alert(error.message));
     });
+    container.querySelectorAll('[data-toggle-system-key-details]').forEach((button) => {
+      button.onclick = () => {
+        const keyId = String(button.dataset.toggleSystemKeyDetails || '').trim();
+        if (!keyId) return;
+        adminState.openSystemKeyId = adminState.openSystemKeyId === keyId ? '' : keyId;
+        renderSystemKeyList();
+      };
+    });
     container.querySelectorAll('[data-add-system-key-assignment]').forEach((button) => {
       button.onclick = () => addSystemKeyAssignment(button.dataset.addSystemKeyAssignment).catch((error) => alert(error.message));
+    });
+    container.querySelectorAll('[data-system-key-assign-type]').forEach((selectNode) => {
+      const keyId = String(selectNode.getAttribute('data-system-key-assign-type') || '').trim();
+      const updateVisibility = () => {
+        const wrap = container.querySelector(`[data-system-key-assign-value-wrap="${keyId}"]`);
+        if (!wrap) return;
+        wrap.classList.toggle('is-hidden', String(selectNode.value || '') === 'global');
+      };
+      selectNode.addEventListener('change', updateVisibility);
+      updateVisibility();
     });
     container.querySelectorAll('[data-save-system-key-assignment]').forEach((button) => {
       button.onclick = () => {
@@ -537,6 +557,16 @@ function createAdminController({
         if (!systemKeyId || !assignmentId) return;
         saveSystemKeyAssignment(systemKeyId, assignmentId).catch((error) => alert(error.message));
       };
+    });
+    container.querySelectorAll('input[data-system-key-active], input[data-assignment-active]').forEach((toggleNode) => {
+      const label = toggleNode.closest('.admin-toggle');
+      const textNode = label?.querySelector('.admin-toggle-text');
+      const syncLabel = () => {
+        if (!textNode) return;
+        textNode.textContent = toggleNode.checked ? 'Aktiv' : 'Inaktiv';
+      };
+      toggleNode.addEventListener('change', syncLabel);
+      syncLabel();
     });
     container.querySelectorAll('[data-delete-system-key-assignment]').forEach((button) => {
       button.onclick = () => {
@@ -546,7 +576,7 @@ function createAdminController({
       };
     });
 
-    container.querySelectorAll('input[data-system-key-name], input[data-system-key-model-hint], input[data-system-key-base-url], input[data-system-key-api-key], input[data-system-key-budget-limit], input[data-assignment-budget-limit]').forEach((input) => {
+    container.querySelectorAll('input[data-system-key-name], input[data-system-key-model-hint], input[data-system-key-base-url], input[data-system-key-api-key], input[data-system-key-budget-limit], input[data-assignment-budget-limit], input[data-assignment-per-user-budget-limit]').forEach((input) => {
       input.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') return;
         event.preventDefault();
@@ -559,7 +589,8 @@ function createAdminController({
           saveSystemKeyRow(keyId).catch((error) => alert(error.message));
           return;
         }
-        const assignmentRef = input.getAttribute('data-assignment-budget-limit');
+        const assignmentRef = input.getAttribute('data-assignment-budget-limit')
+          || input.getAttribute('data-assignment-per-user-budget-limit');
         if (!assignmentRef) return;
         const [systemKeyId, assignmentId] = String(assignmentRef).split(':');
         if (!systemKeyId || !assignmentId) return;
@@ -912,10 +943,12 @@ function createAdminController({
     const baseNode = scope.querySelector(`[data-system-key-base-url="${keyId}"]`);
     const apiKeyNode = scope.querySelector(`[data-system-key-api-key="${keyId}"]`);
     const activeNode = scope.querySelector(`[data-system-key-active="${keyId}"]`);
-    const budgetActiveNode = scope.querySelector(`[data-system-key-budget-active="${keyId}"]`);
     const budgetLimitNode = scope.querySelector(`[data-system-key-budget-limit="${keyId}"]`);
     const budgetPeriodNode = scope.querySelector(`[data-system-key-budget-period="${keyId}"]`);
-    if (!nameNode || !providerNode || !modelNode || !baseNode || !apiKeyNode || !activeNode || !budgetActiveNode || !budgetLimitNode || !budgetPeriodNode) return;
+    if (!nameNode || !providerNode || !modelNode || !baseNode || !apiKeyNode || !activeNode || !budgetLimitNode || !budgetPeriodNode) return;
+
+    const budgetLimitUsd = parseOptionalNonNegativeNumber(budgetLimitNode.value);
+    const budgetIsActive = budgetLimitUsd !== null;
 
     const payload = {
       name: String(nameNode.value || '').trim(),
@@ -924,8 +957,8 @@ function createAdminController({
       baseUrl: String(baseNode.value || '').trim(),
       apiKey: String(apiKeyNode.value || '').trim(),
       isActive: activeNode.checked,
-      budgetIsActive: budgetActiveNode.checked,
-      budgetLimitUsd: parseOptionalNonNegativeNumber(budgetLimitNode.value),
+      budgetIsActive,
+      budgetLimitUsd,
       budgetPeriod: String(budgetPeriodNode.value || 'monthly').trim(),
       budgetMode: 'hybrid',
       budgetWarningRatio: 0.9,
@@ -934,12 +967,8 @@ function createAdminController({
       alert('Name und Provider sind erforderlich.');
       return;
     }
-    if (Number.isNaN(payload.budgetLimitUsd)) {
+    if (Number.isNaN(budgetLimitUsd)) {
       alert('Budget-Limit muss leer oder >= 0 sein.');
-      return;
-    }
-    if (payload.budgetIsActive && payload.budgetLimitUsd === null) {
-      alert('Bitte Budget-Limit setzen, wenn Budget aktiv ist.');
       return;
     }
     if (rowStatus) rowStatus.textContent = 'Speichere...';
@@ -983,6 +1012,8 @@ function createAdminController({
         budgetPeriod: 'monthly',
         budgetMode: 'hybrid',
         budgetWarningRatio: 0.9,
+        perUserBudgetLimitUsd: null,
+        perUserBudgetPeriod: 'monthly',
       }),
     });
     if (valueNode) valueNode.value = '';
@@ -996,28 +1027,32 @@ function createAdminController({
     if (!keyId || !assignment) return;
     const scope = el('admin-system-key-list');
     const activeNode = scope.querySelector(`[data-assignment-active="${keyId}:${assignment}"]`);
-    const budgetActiveNode = scope.querySelector(`[data-assignment-budget-active="${keyId}:${assignment}"]`);
     const budgetLimitNode = scope.querySelector(`[data-assignment-budget-limit="${keyId}:${assignment}"]`);
     const budgetPeriodNode = scope.querySelector(`[data-assignment-budget-period="${keyId}:${assignment}"]`);
-    if (!activeNode || !budgetActiveNode || !budgetLimitNode || !budgetPeriodNode) return;
+    const perUserBudgetLimitNode = scope.querySelector(`[data-assignment-per-user-budget-limit="${keyId}:${assignment}"]`);
+    const perUserBudgetPeriodNode = scope.querySelector(`[data-assignment-per-user-budget-period="${keyId}:${assignment}"]`);
+    if (!activeNode || !budgetLimitNode || !budgetPeriodNode || !perUserBudgetLimitNode || !perUserBudgetPeriodNode) return;
     const budgetLimitUsd = parseOptionalNonNegativeNumber(budgetLimitNode.value);
+    const perUserBudgetLimitUsd = parseOptionalNonNegativeNumber(perUserBudgetLimitNode.value);
     if (Number.isNaN(budgetLimitUsd)) {
       alert('Budget-Limit muss leer oder >= 0 sein.');
       return;
     }
-    if (budgetActiveNode.checked && budgetLimitUsd === null) {
-      alert('Bitte Budget-Limit setzen, wenn Budget aktiv ist.');
+    if (Number.isNaN(perUserBudgetLimitUsd)) {
+      alert('Pro-Nutzer-Budget muss leer oder >= 0 sein.');
       return;
     }
     await api(`/api/admin/system-provider-keys/${encodeURIComponent(keyId)}/assignments/${encodeURIComponent(assignment)}`, {
       method: 'PUT',
       body: JSON.stringify({
         isActive: activeNode.checked,
-        budgetIsActive: budgetActiveNode.checked,
+        budgetIsActive: budgetLimitUsd !== null,
         budgetLimitUsd,
         budgetPeriod: String(budgetPeriodNode.value || 'monthly').trim(),
         budgetMode: 'hybrid',
         budgetWarningRatio: 0.9,
+        perUserBudgetLimitUsd,
+        perUserBudgetPeriod: String(perUserBudgetPeriodNode.value || budgetPeriodNode.value || 'monthly').trim(),
       }),
     });
     setStatus(`Zuweisung aktualisiert (${keyId}).`, { systemKey: true });
@@ -1120,6 +1155,7 @@ function createAdminController({
       selectedPricingId: adminState.selectedPricingId,
       systemKeys: Array.isArray(systemKeysPayload?.keys) ? systemKeysPayload.keys : (Array.isArray(systemKeysPayload) ? systemKeysPayload : []),
       selectedSystemKeyId: adminState.selectedSystemKeyId || '',
+      openSystemKeyId: adminState.openSystemKeyId || '',
       budgets: Array.isArray(budgets) ? budgets : [],
       selectedBudgetId: adminState.selectedBudgetId,
       systemKeysEnabled: systemKeysConfig?.systemKeysEnabled ?? systemKeysPayload?.systemKeysEnabled ?? true,

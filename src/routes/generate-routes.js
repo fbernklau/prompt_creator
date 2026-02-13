@@ -67,6 +67,13 @@ function asNullableNumber(value) {
   return normalized;
 }
 
+function parseNonNegativeFloatOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < 0) return null;
+  return normalized;
+}
+
 function estimateTokenCount(text = '') {
   const normalized = String(text || '').trim();
   if (!normalized) return 0;
@@ -413,6 +420,175 @@ async function enforceBudgetPolicies({
   return warnings;
 }
 
+function normalizeSystemAssignment(scopeType = '', scopeValue = '') {
+  const type = String(scopeType || '').trim().toLowerCase();
+  const value = String(scopeValue || '').trim().toLowerCase();
+  return { type, value };
+}
+
+async function resolveSystemAssignmentSpendUsd({
+  systemKeyId,
+  assignmentScopeType,
+  assignmentScopeValue,
+  period = 'monthly',
+}) {
+  const intervalLiteral = periodToIntervalLiteral(period);
+  const { type, value } = normalizeSystemAssignment(assignmentScopeType, assignmentScopeValue);
+  if (type === 'user') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE effective_key_type = 'system'
+         AND effective_key_id = $1
+         AND LOWER(user_id) = LOWER($2)
+         AND created_at >= NOW() - ($3::interval)`,
+      [systemKeyId, value, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+
+  if (type === 'group' && value === '*') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE effective_key_type = 'system'
+         AND effective_key_id = $1
+         AND created_at >= NOW() - ($2::interval)`,
+      [systemKeyId, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+
+  if (type === 'group') {
+    const result = await pool.query(
+      `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE effective_key_type = 'system'
+         AND effective_key_id = $1
+         AND user_groups_json ? $2
+         AND created_at >= NOW() - ($3::interval)`,
+      [systemKeyId, value, intervalLiteral]
+    );
+    return Number(result.rows[0]?.spend_usd || 0);
+  }
+
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND effective_key_id = $1
+       AND user_roles_json ? $2
+       AND created_at >= NOW() - ($3::interval)`,
+    [systemKeyId, value, intervalLiteral]
+  );
+  return Number(result.rows[0]?.spend_usd || 0);
+}
+
+async function resolveSystemAssignmentUserSpendUsd({
+  userId,
+  systemKeyId,
+  period = 'monthly',
+}) {
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND effective_key_id = $1
+       AND LOWER(user_id) = LOWER($2)
+       AND created_at >= NOW() - ($3::interval)`,
+    [systemKeyId, userId, periodToIntervalLiteral(period)]
+  );
+  return Number(result.rows[0]?.spend_usd || 0);
+}
+
+function normalizeSystemBudgetMode(value = '') {
+  return normalizeBudgetMode(value || 'hybrid');
+}
+
+async function enforceSystemAssignmentBudget({
+  req,
+  systemKey = null,
+  estimatedIncrementUsd = 0,
+  phaseLabel = 'Generierung',
+  onWarning = null,
+}) {
+  if (!systemKey) return [];
+  const incrementUsd = Number(estimatedIncrementUsd);
+  if (!Number.isFinite(incrementUsd) || incrementUsd <= 0) return [];
+  const warnings = [];
+
+  const assignmentLimit = parseNonNegativeFloatOrNull(systemKey.budget_limit_usd);
+  const assignmentPeriod = normalizeBudgetPeriod(systemKey.budget_period || 'monthly') || 'monthly';
+  const assignmentMode = normalizeSystemBudgetMode(systemKey.budget_mode || 'hybrid');
+  const assignmentWarningRatio = Number(systemKey.budget_warning_ratio || 0.9);
+  const assignmentBudgetEnabled = Boolean(systemKey.budget_is_active) && assignmentLimit !== null;
+  if (assignmentBudgetEnabled) {
+    const spendUsd = await resolveSystemAssignmentSpendUsd({
+      systemKeyId: systemKey.system_key_id,
+      assignmentScopeType: systemKey.scope_type,
+      assignmentScopeValue: systemKey.scope_value,
+      period: assignmentPeriod,
+    });
+    const projectedUsd = spendUsd + incrementUsd;
+    const warningThreshold = assignmentLimit * assignmentWarningRatio;
+    const shouldWarn = projectedUsd >= warningThreshold;
+    const shouldBlock = (assignmentMode === 'hard' && projectedUsd > assignmentLimit)
+      || (assignmentMode === 'hybrid' && spendUsd >= assignmentLimit);
+    if (shouldWarn) {
+      const message = `${phaseLabel}: Zuweisungsbudget-Hinweis (${systemKey.scope_type}:${systemKey.scope_value}) — aktuell $${spendUsd.toFixed(4)}, prognostiziert $${projectedUsd.toFixed(4)} bei Limit $${assignmentLimit.toFixed(4)}.`;
+      warnings.push({
+        type: 'assignment',
+        scopeType: systemKey.scope_type,
+        scopeValue: systemKey.scope_value,
+        period: assignmentPeriod,
+        mode: assignmentMode,
+        message,
+        spendUsd,
+        projectedUsd,
+        limitUsd: assignmentLimit,
+      });
+      if (typeof onWarning === 'function') onWarning(message);
+    }
+    if (shouldBlock) {
+      throw httpError(402, `${phaseLabel}: Zuweisungsbudget erreicht (${systemKey.scope_type}:${systemKey.scope_value}) — aktuell $${spendUsd.toFixed(4)} / Limit $${assignmentLimit.toFixed(4)}.`);
+    }
+  }
+
+  const perUserLimit = parseNonNegativeFloatOrNull(systemKey.per_user_budget_limit_usd);
+  const perUserPeriod = normalizeBudgetPeriod(systemKey.per_user_budget_period || assignmentPeriod || 'monthly') || 'monthly';
+  if (perUserLimit !== null) {
+    const spendUsd = await resolveSystemAssignmentUserSpendUsd({
+      userId: req.userId,
+      systemKeyId: systemKey.system_key_id,
+      period: perUserPeriod,
+    });
+    const projectedUsd = spendUsd + incrementUsd;
+    const warningThreshold = perUserLimit * assignmentWarningRatio;
+    const shouldWarn = projectedUsd >= warningThreshold;
+    const shouldBlock = (assignmentMode === 'hard' && projectedUsd > perUserLimit)
+      || (assignmentMode === 'hybrid' && spendUsd >= perUserLimit);
+    if (shouldWarn) {
+      const message = `${phaseLabel}: Pro-Nutzer-Budget-Hinweis (${req.userId}) — aktuell $${spendUsd.toFixed(4)}, prognostiziert $${projectedUsd.toFixed(4)} bei Limit $${perUserLimit.toFixed(4)}.`;
+      warnings.push({
+        type: 'assignment_per_user',
+        scopeType: 'user',
+        scopeValue: req.userId,
+        period: perUserPeriod,
+        mode: assignmentMode,
+        message,
+        spendUsd,
+        projectedUsd,
+        limitUsd: perUserLimit,
+      });
+      if (typeof onWarning === 'function') onWarning(message);
+    }
+    if (shouldBlock) {
+      throw httpError(402, `${phaseLabel}: Pro-Nutzer-Budget erreicht — aktuell $${spendUsd.toFixed(4)} / Limit $${perUserLimit.toFixed(4)}.`);
+    }
+  }
+  return warnings;
+}
+
 function combineUsageSummaries(...entries) {
   return entries.reduce((acc, current) => ({
     promptTokens: asNonNegativeInt(acc.promptTokens) + asNonNegativeInt(current?.promptTokens),
@@ -701,12 +877,20 @@ async function findAssignedSystemKey(req, provider) {
     `SELECT
        sk.system_key_id,
        sk.name,
-       sk.provider_kind,
-       sk.model_hint,
-       sk.base_url,
-       sk.key_meta,
-       a.scope_type,
-       a.scope_value
+	   sk.provider_kind,
+	   sk.model_hint,
+	   sk.base_url,
+	   sk.key_meta,
+	   a.id AS assignment_id,
+	   a.scope_type,
+	   a.scope_value,
+	   a.budget_limit_usd,
+	   a.budget_period,
+	   a.budget_mode,
+	   a.budget_warning_ratio,
+	   a.budget_is_active,
+	   a.per_user_budget_limit_usd,
+	   a.per_user_budget_period
      FROM system_provider_keys sk
      JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
      WHERE sk.is_active = TRUE
@@ -943,6 +1127,7 @@ async function resolveProviderCredential(req, provider) {
     effectiveKeyType,
     effectiveKeyId,
     systemKeyName: systemKey?.name || null,
+    systemKey: systemKey || null,
   };
 }
 
@@ -1076,6 +1261,13 @@ function createGenerateRouter() {
         pricing: metapromptPricing,
         promptText: metapromptForProvider,
       });
+      const metapromptAssignmentBudgetWarnings = await enforceSystemAssignmentBudget({
+        req,
+        systemKey: metapromptCredential?.systemKey || null,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        phaseLabel: 'Metaprompt-Phase',
+      });
+      budgetWarnings.push(...metapromptAssignmentBudgetWarnings);
       const metapromptBudgetWarnings = await enforceBudgetPolicies({
         req,
         keyFingerprint: metapromptKeyFingerprint,
@@ -1138,6 +1330,13 @@ function createGenerateRouter() {
           pricing: resultPricing,
           promptText: handoffPrompt,
         });
+        const resultAssignmentBudgetWarnings = await enforceSystemAssignmentBudget({
+          req,
+          systemKey: resultCredential?.systemKey || null,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          phaseLabel: 'Direktes Ergebnis',
+        });
+        budgetWarnings.push(...resultAssignmentBudgetWarnings);
         const resultBudgetWarnings = await enforceBudgetPolicies({
           req,
           keyFingerprint: resultKeyFingerprint,
@@ -1425,6 +1624,16 @@ function createGenerateRouter() {
         pricing: metapromptPricing,
         promptText: metapromptForProvider,
       });
+      const metapromptAssignmentBudgetWarnings = await enforceSystemAssignmentBudget({
+        req,
+        systemKey: metapromptCredential?.systemKey || null,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        phaseLabel: 'Metaprompt-Phase',
+        onWarning: (message) => {
+          writeStreamEvent(res, 'status', { stage: 'budget', message });
+        },
+      });
+      budgetWarnings.push(...metapromptAssignmentBudgetWarnings);
       const metapromptBudgetWarnings = await enforceBudgetPolicies({
         req,
         keyFingerprint: metapromptKeyFingerprint,
@@ -1541,6 +1750,16 @@ function createGenerateRouter() {
           pricing: resultPricing,
           promptText: handoffPrompt,
         });
+        const resultAssignmentBudgetWarnings = await enforceSystemAssignmentBudget({
+          req,
+          systemKey: resultCredential?.systemKey || null,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          phaseLabel: 'Direktes Ergebnis',
+          onWarning: (message) => {
+            writeStreamEvent(res, 'status', { stage: 'budget', message });
+          },
+        });
+        budgetWarnings.push(...resultAssignmentBudgetWarnings);
         const resultBudgetWarnings = await enforceBudgetPolicies({
           req,
           keyFingerprint: resultKeyFingerprint,

@@ -96,7 +96,9 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
        a.budget_period,
        a.budget_mode,
        a.budget_warning_ratio,
-       a.budget_is_active
+       a.budget_is_active,
+       a.per_user_budget_limit_usd,
+       a.per_user_budget_period
      FROM system_provider_keys sk
      JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
      WHERE sk.is_active = TRUE
@@ -135,6 +137,8 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
       budgetMode: String(row.budget_mode || 'hybrid').trim().toLowerCase() || 'hybrid',
       budgetWarningRatio: Number(row.budget_warning_ratio || 0.9),
       budgetIsActive: Boolean(row.budget_is_active),
+      perUserBudgetLimitUsd: row.per_user_budget_limit_usd === null ? null : Number(row.per_user_budget_limit_usd),
+      perUserBudgetPeriod: String(row.per_user_budget_period || row.budget_period || 'monthly').trim().toLowerCase() || 'monthly',
     };
     if (!existing) {
       let keyFingerprint = '';

@@ -657,7 +657,7 @@ button.cta {
 
 .provider-list li.admin-assignment-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.8fr) repeat(3, minmax(120px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.8fr) repeat(4, minmax(120px, 1fr)) minmax(120px, 0.8fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -668,6 +668,12 @@ button.cta {
 
 .provider-list li.admin-assignment-row .inline-actions {
   justify-content: flex-end;
+}
+
+.provider-list li.admin-assignment-row small {
+  align-self: center;
+  color: var(--text-soft);
+  font-size: 12px;
 }
 
 @media (max-width: 960px) {

@@ -93,7 +93,9 @@ function normalizeOptionalBudgetPayload(payload = {}) {
   const budgetPeriod = normalizeBudgetPeriod(payload?.budgetPeriod || 'monthly') || 'monthly';
   const budgetMode = normalizeBudgetMode(payload?.budgetMode || 'hybrid');
   const budgetWarningRatio = parseWarningRatio(payload?.budgetWarningRatio);
-  const budgetIsActive = payload?.budgetIsActive === undefined ? false : Boolean(payload.budgetIsActive);
+  const budgetIsActive = payload?.budgetIsActive === undefined
+    ? budgetLimitUsd !== null
+    : Boolean(payload.budgetIsActive);
   if (budgetIsActive && budgetLimitUsd === null) {
     return { error: 'Budget-Limit ist erforderlich, wenn Budget aktiv ist.' };
   }
@@ -103,6 +105,15 @@ function normalizeOptionalBudgetPayload(payload = {}) {
     budgetMode,
     budgetWarningRatio,
     budgetIsActive,
+  };
+}
+
+function normalizeOptionalPerUserBudgetPayload(payload = {}) {
+  const perUserBudgetLimitUsd = parseNonNegativeNumberOrNull(payload?.perUserBudgetLimitUsd);
+  const perUserBudgetPeriod = normalizeBudgetPeriod(payload?.perUserBudgetPeriod || payload?.budgetPeriod || 'monthly') || 'monthly';
+  return {
+    perUserBudgetLimitUsd,
+    perUserBudgetPeriod,
   };
 }
 
@@ -494,11 +505,11 @@ function createAdminRouter() {
            budget_period,
            budget_mode,
            budget_warning_ratio,
-           budget_is_active,
-           created_by,
-           updated_by,
-           created_at,
-           updated_at
+            budget_is_active,
+            created_by,
+            updated_by,
+            created_at,
+            updated_at
          FROM system_provider_keys
          ORDER BY provider_kind ASC, name ASC`
       ),
@@ -514,6 +525,8 @@ function createAdminRouter() {
            budget_mode,
            budget_warning_ratio,
            budget_is_active,
+           per_user_budget_limit_usd,
+           per_user_budget_period,
            created_by,
            updated_by,
            created_at,
@@ -542,6 +555,8 @@ function createAdminRouter() {
         budgetMode: normalizeBudgetMode(row.budget_mode || 'hybrid'),
         budgetWarningRatio: Number(row.budget_warning_ratio || 0.9),
         budgetIsActive: Boolean(row.budget_is_active),
+        perUserBudgetLimitUsd: row.per_user_budget_limit_usd === null ? null : Number(row.per_user_budget_limit_usd),
+        perUserBudgetPeriod: normalizeBudgetPeriod(row.per_user_budget_period || row.budget_period || 'monthly') || 'monthly',
         usage: {
           totalRequests: usage.totalCount,
           spendUsd: usage.spendUsd,
@@ -754,6 +769,7 @@ function createAdminRouter() {
     const scopeValue = normalizeScopeValue(scopeType, req.body?.scopeValue || '');
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
     const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    const normalizedPerUserBudget = normalizeOptionalPerUserBudgetPayload(req.body || {});
     if (normalizedBudget.error) {
       return res.status(400).json({ error: normalizedBudget.error });
     }
@@ -774,8 +790,8 @@ function createAdminRouter() {
 
     await pool.query(
       `INSERT INTO system_key_assignments
-         (system_key_id, scope_type, scope_value, is_active, budget_limit_usd, budget_period, budget_mode, budget_warning_ratio, budget_is_active, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+         (system_key_id, scope_type, scope_value, is_active, budget_limit_usd, budget_period, budget_mode, budget_warning_ratio, budget_is_active, per_user_budget_limit_usd, per_user_budget_period, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
        ON CONFLICT (system_key_id, scope_type, scope_value)
        DO UPDATE SET
          is_active = EXCLUDED.is_active,
@@ -784,6 +800,8 @@ function createAdminRouter() {
          budget_mode = EXCLUDED.budget_mode,
          budget_warning_ratio = EXCLUDED.budget_warning_ratio,
          budget_is_active = EXCLUDED.budget_is_active,
+         per_user_budget_limit_usd = EXCLUDED.per_user_budget_limit_usd,
+         per_user_budget_period = EXCLUDED.per_user_budget_period,
          updated_by = EXCLUDED.updated_by,
          updated_at = NOW()`,
       [
@@ -796,6 +814,8 @@ function createAdminRouter() {
         normalizedBudget.budgetMode,
         normalizedBudget.budgetWarningRatio,
         normalizedBudget.budgetIsActive,
+        normalizedPerUserBudget.perUserBudgetLimitUsd,
+        normalizedPerUserBudget.perUserBudgetPeriod,
         req.userId,
       ]
     );
@@ -810,6 +830,7 @@ function createAdminRouter() {
     }
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
     const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    const normalizedPerUserBudget = normalizeOptionalPerUserBudgetPayload(req.body || {});
     if (normalizedBudget.error) {
       return res.status(400).json({ error: normalizedBudget.error });
     }
@@ -822,10 +843,12 @@ function createAdminRouter() {
            budget_mode = $4,
            budget_warning_ratio = $5,
            budget_is_active = $6,
-           updated_by = $7,
+           per_user_budget_limit_usd = $7,
+           per_user_budget_period = $8,
+           updated_by = $9,
            updated_at = NOW()
-       WHERE id = $8
-         AND system_key_id = $9
+       WHERE id = $10
+         AND system_key_id = $11
        RETURNING id`,
       [
         isActive,
@@ -834,6 +857,8 @@ function createAdminRouter() {
         normalizedBudget.budgetMode,
         normalizedBudget.budgetWarningRatio,
         normalizedBudget.budgetIsActive,
+        normalizedPerUserBudget.perUserBudgetLimitUsd,
+        normalizedPerUserBudget.perUserBudgetPeriod,
         req.userId,
         assignmentId,
         systemKeyId,
