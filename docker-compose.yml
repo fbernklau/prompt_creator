@@ -14,6 +14,7 @@ services:
       # Enforce authentication and teachers-group access.
       - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
       - OIDC_REQUIRED_GROUP=${OIDC_REQUIRED_GROUP:-teachers}
+      - AUTH_LOGOUT_URL=${AUTH_LOGOUT_URL:-}
       - KEY_ENCRYPTION_SECRET=${KEY_ENCRYPTION_SECRET:-insecure-dev-key-change-me}
       - PROVIDER_REQUEST_TIMEOUT_MS=${PROVIDER_REQUEST_TIMEOUT_MS:-45000}
       - GOOGLE_TEST_API_KEY=${GOOGLE_TEST_API_KEY:-}
