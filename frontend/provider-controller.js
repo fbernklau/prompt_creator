@@ -19,6 +19,7 @@ function createProviderController({
 }) {
   state.providerModelCatalog = state.providerModelCatalog || {};
   state.providerPricingCatalog = state.providerPricingCatalog || [];
+  state.assignedSystemKeys = state.assignedSystemKeys || [];
   state.settings = state.settings || {};
 
   function getProviderStage() {
@@ -85,6 +86,10 @@ function createProviderController({
   }
 
   function redactKeyState(provider) {
+    if (provider.systemKeyId) {
+      const assigned = (state.assignedSystemKeys || []).find((entry) => entry.systemKeyId === provider.systemKeyId);
+      return `system: ${assigned?.name || provider.systemKeyId}`;
+    }
     if (provider.hasServerKey) return 'server-verschlüsselt';
     if (provider.canUseSharedTestKey) return 'shared test key';
     return 'kein Key';
@@ -222,6 +227,56 @@ function createProviderController({
     syncPricingUi();
   }
 
+  function getSelectedKeySource() {
+    return el('provider-key-source').value === 'system' ? 'system' : 'provider';
+  }
+
+  function getMatchingSystemKeysForKind(kind) {
+    const normalizedKind = String(kind || '').trim().toLowerCase();
+    return (Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [])
+      .filter((entry) => String(entry.providerKind || '').trim().toLowerCase() === normalizedKind);
+  }
+
+  function syncSystemKeyUi({ preferredSystemKeyId = '' } = {}) {
+    const keySource = getSelectedKeySource();
+    const kind = el('provider-kind').value;
+    const wrap = el('provider-system-key-wrap');
+    const select = el('provider-system-key-id');
+    const keyInput = el('provider-key');
+    const matchingKeys = getMatchingSystemKeysForKind(kind);
+
+    select.innerHTML = matchingKeys.length
+      ? matchingKeys.map((entry) => `<option value="${entry.systemKeyId}">${entry.name} (${entry.systemKeyId})</option>`).join('')
+      : '<option value="">Keine zugewiesenen System-Keys</option>';
+
+    if (preferredSystemKeyId && matchingKeys.some((entry) => entry.systemKeyId === preferredSystemKeyId)) {
+      select.value = preferredSystemKeyId;
+    }
+
+    const isSystemSource = keySource === 'system';
+    wrap.classList.toggle('is-hidden', !isSystemSource);
+    select.required = isSystemSource;
+    keyInput.disabled = isSystemSource;
+
+    if (isSystemSource) {
+      keyInput.value = '';
+      keyInput.placeholder = 'Bei System-Key nicht erforderlich';
+    } else {
+      keyInput.disabled = false;
+      keyInput.placeholder = 'API-Key (wird serverseitig verschlüsselt)';
+    }
+  }
+
+  async function refreshAssignedSystemKeys({ preferredSystemKeyId = '' } = {}) {
+    try {
+      const payload = await api('/api/providers/assigned-system-keys');
+      state.assignedSystemKeys = Array.isArray(payload) ? payload : [];
+    } catch (_error) {
+      state.assignedSystemKeys = [];
+    }
+    syncSystemKeyUi({ preferredSystemKeyId });
+  }
+
   function getSelectedModel() {
     const modelValue = el('provider-model').value;
     if (modelValue === CUSTOM_MODEL_VALUE) return el('provider-model-custom').value.trim();
@@ -267,18 +322,23 @@ function createProviderController({
     el('provider-kind').addEventListener('change', () => {
       syncProviderModelUi();
       syncProviderBaseUi();
+      syncSystemKeyUi();
       syncPricingUi();
     });
     el('provider-model').addEventListener('change', syncModelCustomUi);
+    el('provider-key-source').addEventListener('change', () => syncSystemKeyUi());
     el('provider-auto-base').addEventListener('change', syncProviderBaseUi);
     el('provider-pricing-mode').addEventListener('change', syncPricingUi);
     el('provider-auto-base').checked = true;
-    refreshModelCatalog()
-      .catch(() => {})
-      .finally(() => {
-        syncProviderModelUi();
-      });
+    Promise.all([
+      refreshModelCatalog().catch(() => {}),
+      refreshAssignedSystemKeys().catch(() => {}),
+    ]).finally(() => {
+      syncProviderModelUi();
+      syncSystemKeyUi();
+    });
     syncProviderBaseUi();
+    syncSystemKeyUi();
     syncPricingUi();
     document.addEventListener('dashboard:provider-stage-change', () => {
       renderProviders();
@@ -296,6 +356,7 @@ function createProviderController({
     el('provider-key').placeholder = provider.hasServerKey
       ? 'Leer lassen = vorhandenen Key beibehalten'
       : 'API-Key für diesen Provider';
+    el('provider-key-source').value = provider.systemKeyId ? 'system' : 'provider';
     el('provider-base').value = provider.baseUrl || '';
     el('provider-pricing-mode').value = provider.pricingMode === 'custom' ? 'custom' : 'catalog';
     el('provider-pricing-input').value = provider.inputPricePerMillion ?? '';
@@ -305,6 +366,7 @@ function createProviderController({
       || (!provider.baseUrlMode && !!recommendedBaseUrl && provider.baseUrl === recommendedBaseUrl);
     el('provider-auto-base').checked = isPresetMode;
     syncProviderBaseUi();
+    syncSystemKeyUi({ preferredSystemKeyId: provider.systemKeyId || '' });
     syncPricingUi();
   }
 
@@ -312,11 +374,13 @@ function createProviderController({
     state.editProviderId = null;
     el('provider-form').reset();
     el('provider-key').placeholder = 'API-Key (wird serverseitig verschlüsselt)';
+    el('provider-key-source').value = 'provider';
     el('provider-auto-base').checked = true;
     el('provider-pricing-mode').value = 'catalog';
     el('provider-pricing-input').value = '';
     el('provider-pricing-output').value = '';
     syncProviderModelUi();
+    syncSystemKeyUi();
     syncProviderBaseUi();
     syncPricingUi();
   }
@@ -336,6 +400,9 @@ function createProviderController({
       pricingMode: getSelectedPricingMode(),
       inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
       outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
+      systemKeyId: getSelectedKeySource() === 'system'
+        ? String(el('provider-system-key-id').value || '').trim()
+        : '',
     };
     const apiKey = el('provider-key').value.trim();
     if (apiKey) payload.apiKey = apiKey;
@@ -444,6 +511,9 @@ function createProviderController({
       pricingMode: getSelectedPricingMode(),
       inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
       outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
+      systemKeyId: getSelectedKeySource() === 'system'
+        ? String(el('provider-system-key-id').value || '').trim()
+        : '',
     };
     if (keyInput) provider.apiKey = keyInput;
 
@@ -454,6 +524,7 @@ function createProviderController({
 
     state.providers = await api('/api/providers');
     await refreshModelCatalog();
+    await refreshAssignedSystemKeys();
     await syncStageAssignmentsWithProviderList({ persist: true });
     clearProviderForm();
     renderProviders();
@@ -480,6 +551,7 @@ function createProviderController({
       payload.model = draft.model;
       payload.baseUrl = draft.baseUrl;
     }
+    if (draft.systemKeyId) payload.systemKeyId = draft.systemKeyId;
     if (draft.apiKey) payload.apiKey = draft.apiKey;
 
     setVaultStatus('Teste Provider-Verbindung...', 'info');

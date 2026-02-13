@@ -643,6 +643,31 @@ button.cta {
   min-width: 54px;
 }
 
+.provider-list li.admin-assignment-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.8fr) repeat(3, minmax(120px, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.provider-list li.admin-assignment-row .span-col {
+  align-self: center;
+}
+
+.provider-list li.admin-assignment-row .inline-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 960px) {
+  .provider-list li.admin-assignment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-list li.admin-assignment-row .inline-actions {
+    justify-content: flex-start;
+  }
+}
+
 [data-save-pricing-row]:disabled {
   opacity: 0.65;
 }

@@ -266,11 +266,12 @@ function createDashboardController({
     const normalized = ['providers', 'usage', 'history', 'options'].includes(tabName) ? tabName : 'providers';
     state.dashboard.activeTab = normalized;
     renderDashboardTabs();
-    if (normalized === 'usage' && refreshUsage) {
-      await refreshSummary();
+    if (normalized === 'providers') {
       await refreshOwnBudgets();
+    } else if (normalized === 'usage' && refreshUsage) {
+      await refreshSummary();
     } else if (normalized === 'usage') {
-      renderOwnBudgetPolicies();
+      renderSummary();
     }
     if (normalized === 'history') {
       await refreshHistory();

@@ -563,6 +563,63 @@
             </div>
             <div id="dashboard-provider-host" class="top-space"></div>
           </div>
+
+          <div id="usage-budget-panel" class="panel top-space is-hidden">
+            <h3>Eigene Budget-Policies</h3>
+            <small class="hint">Persönliche Limits für User oder Key (daily/weekly/monthly).</small>
+            <div class="grid-3 top-space">
+              <label>Scope
+                <select id="usage-budget-scope-type">
+                  <option value="user">user</option>
+                  <option value="key">key</option>
+                </select>
+              </label>
+              <label>Scope-Wert
+                <input id="usage-budget-scope-value" placeholder="bei user leer lassen; bei key: sha256:..." />
+              </label>
+              <label>Periode
+                <select id="usage-budget-period">
+                  <option value="daily">daily</option>
+                  <option value="weekly">weekly</option>
+                  <option value="monthly" selected>monthly</option>
+                </select>
+              </label>
+              <label>Limit USD
+                <input id="usage-budget-limit-usd" type="number" min="0" step="0.000001" />
+              </label>
+              <label>Modus
+                <select id="usage-budget-mode">
+                  <option value="hybrid" selected>hybrid</option>
+                  <option value="soft">soft</option>
+                  <option value="hard">hard</option>
+                </select>
+              </label>
+              <label>Warnschwelle (0.1-1.0)
+                <input id="usage-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
+              </label>
+              <label>Aktiv
+                <select id="usage-budget-active">
+                  <option value="true" selected>Ja</option>
+                  <option value="false">Nein</option>
+                </select>
+              </label>
+            </div>
+            <div class="inline-actions top-space">
+              <button id="usage-budget-save" type="button">Budget speichern</button>
+              <button id="usage-budget-clear" type="button" class="secondary">Form leeren</button>
+              <small id="usage-budget-status" class="hint"></small>
+            </div>
+            <div class="grid-2 top-space">
+              <div>
+                <h4>Eigene Policies</h4>
+                <ul id="usage-budget-own-list" class="provider-list top-space"></ul>
+              </div>
+              <div>
+                <h4>Effektiv aktiv</h4>
+                <ul id="usage-budget-effective-list" class="provider-list top-space"></ul>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="dashboard-tab-usage" class="dashboard-tab-panel top-space is-hidden">
@@ -649,62 +706,6 @@
             <ul id="usage-template-list" class="provider-list top-space"></ul>
           </div>
 
-          <div id="usage-budget-panel" class="panel top-space is-hidden">
-            <h3>Eigene Budget-Policies</h3>
-            <small class="hint">Persönliche Limits für User oder Key (daily/weekly/monthly).</small>
-            <div class="grid-3 top-space">
-              <label>Scope
-                <select id="usage-budget-scope-type">
-                  <option value="user">user</option>
-                  <option value="key">key</option>
-                </select>
-              </label>
-              <label>Scope-Wert
-                <input id="usage-budget-scope-value" placeholder="bei user leer lassen; bei key: sha256:..." />
-              </label>
-              <label>Periode
-                <select id="usage-budget-period">
-                  <option value="daily">daily</option>
-                  <option value="weekly">weekly</option>
-                  <option value="monthly" selected>monthly</option>
-                </select>
-              </label>
-              <label>Limit USD
-                <input id="usage-budget-limit-usd" type="number" min="0" step="0.000001" />
-              </label>
-              <label>Modus
-                <select id="usage-budget-mode">
-                  <option value="hybrid" selected>hybrid</option>
-                  <option value="soft">soft</option>
-                  <option value="hard">hard</option>
-                </select>
-              </label>
-              <label>Warnschwelle (0.1-1.0)
-                <input id="usage-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
-              </label>
-              <label>Aktiv
-                <select id="usage-budget-active">
-                  <option value="true" selected>Ja</option>
-                  <option value="false">Nein</option>
-                </select>
-              </label>
-            </div>
-            <div class="inline-actions top-space">
-              <button id="usage-budget-save" type="button">Budget speichern</button>
-              <button id="usage-budget-clear" type="button" class="secondary">Form leeren</button>
-              <small id="usage-budget-status" class="hint"></small>
-            </div>
-            <div class="grid-2 top-space">
-              <div>
-                <h4>Eigene Policies</h4>
-                <ul id="usage-budget-own-list" class="provider-list top-space"></ul>
-              </div>
-              <div>
-                <h4>Effektiv aktiv</h4>
-                <ul id="usage-budget-effective-list" class="provider-list top-space"></ul>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div id="dashboard-tab-history" class="dashboard-tab-panel top-space is-hidden">
@@ -990,6 +991,7 @@
           <button type="button" class="secondary is-active" data-admin-tab="roles">Rollen &amp; Berechtigungen</button>
           <button type="button" class="secondary" data-admin-tab="groups">Authentik Zuordnung</button>
           <button type="button" class="secondary" data-admin-tab="models">Model Administration</button>
+          <button type="button" class="secondary" data-admin-tab="keys">API-Key Management</button>
         </div>
 
         <div id="admin-tab-roles" class="admin-tab-panel top-space">
@@ -1117,12 +1119,15 @@
             </div>
             <div id="admin-model-provider-groups" class="top-space"></div>
           </div>
+        </div>
 
+        <div id="admin-tab-keys" class="admin-tab-panel top-space is-hidden">
           <div id="admin-system-keys-panel" class="panel top-space">
             <div class="panel-title-row">
               <h3>Systemweite API-Keys</h3>
               <small class="hint">Aktive Schlüssel können Usern, Rollen oder Gruppen zugewiesen werden.</small>
             </div>
+            <div id="admin-system-key-list" class="top-space"></div>
             <div class="grid-3 top-space">
               <label>System Key ID
                 <input id="admin-system-key-id" placeholder="optional, z. B. pc_google_main" />
@@ -1171,7 +1176,6 @@
               <button id="admin-system-key-clear" type="button" class="secondary">Form leeren</button>
               <small id="admin-system-key-status" class="hint"></small>
             </div>
-            <div id="admin-system-key-list" class="top-space"></div>
           </div>
 
           <div id="admin-budget-panel" class="panel top-space">
@@ -1276,6 +1280,15 @@
             </label>
             <label>API-Key
               <input id="provider-key" type="password" placeholder="leer lassen = vorhandenen Key behalten" />
+            </label>
+            <label>Key-Quelle
+              <select id="provider-key-source">
+                <option value="provider" selected>Eigener API-Key</option>
+                <option value="system">Zugewiesener System-Key</option>
+              </select>
+            </label>
+            <label id="provider-system-key-wrap" class="is-hidden">System-Key
+              <select id="provider-system-key-id"></select>
             </label>
             <label id="provider-model-custom-wrap" class="span-2 is-hidden">Custom Modell
               <input id="provider-model-custom" placeholder="z. B. mein-spezialmodell-v1" />

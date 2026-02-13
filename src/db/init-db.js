@@ -376,6 +376,7 @@ async function initDb() {
       input_price_per_million NUMERIC(14,8),
       output_price_per_million NUMERIC(14,8),
       key_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+      system_key_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(user_id, provider_id)
@@ -436,6 +437,10 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE providers
     ALTER COLUMN key_meta SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE providers
+    ADD COLUMN IF NOT EXISTS system_key_id TEXT
   `);
 
   await pool.query(`
@@ -672,6 +677,7 @@ async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
       user_groups_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      user_roles_json JSONB NOT NULL DEFAULT '[]'::jsonb,
       provider_id TEXT NOT NULL,
       provider_kind TEXT NOT NULL,
       provider_model TEXT,
@@ -701,6 +707,10 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE provider_generation_events
     ADD COLUMN IF NOT EXISTS user_groups_json JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
+  await pool.query(`
+    ALTER TABLE provider_generation_events
+    ADD COLUMN IF NOT EXISTS user_roles_json JSONB NOT NULL DEFAULT '[]'::jsonb
   `);
   await pool.query(`
     ALTER TABLE provider_generation_events
@@ -771,6 +781,11 @@ async function initDb() {
       base_url TEXT,
       key_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      budget_limit_usd NUMERIC(14,8),
+      budget_period TEXT NOT NULL DEFAULT 'monthly' CHECK (budget_period IN ('daily', 'weekly', 'monthly')),
+      budget_mode TEXT NOT NULL DEFAULT 'hybrid' CHECK (budget_mode IN ('soft', 'hard', 'hybrid')),
+      budget_warning_ratio NUMERIC(5,4) NOT NULL DEFAULT 0.9000 CHECK (budget_warning_ratio >= 0.1000 AND budget_warning_ratio <= 1.0000),
+      budget_is_active BOOLEAN NOT NULL DEFAULT FALSE,
       created_by TEXT NOT NULL,
       updated_by TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -784,10 +799,215 @@ async function initDb() {
       system_key_id TEXT NOT NULL REFERENCES system_provider_keys(system_key_id) ON DELETE CASCADE,
       scope_type TEXT NOT NULL CHECK (scope_type IN ('user', 'role', 'group')),
       scope_value TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      budget_limit_usd NUMERIC(14,8),
+      budget_period TEXT NOT NULL DEFAULT 'monthly' CHECK (budget_period IN ('daily', 'weekly', 'monthly')),
+      budget_mode TEXT NOT NULL DEFAULT 'hybrid' CHECK (budget_mode IN ('soft', 'hard', 'hybrid')),
+      budget_warning_ratio NUMERIC(5,4) NOT NULL DEFAULT 0.9000 CHECK (budget_warning_ratio >= 0.1000 AND budget_warning_ratio <= 1.0000),
+      budget_is_active BOOLEAN NOT NULL DEFAULT FALSE,
       created_by TEXT NOT NULL,
+      updated_by TEXT NOT NULL DEFAULT 'system',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(system_key_id, scope_type, scope_value)
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ADD COLUMN IF NOT EXISTS budget_limit_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ADD COLUMN IF NOT EXISTS budget_period TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ADD COLUMN IF NOT EXISTS budget_mode TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ADD COLUMN IF NOT EXISTS budget_warning_ratio NUMERIC(5,4)
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ADD COLUMN IF NOT EXISTS budget_is_active BOOLEAN
+  `);
+  await pool.query(`
+    UPDATE system_provider_keys
+    SET budget_period = 'monthly'
+    WHERE budget_period IS NULL OR budget_period NOT IN ('daily', 'weekly', 'monthly')
+  `);
+  await pool.query(`
+    UPDATE system_provider_keys
+    SET budget_mode = 'hybrid'
+    WHERE budget_mode IS NULL OR budget_mode NOT IN ('soft', 'hard', 'hybrid')
+  `);
+  await pool.query(`
+    UPDATE system_provider_keys
+    SET budget_warning_ratio = 0.9000
+    WHERE budget_warning_ratio IS NULL OR budget_warning_ratio < 0.1000 OR budget_warning_ratio > 1.0000
+  `);
+  await pool.query(`
+    UPDATE system_provider_keys
+    SET budget_is_active = FALSE
+    WHERE budget_is_active IS NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_period SET DEFAULT 'monthly'
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_mode SET DEFAULT 'hybrid'
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_warning_ratio SET DEFAULT 0.9000
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_is_active SET DEFAULT FALSE
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_period SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_mode SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_warning_ratio SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_provider_keys
+    ALTER COLUMN budget_is_active SET NOT NULL
+  `);
+
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS budget_limit_usd NUMERIC(14,8)
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS budget_period TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS budget_mode TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS budget_warning_ratio NUMERIC(5,4)
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS budget_is_active BOOLEAN
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS updated_by TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET is_active = TRUE
+    WHERE is_active IS NULL
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET budget_period = 'monthly'
+    WHERE budget_period IS NULL OR budget_period NOT IN ('daily', 'weekly', 'monthly')
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET budget_mode = 'hybrid'
+    WHERE budget_mode IS NULL OR budget_mode NOT IN ('soft', 'hard', 'hybrid')
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET budget_warning_ratio = 0.9000
+    WHERE budget_warning_ratio IS NULL OR budget_warning_ratio < 0.1000 OR budget_warning_ratio > 1.0000
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET budget_is_active = FALSE
+    WHERE budget_is_active IS NULL
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET updated_by = created_by
+    WHERE updated_by IS NULL
+  `);
+  await pool.query(`
+    UPDATE system_key_assignments
+    SET updated_at = created_at
+    WHERE updated_at IS NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN is_active SET DEFAULT TRUE
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_period SET DEFAULT 'monthly'
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_mode SET DEFAULT 'hybrid'
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_warning_ratio SET DEFAULT 0.9000
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_is_active SET DEFAULT FALSE
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN updated_by SET DEFAULT 'system'
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN updated_at SET DEFAULT NOW()
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN is_active SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_period SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_mode SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_warning_ratio SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN budget_is_active SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN updated_by SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE system_key_assignments
+    ALTER COLUMN updated_at SET NOT NULL
   `);
 
   await pool.query(`
@@ -969,6 +1189,7 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_groups ON provider_generation_events USING GIN (user_groups_json)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_roles ON provider_generation_events USING GIN (user_roles_json)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_provider ON provider_generation_events(provider_kind, success, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_model ON provider_generation_events(provider_kind, provider_model, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_keyfp ON provider_generation_events(user_id, key_fingerprint, created_at DESC)');
@@ -977,6 +1198,7 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_model_pricing_catalog_lookup ON provider_model_pricing_catalog(provider_kind, is_active, model)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_system_provider_keys_kind ON system_provider_keys(provider_kind, is_active, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_system_key_assignments_scope ON system_key_assignments(scope_type, LOWER(scope_value))');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_system_key_assignments_active ON system_key_assignments(system_key_id, is_active, scope_type, LOWER(scope_value))');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_budget_policies_scope ON budget_policies(scope_type, LOWER(scope_value), period, is_active)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_budget_events_user ON budget_events(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_template_favorites_user ON template_favorites(user_id, created_at DESC)');

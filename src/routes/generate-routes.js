@@ -674,7 +674,7 @@ ${original}`;
 
 async function getProviderForUser(req, providerId) {
   const providerResult = await pool.query(
-    `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta
+    `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta, system_key_id
      FROM providers
      WHERE user_id = $1 AND provider_id = $2`,
     [req.userId, providerId]
@@ -698,7 +698,9 @@ async function findAssignedSystemKey(req, provider) {
      FROM system_provider_keys sk
      JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
      WHERE sk.is_active = TRUE
+       AND a.is_active = TRUE
        AND sk.provider_kind = $1
+       AND ($6 = '' OR sk.system_key_id = $6)
        AND (
          (a.scope_type = 'user' AND LOWER(a.scope_value) = LOWER($2))
          OR (a.scope_type = 'group' AND (array_length($3::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($3::text[]))
@@ -717,7 +719,7 @@ async function findAssignedSystemKey(req, provider) {
        END,
        sk.updated_at DESC
      LIMIT 1`,
-    [provider.kind, req.userId, groups, roles, provider.model]
+    [provider.kind, req.userId, groups, roles, provider.model, String(provider.system_key_id || '').trim()]
   );
   return result.rows[0] || null;
 }
@@ -824,6 +826,7 @@ async function resolveGenerationContext(req, payload = {}) {
 async function logGenerationEvent({
   userId,
   userGroups = [],
+  userRoles = [],
   provider,
   templateId,
   success,
@@ -837,16 +840,18 @@ async function logGenerationEvent({
 }) {
   const usageSafe = usage || {};
   const costSafe = costSummary || {};
-  const normalizedGroups = uniqueList((userGroups || []).map((entry) => String(entry || '').trim()).filter(Boolean));
+  const normalizedGroups = uniqueList((userGroups || []).map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean));
+  const normalizedRoles = uniqueList((userRoles || []).map((entry) => String(entry || '').trim().toLowerCase()).filter(Boolean));
   const safeTemplateId = String(templateId || 'unknown');
 
   await pool.query(
     `INSERT INTO provider_generation_events
-       (user_id, user_groups_json, provider_id, provider_kind, provider_model, key_fingerprint, effective_key_type, effective_key_id, template_id, success, latency_ms, prompt_tokens, completion_tokens, total_tokens, input_cost_usd, output_cost_usd, total_cost_usd, pricing_source, pricing_input_per_million, pricing_output_per_million, error_type)
-     VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+       (user_id, user_groups_json, user_roles_json, provider_id, provider_kind, provider_model, key_fingerprint, effective_key_type, effective_key_id, template_id, success, latency_ms, prompt_tokens, completion_tokens, total_tokens, input_cost_usd, output_cost_usd, total_cost_usd, pricing_source, pricing_input_per_million, pricing_output_per_million, error_type)
+     VALUES ($1,$2::jsonb,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
     [
       userId,
       JSON.stringify(normalizedGroups),
+      JSON.stringify(normalizedRoles),
       provider.provider_id,
       provider.kind,
       provider.model,
@@ -871,24 +876,38 @@ async function logGenerationEvent({
 }
 
 async function resolveProviderCredential(req, provider) {
-  let apiKey = getStoredApiKey(provider);
+  const selectedSystemKeyId = String(provider.system_key_id || '').trim();
+  let apiKey = null;
   let keySource = 'provider';
   let effectiveKeyType = 'user';
   let effectiveKeyId = provider.provider_id;
   let systemKey = null;
-  if (!apiKey && provider.kind === 'google' && isSharedGoogleAllowed(req)) {
-    apiKey = config.googleTestApiKey;
-    keySource = 'shared_google_test';
-    effectiveKeyType = 'shared_test';
-    effectiveKeyId = 'google_test_shared';
-  }
-  if (!apiKey) {
+
+  if (selectedSystemKeyId) {
     systemKey = await findAssignedSystemKey(req, provider);
-    if (systemKey && hasServerEncryptedKey(systemKey.key_meta)) {
-      apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);
-      keySource = `system:${systemKey.system_key_id}`;
-      effectiveKeyType = 'system';
-      effectiveKeyId = systemKey.system_key_id;
+    if (!systemKey || !hasServerEncryptedKey(systemKey.key_meta)) {
+      throw httpError(400, 'Der zugewiesene System-Key ist nicht aktiv oder nicht mehr verfuegbar.');
+    }
+    apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);
+    keySource = `system:${systemKey.system_key_id}`;
+    effectiveKeyType = 'system';
+    effectiveKeyId = systemKey.system_key_id;
+  } else {
+    apiKey = getStoredApiKey(provider);
+    if (!apiKey && provider.kind === 'google' && isSharedGoogleAllowed(req)) {
+      apiKey = config.googleTestApiKey;
+      keySource = 'shared_google_test';
+      effectiveKeyType = 'shared_test';
+      effectiveKeyId = 'google_test_shared';
+    }
+    if (!apiKey) {
+      systemKey = await findAssignedSystemKey(req, provider);
+      if (systemKey && hasServerEncryptedKey(systemKey.key_meta)) {
+        apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);
+        keySource = `system:${systemKey.system_key_id}`;
+        effectiveKeyType = 'system';
+        effectiveKeyId = systemKey.system_key_id;
+      }
     }
   }
   if (!apiKey) {
@@ -1143,6 +1162,7 @@ function createGenerateRouter() {
       await logGenerationEvent({
         userId: req.userId,
         userGroups: req.userGroups || [],
+        userRoles: req.access?.roles || [],
         provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
@@ -1158,6 +1178,7 @@ function createGenerateRouter() {
         await logGenerationEvent({
           userId: req.userId,
           userGroups: req.userGroups || [],
+          userRoles: req.access?.roles || [],
           provider: resultProvider,
           templateId: context.resolvedTemplate.templateUid,
           success: true,
@@ -1267,6 +1288,7 @@ function createGenerateRouter() {
         await logGenerationEvent({
           userId: req.userId,
           userGroups: req.userGroups || [],
+          userRoles: req.access?.roles || [],
           provider: metapromptProvider,
           templateId: context?.resolvedTemplate?.templateUid || templateId || null,
           success: false,
@@ -1282,6 +1304,7 @@ function createGenerateRouter() {
           await logGenerationEvent({
             userId: req.userId,
             userGroups: req.userGroups || [],
+            userRoles: req.access?.roles || [],
             provider: resultProvider,
             templateId: context?.resolvedTemplate?.templateUid || templateId || null,
             success: false,
@@ -1549,6 +1572,7 @@ function createGenerateRouter() {
       await logGenerationEvent({
         userId: req.userId,
         userGroups: req.userGroups || [],
+        userRoles: req.access?.roles || [],
         provider: metapromptProvider,
         templateId: context.resolvedTemplate.templateUid,
         success: true,
@@ -1564,6 +1588,7 @@ function createGenerateRouter() {
         await logGenerationEvent({
           userId: req.userId,
           userGroups: req.userGroups || [],
+          userRoles: req.access?.roles || [],
           provider: resultProvider,
           templateId: context.resolvedTemplate.templateUid,
           success: true,
@@ -1680,6 +1705,7 @@ function createGenerateRouter() {
           await logGenerationEvent({
             userId: req.userId,
             userGroups: req.userGroups || [],
+            userRoles: req.access?.roles || [],
             provider: metapromptProvider,
             templateId: context.resolvedTemplate.templateUid,
             success: false,
@@ -1695,6 +1721,7 @@ function createGenerateRouter() {
             await logGenerationEvent({
               userId: req.userId,
               userGroups: req.userGroups || [],
+              userRoles: req.access?.roles || [],
               provider: resultProvider,
               templateId: context.resolvedTemplate.templateUid,
               success: false,

@@ -81,6 +81,102 @@ function normalizeSystemKeyId(value = '') {
   return `sys_${crypto.randomUUID().slice(0, 12)}`;
 }
 
+function periodToIntervalLiteral(period = '') {
+  if (period === 'daily') return '1 day';
+  if (period === 'weekly') return '7 days';
+  return '30 days';
+}
+
+function normalizeOptionalBudgetPayload(payload = {}) {
+  const budgetLimitUsd = parseNonNegativeNumberOrNull(payload?.budgetLimitUsd);
+  const budgetPeriod = normalizeBudgetPeriod(payload?.budgetPeriod || 'monthly') || 'monthly';
+  const budgetMode = normalizeBudgetMode(payload?.budgetMode || 'hybrid');
+  const budgetWarningRatio = parseWarningRatio(payload?.budgetWarningRatio);
+  const budgetIsActive = payload?.budgetIsActive === undefined ? false : Boolean(payload.budgetIsActive);
+  if (budgetIsActive && budgetLimitUsd === null) {
+    return { error: 'Budget-Limit ist erforderlich, wenn Budget aktiv ist.' };
+  }
+  return {
+    budgetLimitUsd,
+    budgetPeriod,
+    budgetMode,
+    budgetWarningRatio,
+    budgetIsActive,
+  };
+}
+
+async function resolveSystemKeyUsage(systemKeyId, period = 'monthly') {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total_count,
+       COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND effective_key_id = $1
+       AND created_at >= NOW() - ($2::interval)`,
+    [systemKeyId, periodToIntervalLiteral(period)]
+  );
+  return {
+    totalCount: Number(result.rows[0]?.total_count || 0),
+    spendUsd: Number(result.rows[0]?.spend_usd || 0),
+  };
+}
+
+async function resolveAssignmentUsage({ systemKeyId, scopeType, scopeValue, period = 'monthly' }) {
+  const intervalLiteral = periodToIntervalLiteral(period);
+  if (scopeType === 'user') {
+    const result = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total_count,
+         COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE effective_key_type = 'system'
+         AND effective_key_id = $1
+         AND LOWER(user_id) = LOWER($2)
+         AND created_at >= NOW() - ($3::interval)`,
+      [systemKeyId, scopeValue, intervalLiteral]
+    );
+    return {
+      totalCount: Number(result.rows[0]?.total_count || 0),
+      spendUsd: Number(result.rows[0]?.spend_usd || 0),
+    };
+  }
+
+  if (scopeType === 'group') {
+    const result = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total_count,
+         COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+       FROM provider_generation_events
+       WHERE effective_key_type = 'system'
+         AND effective_key_id = $1
+         AND user_groups_json ? $2
+         AND created_at >= NOW() - ($3::interval)`,
+      [systemKeyId, String(scopeValue || '').toLowerCase(), intervalLiteral]
+    );
+    return {
+      totalCount: Number(result.rows[0]?.total_count || 0),
+      spendUsd: Number(result.rows[0]?.spend_usd || 0),
+    };
+  }
+
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total_count,
+       COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND effective_key_id = $1
+       AND user_roles_json ? $2
+       AND created_at >= NOW() - ($3::interval)`,
+    [systemKeyId, String(scopeValue || '').toLowerCase(), intervalLiteral]
+  );
+  return {
+    totalCount: Number(result.rows[0]?.total_count || 0),
+    spendUsd: Number(result.rows[0]?.spend_usd || 0),
+  };
+}
+
 function createAdminRouter() {
   const router = Router();
   const guard = [authMiddleware, accessMiddleware, requirePermission('rbac.manage')];
@@ -360,45 +456,115 @@ function createAdminRouter() {
   router.get('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (_req, res) => {
     const [keysResult, assignmentsResult] = await Promise.all([
       pool.query(
-        `SELECT id, system_key_id, name, provider_kind, model_hint, base_url, key_meta, is_active, created_by, updated_by, created_at, updated_at
+        `SELECT
+           id,
+           system_key_id,
+           name,
+           provider_kind,
+           model_hint,
+           base_url,
+           key_meta,
+           is_active,
+           budget_limit_usd,
+           budget_period,
+           budget_mode,
+           budget_warning_ratio,
+           budget_is_active,
+           created_by,
+           updated_by,
+           created_at,
+           updated_at
          FROM system_provider_keys
          ORDER BY provider_kind ASC, name ASC`
       ),
       pool.query(
-        `SELECT id, system_key_id, scope_type, scope_value, created_by, created_at
+        `SELECT
+           id,
+           system_key_id,
+           scope_type,
+           scope_value,
+           is_active,
+           budget_limit_usd,
+           budget_period,
+           budget_mode,
+           budget_warning_ratio,
+           budget_is_active,
+           created_by,
+           updated_by,
+           created_at,
+           updated_at
          FROM system_key_assignments
          ORDER BY system_key_id ASC, scope_type ASC, scope_value ASC`
       ),
     ]);
 
-    const byKey = new Map();
-    assignmentsResult.rows.forEach((row) => {
-      const keyId = String(row.system_key_id || '');
-      if (!byKey.has(keyId)) byKey.set(keyId, []);
-      byKey.get(keyId).push({
-        id: Number(row.id),
+    const assignmentRows = await Promise.all(assignmentsResult.rows.map(async (row) => {
+      const period = normalizeBudgetPeriod(row.budget_period || 'monthly') || 'monthly';
+      const usage = await resolveAssignmentUsage({
+        systemKeyId: row.system_key_id,
         scopeType: row.scope_type,
         scopeValue: row.scope_value,
-        createdBy: row.created_by,
-        createdAt: row.created_at,
+        period,
       });
+      return {
+        id: Number(row.id),
+        systemKeyId: row.system_key_id,
+        scopeType: row.scope_type,
+        scopeValue: row.scope_value,
+        isActive: Boolean(row.is_active),
+        budgetLimitUsd: row.budget_limit_usd === null ? null : Number(row.budget_limit_usd),
+        budgetPeriod: period,
+        budgetMode: normalizeBudgetMode(row.budget_mode || 'hybrid'),
+        budgetWarningRatio: Number(row.budget_warning_ratio || 0.9),
+        budgetIsActive: Boolean(row.budget_is_active),
+        usage: {
+          totalRequests: usage.totalCount,
+          spendUsd: usage.spendUsd,
+        },
+        createdBy: row.created_by,
+        updatedBy: row.updated_by || row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at || row.created_at,
+      };
+    }));
+
+    const assignmentsByKey = new Map();
+    assignmentRows.forEach((assignment) => {
+      const keyId = String(assignment.systemKeyId || '');
+      if (!assignmentsByKey.has(keyId)) assignmentsByKey.set(keyId, []);
+      assignmentsByKey.get(keyId).push(assignment);
     });
 
-    res.json(keysResult.rows.map((row) => ({
-      id: Number(row.id),
-      systemKeyId: row.system_key_id,
-      name: row.name,
-      providerKind: row.provider_kind,
-      modelHint: row.model_hint || '',
-      baseUrl: row.base_url || '',
-      hasServerKey: hasServerEncryptedKey(row.key_meta),
-      isActive: Boolean(row.is_active),
-      createdBy: row.created_by,
-      updatedBy: row.updated_by,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      assignments: byKey.get(String(row.system_key_id || '')) || [],
-    })));
+    const payload = await Promise.all(keysResult.rows.map(async (row) => {
+      const period = normalizeBudgetPeriod(row.budget_period || 'monthly') || 'monthly';
+      const usage = await resolveSystemKeyUsage(row.system_key_id, period);
+      return {
+        id: Number(row.id),
+        systemKeyId: row.system_key_id,
+        name: row.name,
+        providerKind: row.provider_kind,
+        modelHint: row.model_hint || '',
+        baseUrl: row.base_url || '',
+        hasServerKey: hasServerEncryptedKey(row.key_meta),
+        isActive: Boolean(row.is_active),
+        budgetLimitUsd: row.budget_limit_usd === null ? null : Number(row.budget_limit_usd),
+        budgetPeriod: period,
+        budgetMode: normalizeBudgetMode(row.budget_mode || 'hybrid'),
+        budgetWarningRatio: Number(row.budget_warning_ratio || 0.9),
+        budgetIsActive: Boolean(row.budget_is_active),
+        usage: {
+          totalRequests: usage.totalCount,
+          spendUsd: usage.spendUsd,
+        },
+        createdBy: row.created_by,
+        updatedBy: row.updated_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        assignments: assignmentsByKey.get(String(row.system_key_id || '')) || [],
+      };
+    }));
+
+    res.json(payload);
   }));
 
   router.post('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (req, res) => {
@@ -408,6 +574,10 @@ function createAdminRouter() {
     const baseUrl = String(req.body?.baseUrl || '').trim();
     const apiKey = String(req.body?.apiKey || '').trim();
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    if (normalizedBudget.error) {
+      return res.status(400).json({ error: normalizedBudget.error });
+    }
     const systemKeyId = normalizeSystemKeyId(req.body?.systemKeyId || '');
     if (!name || !providerKind) {
       return res.status(400).json({ error: 'name and providerKind are required.' });
@@ -419,8 +589,8 @@ function createAdminRouter() {
     const encryptedKey = encryptApiKey(apiKey, config.keyEncryptionSecret);
     const result = await pool.query(
       `INSERT INTO system_provider_keys
-         (system_key_id, name, provider_kind, model_hint, base_url, key_meta, is_active, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$8)
+         (system_key_id, name, provider_kind, model_hint, base_url, key_meta, is_active, budget_limit_usd, budget_period, budget_mode, budget_warning_ratio, budget_is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$13)
        ON CONFLICT (system_key_id)
        DO UPDATE SET
          name = EXCLUDED.name,
@@ -429,6 +599,11 @@ function createAdminRouter() {
          base_url = EXCLUDED.base_url,
          key_meta = EXCLUDED.key_meta,
          is_active = EXCLUDED.is_active,
+         budget_limit_usd = EXCLUDED.budget_limit_usd,
+         budget_period = EXCLUDED.budget_period,
+         budget_mode = EXCLUDED.budget_mode,
+         budget_warning_ratio = EXCLUDED.budget_warning_ratio,
+         budget_is_active = EXCLUDED.budget_is_active,
          updated_by = EXCLUDED.updated_by,
          updated_at = NOW()
        RETURNING id, system_key_id`,
@@ -440,6 +615,11 @@ function createAdminRouter() {
         baseUrl || null,
         JSON.stringify(encryptedKey),
         isActive,
+        normalizedBudget.budgetLimitUsd,
+        normalizedBudget.budgetPeriod,
+        normalizedBudget.budgetMode,
+        normalizedBudget.budgetWarningRatio,
+        normalizedBudget.budgetIsActive,
         req.userId,
       ]
     );
@@ -470,6 +650,10 @@ function createAdminRouter() {
     const modelHint = String(req.body?.modelHint || '').trim();
     const baseUrl = String(req.body?.baseUrl || '').trim();
     const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    if (normalizedBudget.error) {
+      return res.status(400).json({ error: normalizedBudget.error });
+    }
     if (!name || !providerKind) {
       return res.status(400).json({ error: 'name and providerKind are required.' });
     }
@@ -482,10 +666,29 @@ function createAdminRouter() {
            base_url = $4,
            key_meta = $5::jsonb,
            is_active = $6,
-           updated_by = $7,
+           budget_limit_usd = $7,
+           budget_period = $8,
+           budget_mode = $9,
+           budget_warning_ratio = $10,
+           budget_is_active = $11,
+           updated_by = $12,
            updated_at = NOW()
-       WHERE system_key_id = $8`,
-      [name, providerKind, modelHint || null, baseUrl || null, JSON.stringify(keyMeta), isActive, req.userId, systemKeyId]
+       WHERE system_key_id = $13`,
+      [
+        name,
+        providerKind,
+        modelHint || null,
+        baseUrl || null,
+        JSON.stringify(keyMeta),
+        isActive,
+        normalizedBudget.budgetLimitUsd,
+        normalizedBudget.budgetPeriod,
+        normalizedBudget.budgetMode,
+        normalizedBudget.budgetWarningRatio,
+        normalizedBudget.budgetIsActive,
+        req.userId,
+        systemKeyId,
+      ]
     );
     res.json({ ok: true });
   }));
@@ -510,6 +713,11 @@ function createAdminRouter() {
     const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
     const scopeType = normalizeSystemScopeType(req.body?.scopeType || '');
     const scopeValue = normalizeScopeValue(scopeType, req.body?.scopeValue || '');
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    if (normalizedBudget.error) {
+      return res.status(400).json({ error: normalizedBudget.error });
+    }
     if (!systemKeyId || !scopeType || !scopeValue) {
       return res.status(400).json({ error: 'systemKeyId, scopeType and scopeValue are required.' });
     }
@@ -523,11 +731,75 @@ function createAdminRouter() {
     if (!keyExists.rowCount) return res.status(404).json({ error: 'System key not found.' });
 
     await pool.query(
-      `INSERT INTO system_key_assignments (system_key_id, scope_type, scope_value, created_by)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (system_key_id, scope_type, scope_value) DO NOTHING`,
-      [systemKeyId, scopeType, scopeValue, req.userId]
+      `INSERT INTO system_key_assignments
+         (system_key_id, scope_type, scope_value, is_active, budget_limit_usd, budget_period, budget_mode, budget_warning_ratio, budget_is_active, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+       ON CONFLICT (system_key_id, scope_type, scope_value)
+       DO UPDATE SET
+         is_active = EXCLUDED.is_active,
+         budget_limit_usd = EXCLUDED.budget_limit_usd,
+         budget_period = EXCLUDED.budget_period,
+         budget_mode = EXCLUDED.budget_mode,
+         budget_warning_ratio = EXCLUDED.budget_warning_ratio,
+         budget_is_active = EXCLUDED.budget_is_active,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()`,
+      [
+        systemKeyId,
+        scopeType,
+        scopeValue,
+        isActive,
+        normalizedBudget.budgetLimitUsd,
+        normalizedBudget.budgetPeriod,
+        normalizedBudget.budgetMode,
+        normalizedBudget.budgetWarningRatio,
+        normalizedBudget.budgetIsActive,
+        req.userId,
+      ]
     );
+    res.json({ ok: true });
+  }));
+
+  router.put('/admin/system-provider-keys/:systemKeyId/assignments/:assignmentId', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
+    const assignmentId = Number(req.params.assignmentId);
+    if (!systemKeyId || !Number.isInteger(assignmentId)) {
+      return res.status(400).json({ error: 'Invalid assignment reference.' });
+    }
+    const isActive = req.body?.isActive === undefined ? true : Boolean(req.body.isActive);
+    const normalizedBudget = normalizeOptionalBudgetPayload(req.body || {});
+    if (normalizedBudget.error) {
+      return res.status(400).json({ error: normalizedBudget.error });
+    }
+
+    const result = await pool.query(
+      `UPDATE system_key_assignments
+       SET is_active = $1,
+           budget_limit_usd = $2,
+           budget_period = $3,
+           budget_mode = $4,
+           budget_warning_ratio = $5,
+           budget_is_active = $6,
+           updated_by = $7,
+           updated_at = NOW()
+       WHERE id = $8
+         AND system_key_id = $9
+       RETURNING id`,
+      [
+        isActive,
+        normalizedBudget.budgetLimitUsd,
+        normalizedBudget.budgetPeriod,
+        normalizedBudget.budgetMode,
+        normalizedBudget.budgetWarningRatio,
+        normalizedBudget.budgetIsActive,
+        req.userId,
+        assignmentId,
+        systemKeyId,
+      ]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Assignment not found.' });
+    }
     res.json({ ok: true });
   }));
 

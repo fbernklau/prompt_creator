@@ -63,6 +63,77 @@ function getStoredApiKey(row) {
   return decryptApiKey(row.key_meta, config.keyEncryptionSecret);
 }
 
+async function listAssignedSystemKeysForUser(req, providerKind = '') {
+  const groups = normalizeSet(req.userGroups || []);
+  const roles = normalizeSet(req.access?.roles || []);
+  const normalizedGroups = Array.from(groups);
+  const normalizedRoles = Array.from(roles);
+  const normalizedUserId = String(req.userId || '').trim().toLowerCase();
+  const normalizedProviderKind = String(providerKind || '').trim().toLowerCase();
+
+  const result = await pool.query(
+    `SELECT
+       sk.system_key_id,
+       sk.name,
+       sk.provider_kind,
+       sk.model_hint,
+       sk.base_url,
+       sk.is_active,
+       a.id AS assignment_id,
+       a.scope_type,
+       a.scope_value,
+       a.is_active AS assignment_is_active
+     FROM system_provider_keys sk
+     JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
+     WHERE sk.is_active = TRUE
+       AND a.is_active = TRUE
+       AND ($1 = '' OR sk.provider_kind = $1)
+       AND (
+         (a.scope_type = 'user' AND LOWER(a.scope_value) = LOWER($2))
+         OR (a.scope_type = 'group' AND (array_length($3::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($3::text[]))
+         OR (a.scope_type = 'role' AND (array_length($4::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($4::text[]))
+       )
+     ORDER BY
+       sk.provider_kind ASC,
+       sk.name ASC,
+       CASE a.scope_type
+         WHEN 'user' THEN 0
+         WHEN 'role' THEN 1
+         ELSE 2
+       END,
+       sk.updated_at DESC`,
+    [normalizedProviderKind, normalizedUserId, normalizedGroups, normalizedRoles]
+  );
+
+  const bySystemKey = new Map();
+  result.rows.forEach((row) => {
+    const keyId = String(row.system_key_id || '');
+    if (!keyId) return;
+    const existing = bySystemKey.get(keyId);
+    const assignment = {
+      id: Number(row.assignment_id),
+      scopeType: row.scope_type,
+      scopeValue: row.scope_value,
+      isActive: Boolean(row.assignment_is_active),
+    };
+    if (!existing) {
+      bySystemKey.set(keyId, {
+        systemKeyId: keyId,
+        name: row.name,
+        providerKind: row.provider_kind,
+        modelHint: row.model_hint || '',
+        baseUrl: row.base_url || '',
+        isActive: Boolean(row.is_active),
+        assignments: [assignment],
+      });
+      return;
+    }
+    existing.assignments.push(assignment);
+  });
+
+  return Array.from(bySystemKey.values());
+}
+
 function buildProviderTestPrompt() {
   return `Erstelle einen sehr kurzen Handoff-Prompt fuer ein KI-Modell.
 
@@ -98,9 +169,15 @@ function createProviderRouter() {
     });
   }));
 
+  router.get('/providers/assigned-system-keys', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
+    const providerKind = String(req.query.providerKind || '').trim().toLowerCase();
+    const keys = await listAssignedSystemKeysForUser(req, providerKind);
+    res.json(keys);
+  }));
+
   router.get('/providers', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     const result = await pool.query(
-      `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta
+      `SELECT provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta, system_key_id
        FROM providers
        WHERE user_id = $1
        ORDER BY updated_at DESC`,
@@ -118,6 +195,7 @@ function createProviderRouter() {
         pricingMode: r.pricing_mode || 'catalog',
         inputPricePerMillion: r.input_price_per_million === null ? null : Number(r.input_price_per_million),
         outputPricePerMillion: r.output_price_per_million === null ? null : Number(r.output_price_per_million),
+        systemKeyId: r.system_key_id || '',
         hasServerKey: hasServerEncryptedKey(r.key_meta),
         canUseSharedTestKey: r.kind === 'google' ? isSharedGoogleAllowed(req) : false,
       }))
@@ -126,11 +204,12 @@ function createProviderRouter() {
 
   router.put('/providers/:providerId', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     const providerId = req.params.providerId;
-    const { name, kind, model, baseUrl, baseUrlMode, pricingMode, inputPricePerMillion, outputPricePerMillion, apiKey } = req.body || {};
+    const { name, kind, model, baseUrl, baseUrlMode, pricingMode, inputPricePerMillion, outputPricePerMillion, apiKey, systemKeyId } = req.body || {};
     const normalizedBaseUrlMode = baseUrlMode === 'preset' ? 'preset' : 'custom';
     const normalizedPricingMode = pricingMode === 'custom' ? 'custom' : 'catalog';
     const normalizedInputPrice = parseNonNegativeNumberOrNull(inputPricePerMillion);
     const normalizedOutputPrice = parseNonNegativeNumberOrNull(outputPricePerMillion);
+    const requestedSystemKeyId = String(systemKeyId || '').trim();
 
     if (!name || !kind || !model) {
       return res.status(400).json({ error: 'Missing required provider fields.' });
@@ -150,15 +229,30 @@ function createProviderRouter() {
       encryptedKey = encryptApiKey(trimmedApiKey, config.keyEncryptionSecret);
     }
 
+    let resolvedSystemKeyId = null;
+    let resolvedProviderKind = String(kind || '').trim().toLowerCase();
+    if (requestedSystemKeyId) {
+      const assignedKeys = await listAssignedSystemKeysForUser(req);
+      const selected = assignedKeys.find((entry) => entry.systemKeyId === requestedSystemKeyId);
+      if (!selected) {
+        return res.status(400).json({ error: 'Ausgewählter System-Key ist nicht zugewiesen oder nicht aktiv.' });
+      }
+      resolvedSystemKeyId = selected.systemKeyId;
+      if (resolvedProviderKind && resolvedProviderKind !== selected.providerKind) {
+        return res.status(400).json({ error: 'Provider-Art passt nicht zum ausgewählten System-Key.' });
+      }
+      resolvedProviderKind = selected.providerKind;
+    }
+
     const hasAnyKey = hasServerEncryptedKey(encryptedKey);
-    const canUseShared = kind === 'google' && isSharedGoogleAllowed(req);
-    if (!hasAnyKey && !canUseShared) {
+    const canUseShared = resolvedProviderKind === 'google' && isSharedGoogleAllowed(req);
+    if (!resolvedSystemKeyId && !hasAnyKey && !canUseShared) {
       return res.status(400).json({ error: 'Bitte API-Key eingeben (oder fuer Testkonto Shared Google Key verwenden).' });
     }
 
     await pool.query(
-      `INSERT INTO providers (user_id, provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO providers (user_id, provider_id, name, kind, model, base_url, base_url_mode, pricing_mode, input_price_per_million, output_price_per_million, key_meta, system_key_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (user_id, provider_id)
        DO UPDATE SET
          name = EXCLUDED.name,
@@ -170,12 +264,13 @@ function createProviderRouter() {
          input_price_per_million = EXCLUDED.input_price_per_million,
          output_price_per_million = EXCLUDED.output_price_per_million,
          key_meta = EXCLUDED.key_meta,
+         system_key_id = EXCLUDED.system_key_id,
          updated_at = NOW()`,
       [
         req.userId,
         providerId,
         name,
-        kind,
+        resolvedProviderKind,
         model,
         baseUrl || null,
         normalizedBaseUrlMode,
@@ -183,6 +278,7 @@ function createProviderRouter() {
         normalizedPricingMode === 'custom' ? normalizedInputPrice : null,
         normalizedPricingMode === 'custom' ? normalizedOutputPrice : null,
         encryptedKey,
+        resolvedSystemKeyId,
       ]
     );
 
@@ -198,7 +294,7 @@ function createProviderRouter() {
     const providerId = typeof req.body?.providerId === 'string' ? req.body.providerId.trim() : '';
     const existingResult = providerId
       ? await pool.query(
-        `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta
+        `SELECT provider_id, name, kind, model, base_url, base_url_mode, key_meta, system_key_id
          FROM providers
          WHERE user_id = $1 AND provider_id = $2`,
         [req.userId, providerId]
@@ -213,9 +309,44 @@ function createProviderRouter() {
       return res.status(400).json({ error: 'kind, model und baseUrl sind fuer den Verbindungstest erforderlich.' });
     }
 
+    const requestedSystemKeyId = typeof req.body?.systemKeyId === 'string' ? req.body.systemKeyId.trim() : '';
     const inlineApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
     let apiKey = inlineApiKey || getStoredApiKey(existing);
     let keySource = inlineApiKey ? 'inline_test' : 'provider';
+    if (!apiKey && requestedSystemKeyId) {
+      const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
+      const selected = assignedKeys.find((entry) => entry.systemKeyId === requestedSystemKeyId);
+      if (selected) {
+        const selectedKey = await pool.query(
+          `SELECT key_meta
+           FROM system_provider_keys
+           WHERE system_key_id = $1
+             AND is_active = TRUE`,
+          [selected.systemKeyId]
+        );
+        if (selectedKey.rowCount && hasServerEncryptedKey(selectedKey.rows[0].key_meta)) {
+          apiKey = decryptApiKey(selectedKey.rows[0].key_meta, config.keyEncryptionSecret);
+          keySource = `system:${selected.systemKeyId}`;
+        }
+      }
+    }
+    if (!apiKey && existing?.system_key_id) {
+      const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
+      const selected = assignedKeys.find((entry) => entry.systemKeyId === existing.system_key_id);
+      if (selected) {
+        const selectedKey = await pool.query(
+          `SELECT key_meta
+           FROM system_provider_keys
+           WHERE system_key_id = $1
+             AND is_active = TRUE`,
+          [selected.systemKeyId]
+        );
+        if (selectedKey.rowCount && hasServerEncryptedKey(selectedKey.rows[0].key_meta)) {
+          apiKey = decryptApiKey(selectedKey.rows[0].key_meta, config.keyEncryptionSecret);
+          keySource = `system:${selected.systemKeyId}`;
+        }
+      }
+    }
     if (!apiKey && kind === 'google' && isSharedGoogleAllowed(req)) {
       apiKey = config.googleTestApiKey;
       keySource = 'shared_google_test';
