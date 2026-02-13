@@ -20,6 +20,7 @@ function createProviderController({
   state.providerModelCatalog = state.providerModelCatalog || {};
   state.providerPricingCatalog = state.providerPricingCatalog || [];
   state.assignedSystemKeys = state.assignedSystemKeys || [];
+  state.systemKeysEnabled = state.systemKeysEnabled !== false;
   state.settings = state.settings || {};
 
   function getProviderStage() {
@@ -243,7 +244,18 @@ function createProviderController({
     const wrap = el('provider-system-key-wrap');
     const select = el('provider-system-key-id');
     const keyInput = el('provider-key');
+    const keySourceSelect = el('provider-key-source');
     const matchingKeys = getMatchingSystemKeysForKind(kind);
+    const systemOption = keySourceSelect?.querySelector('option[value="system"]');
+    if (systemOption) {
+      systemOption.disabled = !state.systemKeysEnabled;
+      systemOption.textContent = state.systemKeysEnabled
+        ? 'Zugewiesener System-Key'
+        : 'Zugewiesener System-Key (global deaktiviert)';
+    }
+    if (!state.systemKeysEnabled && keySource === 'system') {
+      keySourceSelect.value = 'provider';
+    }
 
     select.innerHTML = matchingKeys.length
       ? matchingKeys.map((entry) => `<option value="${entry.systemKeyId}">${entry.name} (${entry.systemKeyId})</option>`).join('')
@@ -253,7 +265,7 @@ function createProviderController({
       select.value = preferredSystemKeyId;
     }
 
-    const isSystemSource = keySource === 'system';
+    const isSystemSource = keySourceSelect.value === 'system';
     wrap.classList.toggle('is-hidden', !isSystemSource);
     select.required = isSystemSource;
     keyInput.disabled = isSystemSource;
@@ -270,7 +282,8 @@ function createProviderController({
   async function refreshAssignedSystemKeys({ preferredSystemKeyId = '' } = {}) {
     try {
       const payload = await api('/api/providers/assigned-system-keys');
-      state.assignedSystemKeys = Array.isArray(payload) ? payload : [];
+      state.systemKeysEnabled = payload?.enabled !== false;
+      state.assignedSystemKeys = Array.isArray(payload?.keys) ? payload.keys : [];
     } catch (_error) {
       state.assignedSystemKeys = [];
     }
@@ -417,57 +430,114 @@ function createProviderController({
   }
 
   function renderProviders() {
-    const stage = getProviderStage();
-    const stageLabel = stage === 'result' ? 'Result-Model' : 'Metaprompt-Model';
+    const allProviders = Array.isArray(state.providers) ? state.providers : [];
     const activeLabel = el('provider-active-label');
-    if (activeLabel) activeLabel.textContent = `Aktiver Provider (${stageLabel})`;
+    if (activeLabel) activeLabel.textContent = 'Aktive Key-Auswahl je Stage';
 
-    const assignedForStage = getAssignedProviderId(stage);
-    const fallbackId = state.activeId || state.providers[0]?.id || '';
-    const selectedId = assignedForStage && state.providers.some((provider) => provider.id === assignedForStage)
-      ? assignedForStage
-      : fallbackId;
-    if (selectedId) {
-      setAssignedProviderId(stage, selectedId);
-      state.activeId = selectedId;
+    const firstProviderId = allProviders[0]?.id || '';
+    const currentMeta = getAssignedProviderId('metaprompt');
+    const currentResult = getAssignedProviderId('result');
+    const hasMeta = currentMeta && allProviders.some((provider) => provider.id === currentMeta);
+    const hasResult = currentResult && allProviders.some((provider) => provider.id === currentResult);
+    const nextMeta = hasMeta ? currentMeta : firstProviderId;
+    const nextResult = hasResult ? currentResult : (firstProviderId || nextMeta || '');
+    const fallbackUpdates = {};
+    if ((currentMeta || '') !== (nextMeta || '')) {
+      setAssignedProviderId('metaprompt', nextMeta || '');
+      fallbackUpdates.metapromptProviderId = nextMeta || '';
     }
+    if ((currentResult || '') !== (nextResult || '')) {
+      setAssignedProviderId('result', nextResult || '');
+      fallbackUpdates.resultProviderId = nextResult || '';
+    }
+    if (Object.keys(fallbackUpdates).length) {
+      persistStageSettings(fallbackUpdates)
+        .then(() => {
+          setStageAssignmentStatus('Zuweisung wurde auf verfügbaren Key zurückgesetzt.', 'info');
+        })
+        .catch((error) => {
+          setStageAssignmentStatus(`Fallback-Zuweisung konnte nicht gespeichert werden: ${error.message}`, 'error');
+        });
+    }
+    state.activeId = nextMeta || firstProviderId || null;
 
     const activeSelect = el('active-provider');
-    activeSelect.innerHTML = state.providers.length
-      ? state.providers
-          .map((provider) => `<option value="${provider.id}" ${provider.id === selectedId ? 'selected' : ''}>${provider.name} (${provider.model})</option>`)
-          .join('')
+    activeSelect.innerHTML = allProviders.length
+      ? allProviders.map((provider) => `<option value="${provider.id}" ${provider.id === state.activeId ? 'selected' : ''}>${provider.name} (${provider.model})</option>`).join('')
       : '<option value="">Bitte Provider anlegen...</option>';
 
-    const list = el('provider-list');
-    list.innerHTML = state.providers
-      .map(
-        (provider) => `
-        <li>
-          <span><strong>${provider.name}</strong> | ${provider.kind} | ${provider.model} | ${redactKeyState(provider)}</span>
-          <span class="inline-actions">
-            <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
-            <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
-          </span>
-        </li>
-      `
-      )
-      .join('');
+    const personalProviders = allProviders.filter((provider) => !provider.systemKeyId);
+    const assignedProviders = allProviders.filter((provider) => !!provider.systemKeyId);
+    const configuredSystemKeyIds = new Set(assignedProviders.map((provider) => provider.systemKeyId).filter(Boolean));
+    const availableAssignedKeys = (Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [])
+      .filter((entry) => !configuredSystemKeyIds.has(entry.systemKeyId));
 
-    activeSelect.onchange = async () => {
-      const nextProviderId = activeSelect.value || '';
-      state.activeId = nextProviderId || null;
-      setAssignedProviderId(stage, nextProviderId || '');
-      renderProviders();
-      try {
-        await persistStageSettings({
-          [getSettingsKeyForStage(stage)]: nextProviderId || '',
-        });
-        setStageAssignmentStatus(`Zuordnung gespeichert (${stageLabel}).`, 'ok');
-      } catch (error) {
-        setStageAssignmentStatus(`Speichern fehlgeschlagen (${stageLabel}): ${error.message}`, 'error');
-      }
-    };
+    const renderProviderRow = (provider) => `
+      <li>
+        <span>
+          <strong>${provider.name}</strong> | ${provider.kind} | ${provider.model}<br/>
+          <small>${redactKeyState(provider)}</small>
+        </span>
+        <span class="inline-actions">
+          <label class="admin-toggle">
+            <input type="radio" name="provider-stage-metaprompt" data-select-stage-provider="metaprompt:${provider.id}" ${provider.id === getAssignedProviderId('metaprompt') ? 'checked' : ''} />
+            <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+            <span class="admin-toggle-text">Metaprompt</span>
+          </label>
+          <label class="admin-toggle">
+            <input type="radio" name="provider-stage-result" data-select-stage-provider="result:${provider.id}" ${provider.id === getAssignedProviderId('result') ? 'checked' : ''} />
+            <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+            <span class="admin-toggle-text">Result</span>
+          </label>
+          <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
+          <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
+        </span>
+      </li>
+    `;
+
+    const list = el('provider-list');
+    const assignedHint = state.systemKeysEnabled
+      ? ''
+      : '<li><span><small>System-Keys sind global deaktiviert.</small></span></li>';
+    list.innerHTML = `
+      <li>
+        <span><strong>Persönliche Keys</strong></span>
+      </li>
+      ${personalProviders.length ? personalProviders.map(renderProviderRow).join('') : '<li><span>Keine persönlichen Keys.</span></li>'}
+      <li>
+        <span><strong>Zugewiesene Keys</strong></span>
+      </li>
+      ${assignedProviders.length ? assignedProviders.map(renderProviderRow).join('') : '<li><span>Noch keine zugewiesenen Keys als Provider gespeichert.</span></li>'}
+      ${assignedHint}
+      ${availableAssignedKeys.length ? `
+        <li><span><strong>Verfügbare zugewiesene Keys</strong> (noch nicht als Provider angelegt)</span></li>
+        ${availableAssignedKeys.map((entry) => `
+          <li>
+            <span><strong>${entry.name}</strong> | ${entry.providerKind} | ${entry.modelHint || 'Modell frei wählen'}</span>
+            <span class="inline-actions">
+              <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Provider hinzufügen</button>
+            </span>
+          </li>
+        `).join('')}
+      ` : ''}
+    `;
+
+    list.querySelectorAll('[data-select-stage-provider]').forEach((input) => {
+      input.addEventListener('change', async () => {
+        const [stage, providerId] = String(input.dataset.selectStageProvider || '').split(':');
+        if (!stage || !providerId) return;
+        setAssignedProviderId(stage, providerId);
+        state.activeId = stage === 'metaprompt' ? providerId : (getAssignedProviderId('metaprompt') || providerId);
+        try {
+          await persistStageSettings({
+            [getSettingsKeyForStage(stage)]: providerId,
+          });
+          setStageAssignmentStatus(`Aktiver ${stage === 'result' ? 'Result' : 'Metaprompt'}-Key gespeichert.`, 'ok');
+        } catch (error) {
+          setStageAssignmentStatus(`Speichern fehlgeschlagen: ${error.message}`, 'error');
+        }
+      });
+    });
 
     list.querySelectorAll('[data-edit-provider]').forEach((button) => {
       button.onclick = () => startEditProvider(button.dataset.editProvider);
@@ -475,6 +545,37 @@ function createProviderController({
     list.querySelectorAll('[data-delete-provider]').forEach((button) => {
       button.onclick = () => deleteProvider(button.dataset.deleteProvider);
     });
+    list.querySelectorAll('[data-add-assigned-key]').forEach((button) => {
+      button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => alert(error.message));
+    });
+  }
+
+  async function addAssignedKeyAsProvider(systemKeyId) {
+    const entry = (state.assignedSystemKeys || []).find((row) => row.systemKeyId === systemKeyId);
+    if (!entry) throw new Error('System-Key nicht verfügbar.');
+    const catalogModels = getCatalogModels(entry.providerKind);
+    const fallbackModel = String(entry.modelHint || '').trim() || catalogModels[0] || `${entry.providerKind}-model`;
+    const recommended = getRecommendedBaseUrl(entry.providerKind);
+    const payload = {
+      id: uid(),
+      name: `${entry.name} (${entry.systemKeyId})`,
+      kind: entry.providerKind,
+      model: fallbackModel,
+      baseUrl: entry.baseUrl || recommended || '',
+      baseUrlMode: entry.baseUrl ? 'custom' : 'preset',
+      pricingMode: 'catalog',
+      inputPricePerMillion: null,
+      outputPricePerMillion: null,
+      systemKeyId: entry.systemKeyId,
+    };
+    await api(`/api/providers/${encodeURIComponent(payload.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    state.providers = await api('/api/providers');
+    await refreshAssignedSystemKeys();
+    await syncStageAssignmentsWithProviderList({ persist: true });
+    renderProviders();
   }
 
   async function unlockVault() {
@@ -499,6 +600,10 @@ function createProviderController({
 
     if (!model) {
       throw new Error('Bitte ein Modell wählen oder bei Custom ein eigenes Modell eintragen.');
+    }
+
+    if (getSelectedKeySource() === 'system' && !state.systemKeysEnabled) {
+      throw new Error('System-Keys sind global deaktiviert.');
     }
 
     const provider = {

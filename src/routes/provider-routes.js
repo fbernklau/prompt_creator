@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const crypto = require('crypto');
 const { pool } = require('../db/pool');
 const { config } = require('../config');
 const { authMiddleware } = require('../middleware/auth');
@@ -63,6 +64,13 @@ function getStoredApiKey(row) {
   return decryptApiKey(row.key_meta, config.keyEncryptionSecret);
 }
 
+function buildKeyFingerprint(apiKey = '') {
+  const normalized = String(apiKey || '').trim();
+  if (!normalized) return '';
+  const digest = crypto.createHash('sha256').update(normalized).digest('hex');
+  return `sha256:${digest.slice(0, 16)}`;
+}
+
 async function listAssignedSystemKeysForUser(req, providerKind = '') {
   const groups = normalizeSet(req.userGroups || []);
   const roles = normalizeSet(req.access?.roles || []);
@@ -78,11 +86,17 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
        sk.provider_kind,
        sk.model_hint,
        sk.base_url,
+       sk.key_meta,
        sk.is_active,
        a.id AS assignment_id,
        a.scope_type,
        a.scope_value,
-       a.is_active AS assignment_is_active
+       a.is_active AS assignment_is_active,
+       a.budget_limit_usd,
+       a.budget_period,
+       a.budget_mode,
+       a.budget_warning_ratio,
+       a.budget_is_active
      FROM system_provider_keys sk
      JOIN system_key_assignments a ON a.system_key_id = sk.system_key_id
      WHERE sk.is_active = TRUE
@@ -90,6 +104,7 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
        AND ($1 = '' OR sk.provider_kind = $1)
        AND (
          (a.scope_type = 'user' AND LOWER(a.scope_value) = LOWER($2))
+         OR (a.scope_type = 'group' AND a.scope_value = '*')
          OR (a.scope_type = 'group' AND (array_length($3::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($3::text[]))
          OR (a.scope_type = 'role' AND (array_length($4::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($4::text[]))
        )
@@ -112,11 +127,25 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
     const existing = bySystemKey.get(keyId);
     const assignment = {
       id: Number(row.assignment_id),
-      scopeType: row.scope_type,
-      scopeValue: row.scope_value,
+      scopeType: row.scope_type === 'group' && row.scope_value === '*' ? 'global' : row.scope_type,
+      scopeValue: row.scope_type === 'group' && row.scope_value === '*' ? '*' : row.scope_value,
       isActive: Boolean(row.assignment_is_active),
+      budgetLimitUsd: row.budget_limit_usd === null ? null : Number(row.budget_limit_usd),
+      budgetPeriod: String(row.budget_period || 'monthly').trim().toLowerCase() || 'monthly',
+      budgetMode: String(row.budget_mode || 'hybrid').trim().toLowerCase() || 'hybrid',
+      budgetWarningRatio: Number(row.budget_warning_ratio || 0.9),
+      budgetIsActive: Boolean(row.budget_is_active),
     };
     if (!existing) {
+      let keyFingerprint = '';
+      try {
+        if (hasServerEncryptedKey(row.key_meta)) {
+          const decrypted = decryptApiKey(row.key_meta, config.keyEncryptionSecret);
+          keyFingerprint = buildKeyFingerprint(decrypted);
+        }
+      } catch (_error) {
+        keyFingerprint = '';
+      }
       bySystemKey.set(keyId, {
         systemKeyId: keyId,
         name: row.name,
@@ -124,6 +153,7 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
         modelHint: row.model_hint || '',
         baseUrl: row.base_url || '',
         isActive: Boolean(row.is_active),
+        keyFingerprint,
         assignments: [assignment],
       });
       return;
@@ -143,6 +173,16 @@ Kontext:
 - "handoff_prompt" soll mit "Du bist" beginnen und den Text "Test erfolgreich" enthalten.
 
 Gib nur JSON aus.`;
+}
+
+async function getSystemKeysEnabled() {
+  const result = await pool.query(
+    `SELECT setting_value_json
+     FROM app_runtime_settings
+     WHERE setting_key = 'system_keys'`
+  );
+  if (!result.rowCount) return true;
+  return Boolean(result.rows[0]?.setting_value_json?.enabled !== false);
 }
 
 function createProviderRouter() {
@@ -170,9 +210,10 @@ function createProviderRouter() {
   }));
 
   router.get('/providers/assigned-system-keys', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
+    const enabled = await getSystemKeysEnabled();
     const providerKind = String(req.query.providerKind || '').trim().toLowerCase();
-    const keys = await listAssignedSystemKeysForUser(req, providerKind);
-    res.json(keys);
+    const keys = enabled ? await listAssignedSystemKeysForUser(req, providerKind) : [];
+    res.json({ enabled, keys });
   }));
 
   router.get('/providers', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
@@ -184,8 +225,47 @@ function createProviderRouter() {
       [req.userId]
     );
 
+    const systemKeysEnabled = await getSystemKeysEnabled();
+    const referencedSystemKeyIds = [...new Set(
+      result.rows
+        .map((row) => String(row.system_key_id || '').trim())
+        .filter(Boolean)
+    )];
+    const systemKeyMetaMap = new Map();
+    if (referencedSystemKeyIds.length) {
+      const systemKeyMetaResult = await pool.query(
+        `SELECT system_key_id, key_meta
+         FROM system_provider_keys
+         WHERE system_key_id = ANY($1::text[])`,
+        [referencedSystemKeyIds]
+      );
+      systemKeyMetaResult.rows.forEach((row) => {
+        systemKeyMetaMap.set(String(row.system_key_id || '').trim(), row.key_meta || null);
+      });
+    }
+
     res.json(
       result.rows.map((r) => ({
+        ...(function deriveFingerprintFields() {
+          let ownKeyFingerprint = '';
+          let systemKeyFingerprint = '';
+          try {
+            const ownApiKey = getStoredApiKey(r);
+            ownKeyFingerprint = ownApiKey ? buildKeyFingerprint(ownApiKey) : '';
+          } catch (_error) {
+            ownKeyFingerprint = '';
+          }
+          try {
+            const systemKeyMeta = r.system_key_id ? systemKeyMetaMap.get(String(r.system_key_id || '').trim()) : null;
+            if (hasServerEncryptedKey(systemKeyMeta)) {
+              const decrypted = decryptApiKey(systemKeyMeta, config.keyEncryptionSecret);
+              systemKeyFingerprint = buildKeyFingerprint(decrypted);
+            }
+          } catch (_error) {
+            systemKeyFingerprint = '';
+          }
+          return { ownKeyFingerprint, systemKeyFingerprint };
+        })(),
         id: r.provider_id,
         name: r.name,
         kind: r.kind,
@@ -196,6 +276,7 @@ function createProviderRouter() {
         inputPricePerMillion: r.input_price_per_million === null ? null : Number(r.input_price_per_million),
         outputPricePerMillion: r.output_price_per_million === null ? null : Number(r.output_price_per_million),
         systemKeyId: r.system_key_id || '',
+        systemKeysEnabled,
         hasServerKey: hasServerEncryptedKey(r.key_meta),
         canUseSharedTestKey: r.kind === 'google' ? isSharedGoogleAllowed(req) : false,
       }))
@@ -210,6 +291,7 @@ function createProviderRouter() {
     const normalizedInputPrice = parseNonNegativeNumberOrNull(inputPricePerMillion);
     const normalizedOutputPrice = parseNonNegativeNumberOrNull(outputPricePerMillion);
     const requestedSystemKeyId = String(systemKeyId || '').trim();
+    const systemKeysEnabled = await getSystemKeysEnabled();
 
     if (!name || !kind || !model) {
       return res.status(400).json({ error: 'Missing required provider fields.' });
@@ -232,6 +314,9 @@ function createProviderRouter() {
     let resolvedSystemKeyId = null;
     let resolvedProviderKind = String(kind || '').trim().toLowerCase();
     if (requestedSystemKeyId) {
+      if (!systemKeysEnabled) {
+        return res.status(400).json({ error: 'System-Keys sind global deaktiviert.' });
+      }
       const assignedKeys = await listAssignedSystemKeysForUser(req);
       const selected = assignedKeys.find((entry) => entry.systemKeyId === requestedSystemKeyId);
       if (!selected) {
@@ -310,10 +395,14 @@ function createProviderRouter() {
     }
 
     const requestedSystemKeyId = typeof req.body?.systemKeyId === 'string' ? req.body.systemKeyId.trim() : '';
+    const systemKeysEnabled = await getSystemKeysEnabled();
     const inlineApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
     let apiKey = inlineApiKey || getStoredApiKey(existing);
     let keySource = inlineApiKey ? 'inline_test' : 'provider';
-    if (!apiKey && requestedSystemKeyId) {
+    if (!systemKeysEnabled && requestedSystemKeyId) {
+      return res.status(400).json({ error: 'System-Keys sind global deaktiviert.' });
+    }
+    if (!apiKey && requestedSystemKeyId && systemKeysEnabled) {
       const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
       const selected = assignedKeys.find((entry) => entry.systemKeyId === requestedSystemKeyId);
       if (selected) {
@@ -330,7 +419,7 @@ function createProviderRouter() {
         }
       }
     }
-    if (!apiKey && existing?.system_key_id) {
+    if (!apiKey && existing?.system_key_id && systemKeysEnabled) {
       const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
       const selected = assignedKeys.find((entry) => entry.systemKeyId === existing.system_key_id);
       if (selected) {

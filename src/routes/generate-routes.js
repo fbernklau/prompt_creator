@@ -95,6 +95,16 @@ function buildKeyFingerprint(apiKey = '') {
   return `sha256:${digest.slice(0, 16)}`;
 }
 
+async function getSystemKeysEnabled() {
+  const result = await pool.query(
+    `SELECT setting_value_json
+     FROM app_runtime_settings
+     WHERE setting_key = 'system_keys'`
+  );
+  if (!result.rowCount) return true;
+  return Boolean(result.rows[0]?.setting_value_json?.enabled !== false);
+}
+
 async function resolvePricingForProvider(provider) {
   const pricingMode = String(provider?.pricing_mode || 'catalog').trim().toLowerCase();
   const customInput = asNullableNumber(provider?.input_price_per_million);
@@ -683,6 +693,8 @@ async function getProviderForUser(req, providerId) {
 }
 
 async function findAssignedSystemKey(req, provider) {
+  const systemKeysEnabled = await getSystemKeysEnabled();
+  if (!systemKeysEnabled) return null;
   const groups = asLowerList(req.userGroups || []);
   const roles = asLowerList(req.access?.roles || []);
   const result = await pool.query(
@@ -703,6 +715,7 @@ async function findAssignedSystemKey(req, provider) {
        AND ($6 = '' OR sk.system_key_id = $6)
        AND (
          (a.scope_type = 'user' AND LOWER(a.scope_value) = LOWER($2))
+         OR (a.scope_type = 'group' AND a.scope_value = '*')
          OR (a.scope_type = 'group' AND (array_length($3::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($3::text[]))
          OR (a.scope_type = 'role' AND (array_length($4::text[], 1) > 0) AND LOWER(a.scope_value) = ANY($4::text[]))
        )
@@ -876,6 +889,7 @@ async function logGenerationEvent({
 }
 
 async function resolveProviderCredential(req, provider) {
+  const systemKeysEnabled = await getSystemKeysEnabled();
   const selectedSystemKeyId = String(provider.system_key_id || '').trim();
   let apiKey = null;
   let keySource = 'provider';
@@ -884,6 +898,9 @@ async function resolveProviderCredential(req, provider) {
   let systemKey = null;
 
   if (selectedSystemKeyId) {
+    if (!systemKeysEnabled) {
+      throw httpError(400, 'System-Keys sind global deaktiviert.');
+    }
     systemKey = await findAssignedSystemKey(req, provider);
     if (!systemKey || !hasServerEncryptedKey(systemKey.key_meta)) {
       throw httpError(400, 'Der zugewiesene System-Key ist nicht aktiv oder nicht mehr verfuegbar.');
@@ -900,7 +917,7 @@ async function resolveProviderCredential(req, provider) {
       effectiveKeyType = 'shared_test';
       effectiveKeyId = 'google_test_shared';
     }
-    if (!apiKey) {
+    if (!apiKey && systemKeysEnabled) {
       systemKey = await findAssignedSystemKey(req, provider);
       if (systemKey && hasServerEncryptedKey(systemKey.key_meta)) {
         apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);

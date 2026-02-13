@@ -34,7 +34,7 @@ function parseNonNegativeNumberOrNull(value) {
 
 function normalizeSystemScopeType(value = '') {
   const normalized = String(value || '').trim().toLowerCase();
-  if (normalized === 'user' || normalized === 'role' || normalized === 'group') return normalized;
+  if (normalized === 'user' || normalized === 'role' || normalized === 'group' || normalized === 'global') return normalized;
   return '';
 }
 
@@ -65,6 +65,7 @@ function parseWarningRatio(value) {
 
 function normalizeScopeValue(scopeType, scopeValue) {
   const raw = String(scopeValue || '').trim();
+  if (scopeType === 'global') return '*';
   if (!raw) return '';
   if (scopeType === 'key') return raw;
   return raw.toLowerCase();
@@ -175,6 +176,29 @@ async function resolveAssignmentUsage({ systemKeyId, scopeType, scopeValue, peri
     totalCount: Number(result.rows[0]?.total_count || 0),
     spendUsd: Number(result.rows[0]?.spend_usd || 0),
   };
+}
+
+async function getSystemKeysEnabled() {
+  const result = await pool.query(
+    `SELECT setting_value_json
+     FROM app_runtime_settings
+     WHERE setting_key = 'system_keys'`
+  );
+  if (!result.rowCount) return true;
+  return Boolean(result.rows[0]?.setting_value_json?.enabled !== false);
+}
+
+async function setSystemKeysEnabled(enabled, updatedBy = 'system') {
+  await pool.query(
+    `INSERT INTO app_runtime_settings (setting_key, setting_value_json, updated_by, updated_at)
+     VALUES ('system_keys', $1::jsonb, $2, NOW())
+     ON CONFLICT (setting_key)
+     DO UPDATE SET
+       setting_value_json = EXCLUDED.setting_value_json,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = NOW()`,
+    [JSON.stringify({ enabled: Boolean(enabled) }), String(updatedBy || 'system')]
+  );
 }
 
 function createAdminRouter() {
@@ -454,6 +478,7 @@ function createAdminRouter() {
   }));
 
   router.get('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (_req, res) => {
+    const systemKeysEnabled = await getSystemKeysEnabled();
     const [keysResult, assignmentsResult] = await Promise.all([
       pool.query(
         `SELECT
@@ -509,8 +534,8 @@ function createAdminRouter() {
       return {
         id: Number(row.id),
         systemKeyId: row.system_key_id,
-        scopeType: row.scope_type,
-        scopeValue: row.scope_value,
+        scopeType: row.scope_type === 'group' && row.scope_value === '*' ? 'global' : row.scope_type,
+        scopeValue: row.scope_type === 'group' && row.scope_value === '*' ? '*' : row.scope_value,
         isActive: Boolean(row.is_active),
         budgetLimitUsd: row.budget_limit_usd === null ? null : Number(row.budget_limit_usd),
         budgetPeriod: period,
@@ -564,7 +589,21 @@ function createAdminRouter() {
       };
     }));
 
-    res.json(payload);
+    res.json({
+      systemKeysEnabled,
+      keys: payload,
+    });
+  }));
+
+  router.get('/admin/system-provider-keys/config', ...systemKeyGuard, asyncHandler(async (_req, res) => {
+    const systemKeysEnabled = await getSystemKeysEnabled();
+    res.json({ systemKeysEnabled });
+  }));
+
+  router.put('/admin/system-provider-keys/config', ...systemKeyGuard, asyncHandler(async (req, res) => {
+    const enabled = Boolean(req.body?.systemKeysEnabled);
+    await setSystemKeysEnabled(enabled, req.userId);
+    res.json({ ok: true, systemKeysEnabled: enabled });
   }));
 
   router.post('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (req, res) => {
@@ -730,6 +769,9 @@ function createAdminRouter() {
     );
     if (!keyExists.rowCount) return res.status(404).json({ error: 'System key not found.' });
 
+    const persistedScopeType = scopeType === 'global' ? 'group' : scopeType;
+    const persistedScopeValue = scopeType === 'global' ? '*' : scopeValue;
+
     await pool.query(
       `INSERT INTO system_key_assignments
          (system_key_id, scope_type, scope_value, is_active, budget_limit_usd, budget_period, budget_mode, budget_warning_ratio, budget_is_active, created_by, updated_by)
@@ -746,8 +788,8 @@ function createAdminRouter() {
          updated_at = NOW()`,
       [
         systemKeyId,
-        scopeType,
-        scopeValue,
+        persistedScopeType,
+        persistedScopeValue,
         isActive,
         normalizedBudget.budgetLimitUsd,
         normalizedBudget.budgetPeriod,

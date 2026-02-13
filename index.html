@@ -565,59 +565,45 @@
           </div>
 
           <div id="usage-budget-panel" class="panel top-space is-hidden">
-            <h3>Eigene Budget-Policies</h3>
-            <small class="hint">Persönliche Limits für User oder Key (daily/weekly/monthly).</small>
-            <div class="grid-3 top-space">
-              <label>Scope
-                <select id="usage-budget-scope-type">
-                  <option value="user">user</option>
-                  <option value="key">key</option>
-                </select>
-              </label>
-              <label>Scope-Wert
-                <input id="usage-budget-scope-value" placeholder="bei user leer lassen; bei key: sha256:..." />
-              </label>
-              <label>Periode
-                <select id="usage-budget-period">
-                  <option value="daily">daily</option>
-                  <option value="weekly">weekly</option>
-                  <option value="monthly" selected>monthly</option>
-                </select>
-              </label>
-              <label>Limit USD
-                <input id="usage-budget-limit-usd" type="number" min="0" step="0.000001" />
-              </label>
-              <label>Modus
-                <select id="usage-budget-mode">
-                  <option value="hybrid" selected>hybrid</option>
-                  <option value="soft">soft</option>
-                  <option value="hard">hard</option>
-                </select>
-              </label>
-              <label>Warnschwelle (0.1-1.0)
-                <input id="usage-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
-              </label>
-              <label>Aktiv
-                <select id="usage-budget-active">
-                  <option value="true" selected>Ja</option>
-                  <option value="false">Nein</option>
-                </select>
-              </label>
-            </div>
-            <div class="inline-actions top-space">
-              <button id="usage-budget-save" type="button">Budget speichern</button>
-              <button id="usage-budget-clear" type="button" class="secondary">Form leeren</button>
-              <small id="usage-budget-status" class="hint"></small>
-            </div>
-            <div class="grid-2 top-space">
-              <div>
-                <h4>Eigene Policies</h4>
-                <ul id="usage-budget-own-list" class="provider-list top-space"></ul>
+            <h3>Budget-Übersicht</h3>
+            <small class="hint">Globales Nutzerbudget und Key-spezifische Budgets (USD).</small>
+            <div class="admin-model-provider-card top-space">
+              <div class="admin-model-provider-head">
+                <h4>Globales Budget</h4>
+                <small id="usage-budget-global-used" class="hint">Used / Total: -</small>
               </div>
-              <div>
-                <h4>Effektiv aktiv</h4>
-                <ul id="usage-budget-effective-list" class="provider-list top-space"></ul>
+              <div class="grid-3 top-space">
+                <label>Limit USD
+                  <input id="usage-budget-global-limit" type="number" min="0" step="0.000001" placeholder="z. B. 25.00" />
+                </label>
+                <label>Periode
+                  <select id="usage-budget-global-period">
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                    <option value="monthly" selected>monthly</option>
+                  </select>
+                </label>
+                <label>Aktiv
+                  <span class="admin-toggle">
+                    <input id="usage-budget-global-active" type="checkbox" />
+                    <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                    <span class="admin-toggle-text">Aktiv</span>
+                  </span>
+                </label>
               </div>
+              <div class="inline-actions top-space">
+                <button id="usage-budget-global-save" type="button">Globales Budget speichern</button>
+                <small id="usage-budget-status" class="hint"></small>
+              </div>
+            </div>
+
+            <div class="top-space">
+              <h4>Persönliche Keys</h4>
+              <ul id="usage-budget-personal-list" class="provider-list top-space"></ul>
+            </div>
+            <div class="top-space">
+              <h4>Zugewiesene Keys</h4>
+              <ul id="usage-budget-assigned-list" class="provider-list top-space"></ul>
             </div>
           </div>
         </div>
@@ -1127,6 +1113,14 @@
               <h3>Systemweite API-Keys</h3>
               <small class="hint">Aktive Schlüssel können Usern, Rollen oder Gruppen zugewiesen werden.</small>
             </div>
+            <div class="inline-actions top-space">
+              <label class="admin-toggle">
+                <input id="admin-system-keys-enabled" type="checkbox" />
+                <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                <span class="admin-toggle-text">System-Keys global aktiv</span>
+              </label>
+              <button id="admin-system-keys-enabled-save" type="button" class="secondary">Globalstatus speichern</button>
+            </div>
             <div id="admin-system-key-list" class="top-space"></div>
             <div class="grid-3 top-space">
               <label>System Key ID
@@ -1145,7 +1139,10 @@
                 </select>
               </label>
               <label>Modell-Hinweis (optional)
-                <input id="admin-system-key-model-hint" placeholder="z. B. gemini-3-flash-preview" />
+                <select id="admin-system-key-model-select"></select>
+              </label>
+              <label id="admin-system-key-model-custom-wrap" class="is-hidden">Custom Modell
+                <input id="admin-system-key-model-custom" placeholder="z. B. gemini-3-flash-preview" />
               </label>
               <label>Base URL (optional)
                 <input id="admin-system-key-base-url" placeholder="https://api.example.com/v1" />
@@ -1159,77 +1156,12 @@
                   <option value="false">Nein</option>
                 </select>
               </label>
-              <label>Zuweisungstyp
-                <select id="admin-system-key-assign-type">
-                  <option value="user">user</option>
-                  <option value="role">role</option>
-                  <option value="group">group</option>
-                </select>
-              </label>
-              <label>Zuweisungswert
-                <input id="admin-system-key-assign-value" placeholder="z. B. teachers oder benutzername" />
-              </label>
             </div>
             <div class="inline-actions top-space">
-              <button id="admin-system-key-save" type="button">System-Key speichern</button>
-              <button id="admin-system-key-add-assignment" type="button" class="secondary">Zuweisung hinzufügen</button>
+              <button id="admin-system-key-save" type="button" class="admin-primary-action">System-Key speichern</button>
               <button id="admin-system-key-clear" type="button" class="secondary">Form leeren</button>
               <small id="admin-system-key-status" class="hint"></small>
             </div>
-          </div>
-
-          <div id="admin-budget-panel" class="panel top-space">
-            <div class="panel-title-row">
-              <h3>Budget Policies (Hybrid)</h3>
-              <small class="hint">Warnung vor Limit, Blockierung nach Regel.</small>
-            </div>
-            <div class="grid-3 top-space">
-              <label>Scope
-                <select id="admin-budget-scope-type">
-                  <option value="user">user</option>
-                  <option value="group">group</option>
-                  <option value="key">key</option>
-                </select>
-              </label>
-              <label>Scope-Wert
-                <input id="admin-budget-scope-value" placeholder="z. B. teachers oder sha256:..." />
-              </label>
-              <label>Periode
-                <select id="admin-budget-period">
-                  <option value="daily">daily</option>
-                  <option value="weekly">weekly</option>
-                  <option value="monthly" selected>monthly</option>
-                </select>
-              </label>
-              <label>Limit USD
-                <input id="admin-budget-limit-usd" type="number" min="0" step="0.000001" placeholder="z. B. 10.00" />
-              </label>
-              <label>Modus
-                <select id="admin-budget-mode">
-                  <option value="hybrid" selected>hybrid</option>
-                  <option value="soft">soft</option>
-                  <option value="hard">hard</option>
-                </select>
-              </label>
-              <label>Warnschwelle (0.1-1.0)
-                <input id="admin-budget-warning-ratio" type="number" min="0.1" max="1" step="0.01" value="0.9" />
-              </label>
-              <label>Aktiv
-                <select id="admin-budget-active">
-                  <option value="true" selected>Ja</option>
-                  <option value="false">Nein</option>
-                </select>
-              </label>
-              <label>Owner User (optional)
-                <input id="admin-budget-owner-user" placeholder="leer = global" />
-              </label>
-            </div>
-            <div class="inline-actions top-space">
-              <button id="admin-budget-save" type="button">Budget speichern</button>
-              <button id="admin-budget-clear" type="button" class="secondary">Form leeren</button>
-              <small id="admin-budget-status" class="hint"></small>
-            </div>
-            <div id="admin-budget-list" class="top-space"></div>
           </div>
         </div>
       </section>

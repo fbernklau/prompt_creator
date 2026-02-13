@@ -1,4 +1,11 @@
 const DEFAULT_MODEL_PROVIDER_ORDER = ['openai', 'anthropic', 'google', 'mistral', 'custom'];
+const SYSTEM_CUSTOM_MODEL = '__custom_model__';
+const SYSTEM_PROVIDER_BASE_URLS = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta',
+  mistral: 'https://api.mistral.ai/v1',
+};
 
 const PERMISSION_GROUPS = [
   {
@@ -45,6 +52,7 @@ function createAdminController({
     selectedSystemKeyId: '',
     budgets: [],
     selectedBudgetId: null,
+    systemKeysEnabled: true,
     activeTab: 'roles',
     activeModelProvider: 'openai',
   };
@@ -295,16 +303,16 @@ function createAdminController({
     el('admin-system-key-id').value = '';
     el('admin-system-key-name').value = '';
     el('admin-system-key-provider-kind').value = 'openai';
-    el('admin-system-key-model-hint').value = '';
-    el('admin-system-key-base-url').value = '';
+    syncSystemKeyModelOptions();
+    el('admin-system-key-model-custom').value = '';
+    el('admin-system-key-base-url').value = SYSTEM_PROVIDER_BASE_URLS.openai;
     el('admin-system-key-api-key').value = '';
     el('admin-system-key-active').value = 'true';
-    el('admin-system-key-assign-type').value = 'user';
-    el('admin-system-key-assign-value').value = '';
   }
 
   function clearBudgetForm() {
     adminState.selectedBudgetId = null;
+    if (!el('admin-budget-scope-type')) return;
     el('admin-budget-scope-type').value = 'user';
     el('admin-budget-scope-value').value = '';
     el('admin-budget-period').value = 'monthly';
@@ -313,6 +321,69 @@ function createAdminController({
     el('admin-budget-warning-ratio').value = '0.9';
     el('admin-budget-active').value = 'true';
     el('admin-budget-owner-user').value = '';
+  }
+
+  function getSystemProviderModels(providerKind = 'openai') {
+    const normalized = String(providerKind || '').trim().toLowerCase();
+    return adminState.pricingEntries
+      .filter((entry) => String(entry.providerKind || '').trim().toLowerCase() === normalized)
+      .map((entry) => String(entry.model || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  function getSelectedSystemKeyModelHint() {
+    const selected = el('admin-system-key-model-select').value;
+    if (selected === SYSTEM_CUSTOM_MODEL) {
+      return String(el('admin-system-key-model-custom').value || '').trim();
+    }
+    return String(selected || '').trim();
+  }
+
+  function syncSystemKeyModelOptions(preferredValue = '') {
+    const providerKind = String(el('admin-system-key-provider-kind').value || 'openai').trim().toLowerCase();
+    const select = el('admin-system-key-model-select');
+    const customWrap = el('admin-system-key-model-custom-wrap');
+    const customInput = el('admin-system-key-model-custom');
+    const models = getSystemProviderModels(providerKind);
+    const normalizedPreferred = String(preferredValue || '').trim();
+    select.innerHTML = [
+      ...models.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`),
+      `<option value="${SYSTEM_CUSTOM_MODEL}">Custom...</option>`,
+    ].join('');
+
+    if (normalizedPreferred && models.includes(normalizedPreferred)) {
+      select.value = normalizedPreferred;
+      customInput.value = '';
+      customWrap.classList.add('is-hidden');
+      return;
+    }
+    if (normalizedPreferred) {
+      select.value = SYSTEM_CUSTOM_MODEL;
+      customInput.value = normalizedPreferred;
+      customWrap.classList.remove('is-hidden');
+      return;
+    }
+    if (models.length) {
+      select.value = models[0];
+      customInput.value = '';
+      customWrap.classList.add('is-hidden');
+      return;
+    }
+    select.value = SYSTEM_CUSTOM_MODEL;
+    customInput.value = '';
+    customWrap.classList.remove('is-hidden');
+  }
+
+  function syncSystemKeyBaseUrl() {
+    const providerKind = String(el('admin-system-key-provider-kind').value || 'openai').trim().toLowerCase();
+    const baseUrlInput = el('admin-system-key-base-url');
+    const current = String(baseUrlInput.value || '').trim();
+    const recommended = SYSTEM_PROVIDER_BASE_URLS[providerKind] || '';
+    if (!recommended) return;
+    if (!current || Object.values(SYSTEM_PROVIDER_BASE_URLS).includes(current)) {
+      baseUrlInput.value = recommended;
+    }
   }
 
   function renderSystemKeyList() {
@@ -396,12 +467,12 @@ function createAdminController({
               <strong>Zuweisungen</strong>
               <div class="inline-actions">
                 <select data-system-key-assign-type="${escapeHtml(key.systemKeyId)}">
+                  <option value="global">global</option>
                   <option value="user">user</option>
                   <option value="role">role</option>
                   <option value="group">group</option>
                 </select>
                 <input data-system-key-assign-value="${escapeHtml(key.systemKeyId)}" placeholder="z. B. teachers oder username" />
-                <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(key.systemKeyId)}">Zuweisung hinzufügen</button>
               </div>
             </div>
             <ul class="provider-list top-space">
@@ -446,6 +517,9 @@ function createAdminController({
                 `).join('')
     : '<li><span>Keine Zuweisungen.</span></li>'}
             </ul>
+            <div class="inline-actions top-space">
+              <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(key.systemKeyId)}">Zuweisung hinzufügen</button>
+            </div>
           </div>
         </div>
       `)
@@ -784,7 +858,7 @@ function createAdminController({
       systemKeyId: systemKeyIdInput || undefined,
       name: String(el('admin-system-key-name').value || '').trim(),
       providerKind: String(el('admin-system-key-provider-kind').value || '').trim().toLowerCase(),
-      modelHint: String(el('admin-system-key-model-hint').value || '').trim(),
+      modelHint: getSelectedSystemKeyModelHint(),
       baseUrl: String(el('admin-system-key-base-url').value || '').trim(),
       apiKey: String(el('admin-system-key-api-key').value || '').trim(),
       isActive: el('admin-system-key-active').value === 'true',
@@ -794,8 +868,8 @@ function createAdminController({
       return;
     }
 
-    if (adminState.selectedSystemKeyId || systemKeyIdInput) {
-      const targetId = adminState.selectedSystemKeyId || systemKeyIdInput;
+    if (adminState.selectedSystemKeyId) {
+      const targetId = adminState.selectedSystemKeyId;
       await api(`/api/admin/system-provider-keys/${encodeURIComponent(targetId)}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
@@ -813,6 +887,17 @@ function createAdminController({
       setStatus('System-Key angelegt.', { systemKey: true });
     }
     clearSystemKeyForm();
+    await loadAdminData();
+  }
+
+  async function saveSystemKeysGlobalConfig() {
+    const enabled = !!el('admin-system-keys-enabled')?.checked;
+    await api('/api/admin/system-provider-keys/config', {
+      method: 'PUT',
+      body: JSON.stringify({ systemKeysEnabled: enabled }),
+    });
+    adminState.systemKeysEnabled = enabled;
+    setStatus(`System-Keys global ${enabled ? 'aktiviert' : 'deaktiviert'}.`, { systemKey: true });
     await loadAdminData();
   }
 
@@ -883,7 +968,7 @@ function createAdminController({
     }
     const scopeType = String(typeNode?.value || '').trim();
     const scopeValue = String(valueNode?.value || '').trim();
-    if (!scopeType || !scopeValue) {
+    if (!scopeType || (scopeType !== 'global' && !scopeValue)) {
       alert('Zuweisungstyp und -wert sind erforderlich.');
       return;
     }
@@ -891,7 +976,7 @@ function createAdminController({
       method: 'POST',
       body: JSON.stringify({
         scopeType,
-        scopeValue,
+        scopeValue: scopeType === 'global' ? '*' : scopeValue,
         isActive: true,
         budgetIsActive: false,
         budgetLimitUsd: null,
@@ -1012,6 +1097,7 @@ function createAdminController({
     }
     if (canManageSystemKeys) {
       requests.push(api('/api/admin/system-provider-keys'));
+      requests.push(api('/api/admin/system-provider-keys/config'));
     }
     if (canManageBudgets) {
       requests.push(api('/api/admin/budgets'));
@@ -1020,7 +1106,8 @@ function createAdminController({
     const [permissions, roles, bindings] = responses;
     let cursor = 3;
     const pricingEntries = canManagePricing ? (responses[cursor++] || []) : [];
-    const systemKeys = canManageSystemKeys ? (responses[cursor++] || []) : [];
+    const systemKeysPayload = canManageSystemKeys ? (responses[cursor++] || {}) : {};
+    const systemKeysConfig = canManageSystemKeys ? (responses[cursor++] || {}) : {};
     const budgets = canManageBudgets ? (responses[cursor++] || []) : [];
     adminState = {
       permissions,
@@ -1031,10 +1118,11 @@ function createAdminController({
         ? pricingEntries.map((entry) => ({ ...entry, id: String(entry.id) }))
         : [],
       selectedPricingId: adminState.selectedPricingId,
-      systemKeys: Array.isArray(systemKeys) ? systemKeys : [],
+      systemKeys: Array.isArray(systemKeysPayload?.keys) ? systemKeysPayload.keys : (Array.isArray(systemKeysPayload) ? systemKeysPayload : []),
       selectedSystemKeyId: adminState.selectedSystemKeyId || '',
       budgets: Array.isArray(budgets) ? budgets : [],
       selectedBudgetId: adminState.selectedBudgetId,
+      systemKeysEnabled: systemKeysConfig?.systemKeysEnabled ?? systemKeysPayload?.systemKeysEnabled ?? true,
       activeTab: adminState.activeTab || 'roles',
       activeModelProvider: adminState.activeModelProvider || 'openai',
     };
@@ -1047,6 +1135,8 @@ function createAdminController({
     renderBudgetList();
     clearPricingForm();
     clearSystemKeyForm();
+    const globalToggle = el('admin-system-keys-enabled');
+    if (globalToggle) globalToggle.checked = !!adminState.systemKeysEnabled;
     clearBudgetForm();
     ensureAdminVisible();
     setActiveAdminTab(adminState.activeTab);
@@ -1224,8 +1314,21 @@ function createAdminController({
     if (el('admin-system-key-save')) {
       el('admin-system-key-save').addEventListener('click', () => saveSystemKey().catch((error) => alert(error.message)));
     }
-    if (el('admin-system-key-add-assignment')) {
-      el('admin-system-key-add-assignment').addEventListener('click', () => addSystemKeyAssignment().catch((error) => alert(error.message)));
+    if (el('admin-system-key-provider-kind')) {
+      el('admin-system-key-provider-kind').addEventListener('change', () => {
+        syncSystemKeyModelOptions();
+        syncSystemKeyBaseUrl();
+      });
+    }
+    if (el('admin-system-key-model-select')) {
+      el('admin-system-key-model-select').addEventListener('change', () => {
+        const customWrap = el('admin-system-key-model-custom-wrap');
+        if (!customWrap) return;
+        customWrap.classList.toggle('is-hidden', el('admin-system-key-model-select').value !== SYSTEM_CUSTOM_MODEL);
+      });
+    }
+    if (el('admin-system-keys-enabled-save')) {
+      el('admin-system-keys-enabled-save').addEventListener('click', () => saveSystemKeysGlobalConfig().catch((error) => alert(error.message)));
     }
     if (el('admin-system-key-clear')) {
       el('admin-system-key-clear').addEventListener('click', clearSystemKeyForm);

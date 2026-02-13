@@ -115,14 +115,10 @@ function createDashboardController({
   }
 
   function clearOwnBudgetForm() {
-    if (!el('usage-budget-scope-type')) return;
-    el('usage-budget-scope-type').value = 'user';
-    el('usage-budget-scope-value').value = '';
-    el('usage-budget-period').value = 'monthly';
-    el('usage-budget-limit-usd').value = '';
-    el('usage-budget-mode').value = 'hybrid';
-    el('usage-budget-warning-ratio').value = '0.9';
-    el('usage-budget-active').value = 'true';
+    if (!el('usage-budget-global-limit')) return;
+    el('usage-budget-global-limit').value = '';
+    el('usage-budget-global-period').value = 'monthly';
+    el('usage-budget-global-active').checked = false;
   }
 
   function renderOwnBudgetPolicies() {
@@ -132,39 +128,173 @@ function createDashboardController({
     panel.classList.toggle('is-hidden', !visible);
     if (!visible) return;
 
-    const ownList = el('usage-budget-own-list');
-    const effectiveList = el('usage-budget-effective-list');
+    const personalList = el('usage-budget-personal-list');
+    const assignedList = el('usage-budget-assigned-list');
+    const globalUsed = el('usage-budget-global-used');
+    const globalLimitNode = el('usage-budget-global-limit');
+    const globalPeriodNode = el('usage-budget-global-period');
+    const globalActiveNode = el('usage-budget-global-active');
     const own = Array.isArray(state.usage.budgets?.ownPolicies) ? state.usage.budgets.ownPolicies : [];
-    const effective = Array.isArray(state.usage.budgets?.effectivePolicies) ? state.usage.budgets.effectivePolicies : [];
+    const findPolicy = (scopeType, scopeValue) => {
+      const normalizedScopeValue = String(scopeValue || '').trim();
+      const matches = own.filter((entry) => {
+        if (entry.scopeType !== scopeType) return false;
+        const entryValue = String(entry.scopeValue || '').trim();
+        if (scopeType === 'user') return entryValue.toLowerCase() === normalizedScopeValue.toLowerCase();
+        return entryValue === normalizedScopeValue;
+      });
+      if (!matches.length) return null;
+      return matches.find((entry) => entry.period === 'monthly')
+        || matches.find((entry) => entry.period === 'weekly')
+        || matches.find((entry) => entry.period === 'daily')
+        || matches[0];
+    };
 
-    ownList.innerHTML = own.length
-      ? own.map((entry) => `
-          <li>
-            <span>
-              <strong>${entry.scopeType}:${entry.scopeValue}</strong><br/>
-              <small>${entry.period} | ${entry.mode} | Limit: $${Number(entry.limitUsd || 0).toFixed(4)} | Warnung: ${Number(entry.warningRatio || 0.9).toFixed(2)}</small>
+    const globalPolicy = findPolicy('user', state.currentUser);
+    const totalCost = Number(state.usage.summary?.totalCostUsd || 0);
+    if (globalUsed) {
+      const totalLabel = globalPolicy ? `$${Number(globalPolicy.limitUsd || 0).toFixed(4)}` : 'kein Limit';
+      globalUsed.textContent = `Used / Total: $${totalCost.toFixed(4)} / ${totalLabel}`;
+    }
+    if (globalLimitNode && globalPeriodNode && globalActiveNode) {
+      globalLimitNode.value = globalPolicy ? Number(globalPolicy.limitUsd || 0).toString() : '';
+      globalPeriodNode.value = globalPolicy?.period || 'monthly';
+      globalActiveNode.checked = !!globalPolicy?.isActive;
+    }
+
+    const usageByFingerprint = new Map(
+      (Array.isArray(state.usage.summary?.byKeyFingerprints) ? state.usage.summary.byKeyFingerprints : [])
+        .map((entry) => [String(entry.keyFingerprint || ''), entry])
+    );
+
+    const providers = Array.isArray(state.providers) ? state.providers : [];
+    const personalRowsByFingerprint = new Map();
+    providers
+      .filter((provider) => !provider.systemKeyId)
+      .forEach((provider) => {
+        const keyFingerprint = String(provider.ownKeyFingerprint || '').trim();
+        if (!keyFingerprint || personalRowsByFingerprint.has(keyFingerprint)) return;
+        personalRowsByFingerprint.set(keyFingerprint, {
+          rowId: `personal:${provider.id}:${keyFingerprint}`,
+          keyFingerprint,
+          name: provider.name,
+          providerKind: provider.kind,
+          model: provider.model,
+          sourceLabel: 'persönlich',
+        });
+      });
+
+    const assignedRowsByKey = new Map();
+    const assignedSystemKeys = Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [];
+    assignedSystemKeys.forEach((entry) => {
+      const keyId = String(entry.systemKeyId || '').trim();
+      if (!keyId || assignedRowsByKey.has(keyId)) return;
+      const assignmentBudgets = (Array.isArray(entry.assignments) ? entry.assignments : [])
+        .filter((assignment) => assignment?.budgetIsActive && assignment?.budgetLimitUsd !== null && assignment?.budgetLimitUsd !== undefined);
+      assignmentBudgets.sort((a, b) => {
+        const priority = { user: 0, role: 1, group: 2, global: 3 };
+        const aPriority = priority[String(a.scopeType || '').toLowerCase()] ?? 9;
+        const bPriority = priority[String(b.scopeType || '').toLowerCase()] ?? 9;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return Number(a.budgetLimitUsd || 0) - Number(b.budgetLimitUsd || 0);
+      });
+      const assignedBudget = assignmentBudgets[0] || null;
+      assignedRowsByKey.set(keyId, {
+        rowId: `assigned:${keyId}:${String(entry.keyFingerprint || '').trim()}`,
+        keyFingerprint: String(entry.keyFingerprint || '').trim(),
+        name: entry.name || keyId,
+        providerKind: entry.providerKind || '',
+        model: entry.modelHint || '',
+        sourceLabel: 'zugewiesen',
+        assignedBudget,
+      });
+    });
+    providers
+      .filter((provider) => !!provider.systemKeyId)
+      .forEach((provider) => {
+        const keyId = String(provider.systemKeyId || '').trim();
+        if (!keyId) return;
+        const existing = assignedRowsByKey.get(keyId);
+        if (existing) {
+          if (!existing.keyFingerprint && provider.systemKeyFingerprint) {
+            existing.keyFingerprint = String(provider.systemKeyFingerprint || '').trim();
+            existing.rowId = `assigned:${keyId}:${existing.keyFingerprint}`;
+          }
+          if (!existing.model && provider.model) existing.model = provider.model;
+          return;
+        }
+        assignedRowsByKey.set(keyId, {
+          rowId: `assigned:${keyId}:${String(provider.systemKeyFingerprint || '').trim()}`,
+          keyFingerprint: String(provider.systemKeyFingerprint || '').trim(),
+          name: provider.name || keyId,
+          providerKind: provider.kind || '',
+          model: provider.model || '',
+          sourceLabel: 'zugewiesen',
+          assignedBudget: null,
+        });
+      });
+
+    const renderRows = (rows) => rows.length
+      ? rows.map((row) => {
+        const keyFingerprint = String(row.keyFingerprint || '').trim();
+        const usage = keyFingerprint ? (usageByFingerprint.get(keyFingerprint) || {}) : {};
+        const policy = keyFingerprint ? findPolicy('key', keyFingerprint) : null;
+        const canSave = Boolean(keyFingerprint);
+        const assignedBudget = row.sourceLabel === 'zugewiesen' ? row.assignedBudget : null;
+        const assignedBudgetLabel = assignedBudget
+          ? `$${Number(assignedBudget.budgetLimitUsd || 0).toFixed(4)} (${assignedBudget.budgetPeriod || 'monthly'})`
+          : 'kein explizites Zuweisungsbudget';
+        return `
+          <li class="admin-assignment-row">
+            <div class="span-col">
+              <strong>${row.name}</strong><br/>
+              <small>${row.providerKind || '-'} | ${row.model || '-'} | ${row.sourceLabel}</small><br/>
+              <small>Used / Total: $${Number(usage.totalCostUsd || 0).toFixed(4)} / ${policy ? `$${Number(policy.limitUsd || 0).toFixed(4)}` : 'kein Limit'}</small><br/>
+              ${row.sourceLabel === 'zugewiesen' ? `<small>Zuweisungsbudget: ${assignedBudgetLabel}</small><br/>` : ''}
+              <small class="hint">Fingerprint: ${keyFingerprint || 'nicht verfügbar'}</small>
+            </div>
+            <label>Limit USD
+              <input type="number" min="0" step="0.000001" data-usage-key-budget-limit="${row.rowId}" value="${policy ? Number(policy.limitUsd || 0) : ''}" placeholder="optional" ${canSave ? '' : 'disabled'} />
+            </label>
+            <label>Periode
+              <select data-usage-key-budget-period="${row.rowId}" ${canSave ? '' : 'disabled'}>
+                <option value="daily" ${policy?.period === 'daily' ? 'selected' : ''}>daily</option>
+                <option value="weekly" ${policy?.period === 'weekly' ? 'selected' : ''}>weekly</option>
+                <option value="monthly" ${(!policy?.period || policy.period === 'monthly') ? 'selected' : ''}>monthly</option>
+              </select>
+            </label>
+            <label>Aktiv
+              <span class="admin-toggle">
+                <input type="checkbox" data-usage-key-budget-active="${row.rowId}" ${policy?.isActive ? 'checked' : ''} ${canSave ? '' : 'disabled'} />
+                <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                <span class="admin-toggle-text">${policy?.isActive ? 'Aktiv' : 'Inaktiv'}</span>
+              </span>
+            </label>
+            <span class="inline-actions">
+              <button type="button" class="secondary small" data-save-usage-key-budget="${row.rowId}" data-usage-key-fingerprint="${keyFingerprint}" ${canSave ? '' : 'disabled'}>Speichern</button>
+              ${policy ? `<button type="button" class="secondary small" data-delete-own-budget="${policy.id}">Löschen</button>` : ''}
             </span>
-            <button type="button" class="secondary small" data-delete-own-budget="${entry.id}">Löschen</button>
           </li>
-        `).join('')
-      : '<li><span>Noch keine eigenen Budget-Policies.</span></li>';
+        `;
+      }).join('')
+      : '<li><span>Keine Einträge.</span></li>';
 
-    effectiveList.innerHTML = effective.length
-      ? effective.map((entry) => `
-          <li>
-            <span>
-              <strong>${entry.scopeType}:${entry.scopeValue}</strong><br/>
-              <small>${entry.period} | ${entry.mode} | Limit: $${Number(entry.limitUsd || 0).toFixed(4)} | aktiv: ${entry.isActive ? 'ja' : 'nein'}</small>
-            </span>
-          </li>
-        `).join('')
-      : '<li><span>Keine effektiven Policies.</span></li>';
+    personalList.innerHTML = renderRows(Array.from(personalRowsByFingerprint.values()));
+    assignedList.innerHTML = renderRows(Array.from(assignedRowsByKey.values()));
 
-    ownList.querySelectorAll('[data-delete-own-budget]').forEach((button) => {
+    panel.querySelectorAll('[data-delete-own-budget]').forEach((button) => {
       button.addEventListener('click', () => {
         const budgetId = Number(button.dataset.deleteOwnBudget);
         if (!Number.isInteger(budgetId)) return;
         deleteOwnBudgetPolicy(budgetId).catch((error) => alert(error.message));
+      });
+    });
+    panel.querySelectorAll('[data-save-usage-key-budget]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const keyFingerprint = String(button.dataset.usageKeyFingerprint || '').trim();
+        const rowId = String(button.dataset.saveUsageKeyBudget || '').trim();
+        if (!keyFingerprint || !rowId) return;
+        saveOwnKeyBudgetPolicy(rowId, keyFingerprint).catch((error) => alert(error.message));
       });
     });
   }
@@ -180,36 +310,41 @@ function createDashboardController({
 
   async function refreshOwnBudgets() {
     if (!hasPermission('budgets.manage_own')) return;
-    const payload = await api('/api/usage/budgets');
+    const [payload, summary, providers, assignedKeysPayload] = await Promise.all([
+      api('/api/usage/budgets'),
+      api('/api/usage/summary?days=30'),
+      api('/api/providers').catch(() => state.providers),
+      api('/api/providers/assigned-system-keys').catch(() => ({ enabled: state.systemKeysEnabled !== false, keys: state.assignedSystemKeys || [] })),
+    ]);
     state.usage.budgets = {
       ownPolicies: Array.isArray(payload?.ownPolicies) ? payload.ownPolicies : [],
       effectivePolicies: Array.isArray(payload?.effectivePolicies) ? payload.effectivePolicies : [],
     };
+    state.usage.summary = summary || state.usage.summary;
+    if (Array.isArray(providers)) {
+      state.providers = providers;
+    }
+    if (assignedKeysPayload && typeof assignedKeysPayload === 'object') {
+      state.systemKeysEnabled = assignedKeysPayload.enabled !== false;
+      state.assignedSystemKeys = Array.isArray(assignedKeysPayload.keys) ? assignedKeysPayload.keys : [];
+    }
     renderOwnBudgetPolicies();
   }
 
-  async function saveOwnBudgetPolicy() {
-    const limitUsd = Number(String(el('usage-budget-limit-usd').value || '').trim().replace(',', '.'));
-    const warningRatio = Number(String(el('usage-budget-warning-ratio').value || '').trim().replace(',', '.'));
+  async function saveOwnGlobalBudgetPolicy() {
+    const limitUsd = Number(String(el('usage-budget-global-limit').value || '').trim().replace(',', '.'));
     if (!Number.isFinite(limitUsd) || limitUsd < 0) {
       alert('Bitte ein gültiges Limit in USD angeben.');
       return;
     }
-    const scopeType = el('usage-budget-scope-type').value;
-    const scopeValueInput = String(el('usage-budget-scope-value').value || '').trim();
-    const scopeValue = scopeType === 'user' ? state.currentUser : scopeValueInput;
-    if (!scopeValue) {
-      alert('Bitte Scope-Wert angeben.');
-      return;
-    }
     const payload = {
-      scopeType,
-      scopeValue,
-      period: el('usage-budget-period').value,
+      scopeType: 'user',
+      scopeValue: state.currentUser,
+      period: el('usage-budget-global-period').value,
       limitUsd,
-      mode: el('usage-budget-mode').value,
-      warningRatio: Number.isFinite(warningRatio) ? warningRatio : 0.9,
-      isActive: el('usage-budget-active').value === 'true',
+      mode: 'hybrid',
+      warningRatio: 0.9,
+      isActive: !!el('usage-budget-global-active').checked,
     };
     el('usage-budget-status').textContent = 'Speichere...';
     await api('/api/usage/budgets', {
@@ -219,6 +354,33 @@ function createDashboardController({
     clearOwnBudgetForm();
     await refreshOwnBudgets();
     el('usage-budget-status').textContent = 'Gespeichert.';
+  }
+
+  async function saveOwnKeyBudgetPolicy(rowId, keyFingerprint) {
+    const limitNode = el('usage-budget-panel').querySelector(`[data-usage-key-budget-limit="${rowId}"]`);
+    const periodNode = el('usage-budget-panel').querySelector(`[data-usage-key-budget-period="${rowId}"]`);
+    const activeNode = el('usage-budget-panel').querySelector(`[data-usage-key-budget-active="${rowId}"]`);
+    if (!limitNode || !periodNode || !activeNode) return;
+
+    const limitUsd = Number(String(limitNode.value || '').trim().replace(',', '.'));
+    if (!Number.isFinite(limitUsd) || limitUsd < 0) {
+      alert('Bitte ein gültiges Limit in USD angeben.');
+      return;
+    }
+    await api('/api/usage/budgets', {
+      method: 'PUT',
+      body: JSON.stringify({
+        scopeType: 'key',
+        scopeValue: keyFingerprint,
+        period: String(periodNode.value || 'monthly'),
+        limitUsd,
+        mode: 'hybrid',
+        warningRatio: 0.9,
+        isActive: !!activeNode.checked,
+      }),
+    });
+    el('usage-budget-status').textContent = 'Gespeichert.';
+    await refreshOwnBudgets();
   }
 
   async function deleteOwnBudgetPolicy(budgetId) {
@@ -322,14 +484,8 @@ function createDashboardController({
     });
     el('usage-refresh').addEventListener('click', () => refreshSummary().catch((error) => alert(error.message)));
     el('usage-window-days').addEventListener('change', () => refreshSummary().catch((error) => alert(error.message)));
-    if (el('usage-budget-save')) {
-      el('usage-budget-save').addEventListener('click', () => saveOwnBudgetPolicy().catch((error) => alert(error.message)));
-    }
-    if (el('usage-budget-clear')) {
-      el('usage-budget-clear').addEventListener('click', () => {
-        clearOwnBudgetForm();
-        el('usage-budget-status').textContent = '';
-      });
+    if (el('usage-budget-global-save')) {
+      el('usage-budget-global-save').addEventListener('click', () => saveOwnGlobalBudgetPolicy().catch((error) => alert(error.message)));
     }
     if (el('history-list')) {
       el('history-list').addEventListener('click', handleHistoryReuse);

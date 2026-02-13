@@ -1046,6 +1046,20 @@ async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_runtime_settings (
+      setting_key TEXT PRIMARY KEY,
+      setting_value_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_by TEXT NOT NULL DEFAULT 'system',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    INSERT INTO app_runtime_settings (setting_key, setting_value_json, updated_by)
+    VALUES ('system_keys', '{"enabled": true}'::jsonb, 'system')
+    ON CONFLICT (setting_key) DO NOTHING
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS template_nodes (
       id BIGSERIAL PRIMARY KEY,
       parent_id BIGINT REFERENCES template_nodes(id) ON DELETE CASCADE,
