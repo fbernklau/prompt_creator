@@ -164,6 +164,11 @@ function createLibraryController({
     return `${'★'.repeat(full)}${half ? '☆' : ''}${'·'.repeat(Math.max(0, empty))}`;
   }
 
+  function updateEntryInCollections(entryId, updater) {
+    state.libraryOwn = state.libraryOwn.map((item) => (String(item.id) === String(entryId) ? updater(item) : item));
+    state.libraryPublic = state.libraryPublic.map((item) => (String(item.id) === String(entryId) ? updater(item) : item));
+  }
+
   function resolveArtifactText(item, artifact = 'metaprompt') {
     if (artifact === 'result') return String(item.resultText || '').trim();
     return String(item.metapromptText || item.promptText || '').trim();
@@ -454,7 +459,7 @@ function createLibraryController({
               <span class="tw-library-badge">${escapeHtml(scopeBadge)}</span>
               <span class="tw-library-badge">${escapeHtml(modeBadge)}</span>
             </div>
-            <button type="button" class="tw-library-card-fav" data-action="copy-lib" title="Aktiven Tab kopieren">♡</button>
+            <button type="button" class="tw-library-card-fav" data-action="favorite-lib" title="${item.isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}">${item.isFavorite ? '★' : '☆'}</button>
           </div>
           <h3 class="tw-library-card-title">${escapeHtml(item.title)}</h3>
           <p class="tw-library-card-description">${escapeHtml(descriptionText)}</p>
@@ -466,11 +471,11 @@ function createLibraryController({
           <div class="tw-library-admin-row">
             <span class="library-meta">${escapeHtml(item.handlungsfeld)} | ${escapeHtml(item.unterkategorie)} | ${escapeHtml(item.fach)} | Modell: ${escapeHtml(item.providerModel || '-')}</span>
             <label class="inline-actions">Rate:
-              <select data-rate-for="${item.id}">
+              <select data-rate-for="${item.id}" data-no-open="true">
                 <option value="">-</option>
                 ${ratingOptions}
               </select>
-              <button type="button" class="secondary small" data-action="rate-lib">Speichern</button>
+              <button type="button" class="secondary small" data-action="rate-lib" data-no-open="true">Speichern</button>
             </label>
           </div>
           <div class="inline-actions tw-library-artifact-tabs">
@@ -484,16 +489,16 @@ function createLibraryController({
           <div class="tw-library-card-foot">
             <span class="tw-library-author">${escapeHtml(ownerLabel)}</span>
             <div class="inline-actions">
-              <button type="button" class="tw-library-try-btn" data-action="reuse-lib">Wiederverwenden</button>
+              <button type="button" class="tw-library-try-btn" data-action="reuse-lib" data-no-open="true">Wiederverwenden</button>
             </div>
           </div>
           ${
             state.libraryMode === 'own'
               ? `
             <div class="inline-actions tw-library-owner-actions">
-              <button type="button" class="secondary small" data-action="edit-lib">Bearbeiten</button>
-              <button type="button" class="secondary small" data-action="toggle-public">${item.isPublic ? 'Privat setzen' : 'Public setzen'}</button>
-              <button type="button" class="secondary small" data-action="delete-lib">Löschen</button>
+              <button type="button" class="secondary small" data-action="edit-lib" data-no-open="true">Bearbeiten</button>
+              <button type="button" class="secondary small" data-action="toggle-public" data-no-open="true">${item.isPublic ? 'Privat setzen' : 'Public setzen'}</button>
+              <button type="button" class="secondary small" data-action="delete-lib" data-no-open="true">Löschen</button>
             </div>
           `
               : ''
@@ -584,11 +589,15 @@ function createLibraryController({
     if (!item) return;
 
     const button = event.target.closest('button[data-action]');
+    const interactiveTarget = event.target.closest('button,select,input,textarea,label,a,[data-no-open="true"]');
     if (!button) {
+      if (interactiveTarget) return;
       if (!shouldTreatAsCardOpen(event)) return;
       openLibraryDetail(item);
       return;
     }
+    event.preventDefault();
+    event.stopPropagation();
 
     if (button.dataset.action === 'artifact-tab') {
       switchArtifactTab(card, item, button.dataset.artifact);
@@ -600,10 +609,17 @@ function createLibraryController({
       return;
     }
 
-    if (button.dataset.action === 'copy-lib') {
-      const activeArtifact = card.dataset.activeArtifact || 'metaprompt';
-      const content = resolveArtifactText(item, activeArtifact);
-      copyToClipboard(content);
+    if (button.dataset.action === 'favorite-lib') {
+      const nextFavorite = !item.isFavorite;
+      await api(`/api/library/${encodeURIComponent(String(libraryId))}/favorite`, {
+        method: 'PUT',
+        body: JSON.stringify({ isFavorite: nextFavorite }),
+      });
+      updateEntryInCollections(libraryId, (entry) => ({ ...entry, isFavorite: nextFavorite }));
+      renderLibraryList();
+      if (state.libraryDetail.entryId && String(state.libraryDetail.entryId) === String(libraryId)) {
+        renderLibraryDetail();
+      }
       return;
     }
 

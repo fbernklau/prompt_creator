@@ -621,6 +621,14 @@ async function initDb() {
       UNIQUE(library_id, user_id)
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS prompt_library_favorites (
+      library_id BIGINT NOT NULL REFERENCES prompt_library(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (library_id, user_id)
+    );
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS provider_model_pricing_catalog (
@@ -956,6 +964,7 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_user ON prompt_library(user_id, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_public ON prompt_library(is_public, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_template ON prompt_library(template_id, updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_favorites_user ON prompt_library_favorites(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_history_user_created ON prompt_history(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');

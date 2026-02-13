@@ -1357,6 +1357,29 @@ button.is-active,
     white-space: normal;
   }
 
+  body[data-nav-layout='sidebar'] .topbar-actions .user-chip-wrap {
+    display: grid;
+    gap: 8px;
+    align-items: stretch;
+    justify-items: stretch;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  body[data-nav-layout='sidebar'] .topbar-actions .user-chip-wrap .user-chip {
+    margin-top: 0;
+    width: 100%;
+    text-align: left;
+    white-space: normal;
+  }
+
+  body[data-nav-layout='sidebar'] .topbar-actions .user-chip-wrap .user-logout-btn {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    padding: 8px 12px;
+  }
+
   body[data-nav-layout='sidebar'] .main-shell {
     width: min(1280px, 100%);
     margin-left: 286px;

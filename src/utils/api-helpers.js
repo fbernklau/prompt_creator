@@ -43,6 +43,7 @@ function normalizeLibraryRow(row) {
     avgRating: Number(row.avg_rating || 0),
     ratingCount: Number(row.rating_count || 0),
     myRating: row.my_rating ? Number(row.my_rating) : null,
+    isFavorite: Boolean(row.is_favorite),
   };
 }
 

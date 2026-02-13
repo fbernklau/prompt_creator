@@ -42,7 +42,8 @@ function createLibraryRouter() {
          l.*,
          COALESCE(r.avg_rating, 0) AS avg_rating,
          COALESCE(r.rating_count, 0) AS rating_count,
-         ur.rating AS my_rating
+         ur.rating AS my_rating,
+         (uf.library_id IS NOT NULL) AS is_favorite
        FROM prompt_library l
        LEFT JOIN (
          SELECT library_id, ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*) AS rating_count
@@ -50,6 +51,7 @@ function createLibraryRouter() {
          GROUP BY library_id
        ) r ON r.library_id = l.id
        LEFT JOIN prompt_library_ratings ur ON ur.library_id = l.id AND ur.user_id = $1
+       LEFT JOIN prompt_library_favorites uf ON uf.library_id = l.id AND uf.user_id = $1
        WHERE ${filters.join(' AND ')}
        ORDER BY l.updated_at DESC`,
       params
@@ -96,7 +98,8 @@ function createLibraryRouter() {
          l.*,
          COALESCE(r.avg_rating, 0) AS avg_rating,
          COALESCE(r.rating_count, 0) AS rating_count,
-         ur.rating AS my_rating
+         ur.rating AS my_rating,
+         (uf.library_id IS NOT NULL) AS is_favorite
        FROM prompt_library l
        LEFT JOIN (
          SELECT library_id, ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*) AS rating_count
@@ -104,6 +107,7 @@ function createLibraryRouter() {
          GROUP BY library_id
        ) r ON r.library_id = l.id
        LEFT JOIN prompt_library_ratings ur ON ur.library_id = l.id AND ur.user_id = $1
+       LEFT JOIN prompt_library_favorites uf ON uf.library_id = l.id AND uf.user_id = $1
        WHERE ${filters.join(' AND ')}
        ORDER BY l.updated_at DESC
        LIMIT $${params.length}`,
@@ -297,6 +301,34 @@ function createLibraryRouter() {
     res.json({ ok: true });
   }));
 
+  router.put('/library/:id/favorite', authMiddleware, accessMiddleware, requirePermission('library.view_public'), asyncHandler(async (req, res) => {
+    const libraryId = Number(req.params.id);
+    const isFavorite = Boolean(req.body?.isFavorite);
+    if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
+
+    const accessResult = await pool.query(
+      `SELECT id FROM prompt_library WHERE id = $1 AND (is_public = TRUE OR user_id = $2)`,
+      [libraryId, req.userId]
+    );
+    if (!accessResult.rowCount) return res.status(404).json({ error: 'Library entry not found.' });
+
+    if (isFavorite) {
+      await pool.query(
+        `INSERT INTO prompt_library_favorites (library_id, user_id)
+         VALUES ($1,$2)
+         ON CONFLICT (library_id, user_id) DO NOTHING`,
+        [libraryId, req.userId]
+      );
+    } else {
+      await pool.query(
+        `DELETE FROM prompt_library_favorites WHERE library_id = $1 AND user_id = $2`,
+        [libraryId, req.userId]
+      );
+    }
+
+    res.json({ ok: true, isFavorite });
+  }));
+
   router.get('/library/:id/open', authMiddleware, accessMiddleware, requirePermission('library.view_public'), asyncHandler(async (req, res) => {
     const libraryId = Number(req.params.id);
     if (!Number.isInteger(libraryId)) return res.status(400).json({ error: 'Invalid library id.' });
@@ -306,7 +338,8 @@ function createLibraryRouter() {
          l.*,
          COALESCE(r.avg_rating, 0) AS avg_rating,
          COALESCE(r.rating_count, 0) AS rating_count,
-         ur.rating AS my_rating
+         ur.rating AS my_rating,
+         (uf.library_id IS NOT NULL) AS is_favorite
        FROM prompt_library l
        LEFT JOIN (
          SELECT library_id, ROUND(AVG(rating)::numeric, 2) AS avg_rating, COUNT(*) AS rating_count
@@ -314,6 +347,7 @@ function createLibraryRouter() {
          GROUP BY library_id
        ) r ON r.library_id = l.id
        LEFT JOIN prompt_library_ratings ur ON ur.library_id = l.id AND ur.user_id = $2
+       LEFT JOIN prompt_library_favorites uf ON uf.library_id = l.id AND uf.user_id = $2
        WHERE l.id = $1
          AND (l.user_id = $2 OR l.is_public = TRUE)
        LIMIT 1`,
