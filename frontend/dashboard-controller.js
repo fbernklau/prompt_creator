@@ -4,6 +4,7 @@ function createDashboardController({
   api,
   showScreen,
 }) {
+  let openHistoryHandler = null;
   state.usage = {
     windowDays: 30,
     summary: null,
@@ -79,7 +80,26 @@ function createDashboardController({
     const entries = Array.isArray(state.history) ? state.history : [];
     list.innerHTML = entries.length
       ? entries
-        .map((item) => `<li><span><strong>${item.fach}</strong><br/><small>${item.handlungsfeld}<br/>${item.date}</small></span></li>`)
+        .map((item) => {
+          const meta = [
+            item.handlungsfeld,
+            item.unterkategorie || '',
+            item.providerModel ? `Modell: ${item.providerModel}` : '',
+            item.generationMode === 'result' ? 'Direktes Ergebnis' : 'Prompt',
+          ].filter(Boolean).join(' | ');
+          const canReuse = Boolean(item.handlungsfeld && item.unterkategorie);
+          return `
+            <li>
+              <span>
+                <strong>${item.fach}</strong><br/>
+                <small>${meta}<br/>${item.date || '-'}</small>
+              </span>
+              <button type="button" class="secondary small" data-history-reuse="${item.id || ''}" ${canReuse ? '' : 'disabled'} title="${canReuse ? 'Eintrag wiederverwenden' : 'Keine wiederverwendbaren Daten'}">
+                Wiederverwenden
+              </button>
+            </li>
+          `;
+        })
         .join('')
       : '<li><span>Noch keine Verlaufseinträge.</span></li>';
   }
@@ -262,6 +282,27 @@ function createDashboardController({
     showScreen('dashboard');
   }
 
+  function setOpenHistoryHandler(handler) {
+    openHistoryHandler = typeof handler === 'function' ? handler : null;
+  }
+
+  function handleHistoryReuse(event) {
+    const button = event.target.closest('button[data-history-reuse]');
+    if (!button) return;
+    const entryId = String(button.dataset.historyReuse || '').trim();
+    if (!entryId) return;
+    const entry = (Array.isArray(state.history) ? state.history : []).find((item) => String(item.id || '') === entryId);
+    if (!entry) return;
+    if (typeof openHistoryHandler !== 'function') {
+      alert('Wiederverwenden ist aktuell nicht verfügbar.');
+      return;
+    }
+    const opened = openHistoryHandler(entry);
+    if (opened !== false) {
+      showScreen('form');
+    }
+  }
+
   function bindEvents() {
     el('btn-dashboard').addEventListener('click', () => openDashboard('usage').catch((error) => alert(error.message)));
     el('btn-back-home-from-dashboard').addEventListener('click', () => showScreen('home'));
@@ -289,6 +330,9 @@ function createDashboardController({
         el('usage-budget-status').textContent = '';
       });
     }
+    if (el('history-list')) {
+      el('history-list').addEventListener('click', handleHistoryReuse);
+    }
     renderDashboardTabs();
     renderProviderStageTabs();
     renderHistory();
@@ -302,6 +346,7 @@ function createDashboardController({
     refreshSummary,
     openDashboard,
     setDashboardTab,
+    setOpenHistoryHandler,
     getProviderStage: () => state.dashboard.providerStage,
   };
 }

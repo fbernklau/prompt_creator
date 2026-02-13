@@ -98,6 +98,7 @@ const taskController = createTaskController({
   showScreen: uiShell.showScreen,
   saveHistory: historyController.saveHistory,
 });
+dashboardController.setOpenHistoryHandler((entry) => taskController.openHistoryEntry(entry));
 const libraryController = createLibraryController({
   state,
   el,

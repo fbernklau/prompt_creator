@@ -444,8 +444,102 @@ async function initDb() {
       user_id TEXT NOT NULL,
       fach TEXT NOT NULL,
       handlungsfeld TEXT NOT NULL,
+      unterkategorie TEXT,
+      schulstufe TEXT,
+      ziel TEXT,
+      template_id TEXT,
+      provider_kind TEXT,
+      provider_model TEXT,
+      generation_mode TEXT NOT NULL DEFAULT 'prompt' CHECK (generation_mode IN ('prompt', 'result')),
+      form_snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      metaprompt_text TEXT,
+      result_text TEXT,
+      has_result BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS unterkategorie TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS schulstufe TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS ziel TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS template_id TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS provider_kind TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS provider_model TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS generation_mode TEXT
+  `);
+  await pool.query(`
+    UPDATE prompt_history
+    SET generation_mode = 'prompt'
+    WHERE generation_mode IS NULL OR generation_mode NOT IN ('prompt', 'result')
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN generation_mode SET DEFAULT 'prompt'
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN generation_mode SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS form_snapshot_json JSONB
+  `);
+  await pool.query(`
+    UPDATE prompt_history
+    SET form_snapshot_json = '{}'::jsonb
+    WHERE form_snapshot_json IS NULL
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN form_snapshot_json SET DEFAULT '{}'::jsonb
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN form_snapshot_json SET NOT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS metaprompt_text TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS result_text TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ADD COLUMN IF NOT EXISTS has_result BOOLEAN
+  `);
+  await pool.query(`
+    UPDATE prompt_history
+    SET has_result = FALSE
+    WHERE has_result IS NULL
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN has_result SET DEFAULT FALSE
+  `);
+  await pool.query(`
+    ALTER TABLE prompt_history
+    ALTER COLUMN has_result SET NOT NULL
   `);
 
   await pool.query(`
@@ -862,6 +956,7 @@ async function initDb() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_user ON prompt_library(user_id, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_public ON prompt_library(is_public, updated_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_library_template ON prompt_library(template_id, updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_prompt_history_user_created ON prompt_history(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage_audit(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_user ON provider_generation_events(user_id, created_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_provider_generation_events_groups ON provider_generation_events USING GIN (user_groups_json)');

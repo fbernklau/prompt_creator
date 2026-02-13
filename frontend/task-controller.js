@@ -1659,6 +1659,63 @@ function createTaskController({
     return true;
   }
 
+  function openHistoryEntry(entry = {}) {
+    const categoryName = String(entry.handlungsfeld || '').trim();
+    const subcategoryName = String(entry.unterkategorie || '').trim();
+    const categoryConfig = getCategoryConfig();
+    const category = categoryConfig[categoryName];
+    if (!category || !subcategoryName) {
+      alert('Der Verlaufseintrag enthält kein gültiges Template-Mapping.');
+      return false;
+    }
+
+    const validTemplate = (category.unterkategorien || []).includes(subcategoryName);
+    if (!validTemplate) {
+      alert('Das gespeicherte Template ist in dieser Version nicht mehr vorhanden.');
+      return false;
+    }
+
+    openForm(categoryName, subcategoryName);
+    const snapshot = entry.formSnapshot && typeof entry.formSnapshot === 'object'
+      ? (entry.formSnapshot.values ? entry.formSnapshot : { values: entry.formSnapshot, activeId: null })
+      : null;
+    if (snapshot && Object.keys(snapshot.values || {}).length) {
+      restorePromptFormValues(snapshot);
+    } else {
+      if (el('fach')) el('fach').value = String(entry.fach || '');
+      if (el('schulstufe')) el('schulstufe').value = String(entry.schulstufe || '');
+      if (el('ziel')) el('ziel').value = String(entry.ziel || '');
+    }
+    setRunModeToggle(entry.generationMode === 'result' ? 'result' : getGlobalGenerationMode());
+    setGenerationStatus('Verlaufseintrag geladen. Eingaben prüfen und neu generieren.', 'ok');
+    return true;
+  }
+
+  function buildHistoryEntryPayload(context, generation = {}, formSnapshot = null) {
+    const metapromptProvider = generation?.providers?.metaprompt || generation?.provider || null;
+    const mode = String(generation?.mode || getRunGenerationMode()).trim() === 'result' ? 'result' : 'prompt';
+    const snapshot = formSnapshot && typeof formSnapshot === 'object'
+      ? formSnapshot
+      : snapshotPromptFormValues();
+    const metapromptText = String(generation?.metaprompt || '').trim() || state.generatedMetaPrompt || '';
+    const resultText = String(generation?.resultOutput || '').trim() || state.generatedResult || '';
+    return {
+      fach: context.baseFields.fach,
+      handlungsfeld: context.baseFields.handlungsfeld,
+      unterkategorie: context.baseFields.unterkategorie,
+      schulstufe: context.baseFields.schulstufe || '',
+      ziel: context.baseFields.ziel || '',
+      templateId: context.template?.id || generation?.templateId || null,
+      providerKind: metapromptProvider?.kind || null,
+      providerModel: metapromptProvider?.model || null,
+      generationMode: mode,
+      formSnapshot: snapshot,
+      metapromptText,
+      resultText,
+      hasResult: mode === 'result' && Boolean(resultText.trim()),
+    };
+  }
+
   function syncAdvancedSectionUi() {
     const area = el('advanced-fields');
     const button = el('toggle-advanced');
@@ -1871,7 +1928,7 @@ function createTaskController({
       stage = 'finalize';
       setGenerationStatus(`Schritt ${runMode === 'result' ? '5/5' : '4/4'}: Verlauf und Discovery werden aktualisiert...`, 'info');
       updateResultProgress(stage, 'Abschluss läuft…', runMode);
-      await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
+      await saveHistory(buildHistoryEntryPayload(context, generation, formSnapshot));
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
       resetRunModeOverride();
@@ -2038,7 +2095,7 @@ function createTaskController({
       });
 
       stage = 'finalize';
-      await saveHistory({ fach: context.baseFields.fach, handlungsfeld: context.baseFields.handlungsfeld });
+      await saveHistory(buildHistoryEntryPayload(context, streamDonePayload, generationFormSnapshot));
       await refreshTemplateDiscovery();
       setGenerating(false, 'Generierung abgeschlossen.');
       resetRunModeOverride();
@@ -2252,6 +2309,7 @@ function createTaskController({
     syncAdvancedSectionUi,
     syncFlowModeUi,
     openLibraryEntry,
+    openHistoryEntry,
   };
 }
 
