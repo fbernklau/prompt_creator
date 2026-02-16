@@ -16,3 +16,5 @@ yarn-error.log*
 
 # Local thesis/work materials
 temp_resources/
+screenshots/
+screenshots_prompt_creator/

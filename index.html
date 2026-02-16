@@ -1113,16 +1113,12 @@
               <h3>Systemweite API-Keys</h3>
               <small class="hint">Aktive Schlüssel können Usern, Rollen oder Gruppen zugewiesen werden.</small>
             </div>
-            <div class="inline-actions top-space">
-              <label class="admin-toggle">
-                <input id="admin-system-keys-enabled" type="checkbox" />
-                <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                <span class="admin-toggle-text">System-Keys global aktiv</span>
-              </label>
-              <button id="admin-system-keys-enabled-save" type="button" class="secondary">Globalstatus speichern</button>
-            </div>
             <div id="admin-system-key-list" class="top-space"></div>
-            <div class="grid-3 top-space">
+            <button id="admin-system-key-create-toggle" type="button" class="admin-create-dashed top-space">
+              <span class="material-icons-round">add_circle</span>
+              <span class="admin-create-label">Add New API Key</span>
+            </button>
+            <div id="admin-system-key-create-form" class="grid-3 top-space is-hidden">
               <label>System Key ID
                 <input id="admin-system-key-id" placeholder="optional, z. B. pc_google_main" />
               </label>
@@ -1157,11 +1153,11 @@
                 </select>
               </label>
             </div>
-            <div class="inline-actions top-space">
+            <div id="admin-system-key-create-actions" class="inline-actions top-space is-hidden">
               <button id="admin-system-key-save" type="button" class="admin-primary-action">System-Key speichern</button>
               <button id="admin-system-key-clear" type="button" class="secondary">Form leeren</button>
-              <small id="admin-system-key-status" class="hint"></small>
             </div>
+            <small id="admin-system-key-status" class="hint top-space"></small>
           </div>
         </div>
       </section>

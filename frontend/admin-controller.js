@@ -51,6 +51,12 @@ function createAdminController({
     systemKeys: [],
     selectedSystemKeyId: '',
     openSystemKeyId: '',
+    expandedSystemKeyIds: [],
+    expandedAssignmentIds: [],
+    systemKeySearchQuery: '',
+    systemKeyStatusFilter: 'all',
+    systemKeyLevelFilter: 'all',
+    showSystemKeyCreateForm: false,
     budgets: [],
     selectedBudgetId: null,
     systemKeysEnabled: true,
@@ -387,6 +393,38 @@ function createAdminController({
     }
   }
 
+  function getUsageState(usedUsd, limitUsd, isActive) {
+    if (!isActive) return 'inactive';
+    if (limitUsd === null || limitUsd === undefined || limitUsd === '') return 'active';
+    const limit = Number(limitUsd);
+    const used = Number(usedUsd || 0);
+    if (!Number.isFinite(limit) || limit <= 0) return 'active';
+    const ratio = used / limit;
+    if (ratio >= 1) return 'danger';
+    if (ratio >= 0.8) return 'warning';
+    return 'active';
+  }
+
+  function getUsageStateLabel(state) {
+    if (state === 'danger') return 'Über Budget';
+    if (state === 'warning') return 'Warnung';
+    if (state === 'inactive') return 'Inaktiv';
+    return 'Aktiv';
+  }
+
+  function formatUsedTotalLabel({ usedUsd = 0, limitUsd = null }) {
+    if (limitUsd === null || limitUsd === undefined || limitUsd === '') {
+      return `${formatUsd(usedUsd)} / unbegrenzt`;
+    }
+    return `${formatUsd(usedUsd)} / ${formatUsd(limitUsd)}`;
+  }
+
+  function matchesTextSearch(haystackValues = [], query = '') {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return true;
+    return haystackValues.some((value) => String(value || '').toLowerCase().includes(normalized));
+  }
+
   function renderSystemKeyList() {
     const container = el('admin-system-key-list');
     if (!container) return;
@@ -394,142 +432,384 @@ function createAdminController({
       container.innerHTML = '<p class="hint">Keine Berechtigung für systemweite API-Keys.</p>';
       return;
     }
+
     const keys = Array.isArray(adminState.systemKeys) ? adminState.systemKeys : [];
-    if (!keys.length) {
-      container.innerHTML = '<p class="hint">Noch keine System-Keys vorhanden.</p>';
-      return;
-    }
+    const searchQuery = String(adminState.systemKeySearchQuery || '').trim();
+    const statusFilter = String(adminState.systemKeyStatusFilter || 'all').trim();
+    const levelFilter = String(adminState.systemKeyLevelFilter || 'all').trim();
 
-    container.innerHTML = keys
-      .map((key) => {
-        const isOpen = adminState.openSystemKeyId === key.systemKeyId;
-        const keyLimitValue = key.budgetLimitUsd ?? '';
-        const keyPeriod = key.budgetPeriod || 'monthly';
-        const keyUsed = Number(key.usage?.spendUsd || 0);
-        const keyBudgetLabel = keyLimitValue !== '' && keyLimitValue !== null
-          ? `${formatUsd(keyUsed)} / ${formatUsd(key.budgetLimitUsd || 0)}`
-          : `${formatUsd(keyUsed)} / unbegrenzt`;
-        return `
-          <div class="admin-model-provider-card">
-            <div class="admin-assignment-row">
-              <div class="span-col">
-                <strong>${escapeHtml(key.name)} <small class="hint">(${escapeHtml(key.systemKeyId)})</small></strong><br/>
-                <small>${escapeHtml(key.providerKind)} | Requests: ${Number(key.usage?.totalRequests || 0)}</small>
-              </div>
-              <label>Budget
-                <input type="number" min="0" step="0.000001" data-system-key-budget-limit="${escapeHtml(key.systemKeyId)}" value="${keyLimitValue}" placeholder="leer = unbegrenzt" />
-              </label>
-              <label>Periode
-                <select data-system-key-budget-period="${escapeHtml(key.systemKeyId)}">
-                  <option value="daily" ${keyPeriod === 'daily' ? 'selected' : ''}>daily</option>
-                  <option value="weekly" ${keyPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
-                  <option value="monthly" ${keyPeriod === 'monthly' ? 'selected' : ''}>monthly</option>
-                </select>
-              </label>
-              <small>${keyBudgetLabel}</small>
-              <label class="admin-toggle">
-                <input type="checkbox" data-system-key-active="${escapeHtml(key.systemKeyId)}" ${key.isActive ? 'checked' : ''} />
-                <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                <span class="admin-toggle-text">${key.isActive ? 'Aktiv' : 'Inaktiv'}</span>
-              </label>
-              <span class="inline-actions">
-                <button type="button" class="secondary small" data-toggle-system-key-details="${escapeHtml(key.systemKeyId)}">${isOpen ? 'Schließen' : 'Bearbeiten'}</button>
-                <button type="button" class="secondary small" data-save-system-key-row="${escapeHtml(key.systemKeyId)}">Speichern</button>
-              </span>
-            </div>
+    const totalUsedUsd = keys.reduce((sum, key) => sum + Number(key.usage?.spendUsd || 0), 0);
+    const totalLimitValues = keys
+      .map((key) => (key.budgetLimitUsd === null || key.budgetLimitUsd === undefined ? null : Number(key.budgetLimitUsd)))
+      .filter((value) => Number.isFinite(value));
+    const globalLimitUsd = totalLimitValues.length ? totalLimitValues.reduce((sum, value) => sum + value, 0) : null;
+    const globalLabel = formatUsedTotalLabel({ usedUsd: totalUsedUsd, limitUsd: globalLimitUsd });
 
-            <div class="top-space ${isOpen ? '' : 'is-hidden'}" data-system-key-details="${escapeHtml(key.systemKeyId)}">
-              <div class="grid-3">
-                <label>Name
-                  <input type="text" data-system-key-name="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.name || '')}" />
-                </label>
-                <label>Provider
-                  <select data-system-key-provider-kind="${escapeHtml(key.systemKeyId)}">
-                    <option value="openai" ${key.providerKind === 'openai' ? 'selected' : ''}>openai</option>
-                    <option value="anthropic" ${key.providerKind === 'anthropic' ? 'selected' : ''}>anthropic</option>
-                    <option value="google" ${key.providerKind === 'google' ? 'selected' : ''}>google</option>
-                    <option value="mistral" ${key.providerKind === 'mistral' ? 'selected' : ''}>mistral</option>
-                    <option value="custom" ${key.providerKind === 'custom' ? 'selected' : ''}>custom</option>
-                  </select>
-                </label>
-                <label>Modell-Hinweis
-                  <input type="text" data-system-key-model-hint="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.modelHint || '')}" placeholder="z. B. gpt-4.1" />
-                </label>
-                <label class="span-2">Base URL
-                  <input type="text" data-system-key-base-url="${escapeHtml(key.systemKeyId)}" value="${escapeHtml(key.baseUrl || '')}" placeholder="optional" />
-                </label>
-                <label>API-Key (optional)
-                  <input type="password" data-system-key-api-key="${escapeHtml(key.systemKeyId)}" placeholder="leer = vorhandenen Key behalten" />
-                </label>
-              </div>
+    const filteredKeys = keys.filter((key) => {
+      const keyState = getUsageState(Number(key.usage?.spendUsd || 0), key.budgetLimitUsd, key.isActive);
+      const assignments = Array.isArray(key.assignments) ? key.assignments : [];
+      const keyTextValues = [key.name, key.systemKeyId, key.providerKind, key.modelHint, key.baseUrl];
 
-              <div class="top-space">
-                <strong>Zuweisungen</strong>
-                <ul class="provider-list top-space">
-                  ${(key.assignments || []).length
-      ? key.assignments.map((assignment) => `
-                      <li class="admin-assignment-row">
-                        <div class="span-col">
-                          <strong>${escapeHtml(assignment.scopeType)}:${escapeHtml(assignment.scopeValue)}</strong><br/>
-                          <small>Used/Total: ${formatUsd(assignment.usage?.spendUsd || 0)} / ${assignment.budgetLimitUsd !== null ? formatUsd(assignment.budgetLimitUsd || 0) : 'unbegrenzt'}</small><br/>
-                          <small>Pro Nutzer: ${assignment.perUserBudgetLimitUsd !== null ? `${formatUsd(assignment.perUserBudgetLimitUsd || 0)} (${escapeHtml(assignment.perUserBudgetPeriod || 'monthly')})` : 'unbegrenzt'}</small>
-                        </div>
-                        <label>Budget
-                          <input type="number" min="0" step="0.000001" data-assignment-budget-limit="${key.systemKeyId}:${assignment.id}" value="${assignment.budgetLimitUsd ?? ''}" placeholder="leer = unbegrenzt" />
-                        </label>
-                        <label>Periode
-                          <select data-assignment-budget-period="${key.systemKeyId}:${assignment.id}">
-                            <option value="daily" ${assignment.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
-                            <option value="weekly" ${assignment.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
-                            <option value="monthly" ${(!assignment.budgetPeriod || assignment.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
-                          </select>
-                        </label>
-                        <label>Pro Nutzer Budget
-                          <input type="number" min="0" step="0.000001" data-assignment-per-user-budget-limit="${key.systemKeyId}:${assignment.id}" value="${assignment.perUserBudgetLimitUsd ?? ''}" placeholder="leer = unbegrenzt" />
-                        </label>
-                        <label>Pro Nutzer Periode
-                          <select data-assignment-per-user-budget-period="${key.systemKeyId}:${assignment.id}">
-                            <option value="daily" ${assignment.perUserBudgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
-                            <option value="weekly" ${assignment.perUserBudgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
-                            <option value="monthly" ${(!assignment.perUserBudgetPeriod || assignment.perUserBudgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
-                          </select>
-                        </label>
-                        <label class="admin-toggle">
-                          <input type="checkbox" data-assignment-active="${key.systemKeyId}:${assignment.id}" ${assignment.isActive ? 'checked' : ''} />
-                          <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                          <span class="admin-toggle-text">${assignment.isActive ? 'Aktiv' : 'Inaktiv'}</span>
-                        </label>
-                        <span class="inline-actions">
-                          <button type="button" class="secondary small" data-save-system-key-assignment="${key.systemKeyId}:${assignment.id}">Speichern</button>
-                          <button type="button" class="secondary small" data-delete-system-key-assignment="${key.systemKeyId}:${assignment.id}">Löschen</button>
-                        </span>
-                      </li>
-                    `).join('')
-      : '<li><span>Keine Zuweisungen.</span></li>'}
-                </ul>
-                <div class="inline-actions top-space">
-                  <select data-system-key-assign-type="${escapeHtml(key.systemKeyId)}">
-                    <option value="global">global</option>
-                    <option value="user">user</option>
-                    <option value="role">role</option>
-                    <option value="group">group</option>
-                  </select>
-                  <span data-system-key-assign-value-wrap="${escapeHtml(key.systemKeyId)}">
-                    <input data-system-key-assign-value="${escapeHtml(key.systemKeyId)}" placeholder="z. B. teachers oder username" />
-                  </span>
-                  <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(key.systemKeyId)}">Zuweisung hinzufügen</button>
-                </div>
-              </div>
-              <small class="hint top-space" data-system-key-row-status="${escapeHtml(key.systemKeyId)}"></small>
+      const matchingAssignments = assignments.filter((assignment) => {
+        return matchesTextSearch([
+          assignment.scopeType,
+          assignment.scopeValue,
+          assignment.budgetPeriod,
+          assignment.budgetLimitUsd,
+          assignment.perUserBudgetPeriod,
+          assignment.perUserBudgetLimitUsd,
+        ], searchQuery);
+      });
+
+      const matchingQuotas = assignments.filter((assignment) => {
+        const hasPerUserLimit = assignment.perUserBudgetLimitUsd !== null && assignment.perUserBudgetLimitUsd !== undefined;
+        return hasPerUserLimit && matchesTextSearch([
+          assignment.scopeType,
+          assignment.scopeValue,
+          assignment.perUserBudgetPeriod,
+          assignment.perUserBudgetLimitUsd,
+        ], searchQuery);
+      });
+
+      const keyMatchesQuery = matchesTextSearch(keyTextValues, searchQuery);
+
+      let levelMatches = false;
+      if (levelFilter === 'keys') {
+        levelMatches = keyMatchesQuery || !searchQuery;
+      } else if (levelFilter === 'assignments') {
+        levelMatches = matchingAssignments.length > 0 || (!searchQuery && assignments.length > 0);
+      } else if (levelFilter === 'quotas') {
+        levelMatches = matchingQuotas.length > 0 || (!searchQuery && assignments.some((assignment) => assignment.perUserBudgetLimitUsd !== null && assignment.perUserBudgetLimitUsd !== undefined));
+      } else {
+        levelMatches = keyMatchesQuery || matchingAssignments.length > 0 || matchingQuotas.length > 0 || !searchQuery;
+      }
+      if (!levelMatches) return false;
+
+      if (statusFilter === 'all') return true;
+      const assignmentStates = assignments.map((assignment) => getUsageState(
+        Number(assignment.usage?.spendUsd || 0),
+        assignment.budgetLimitUsd,
+        assignment.isActive
+      ));
+      if (levelFilter === 'keys') return keyState === statusFilter;
+      if (levelFilter === 'assignments' || levelFilter === 'quotas') return assignmentStates.some((state) => state === statusFilter);
+      return keyState === statusFilter || assignmentStates.some((state) => state === statusFilter);
+    });
+
+    const globalState = getUsageState(totalUsedUsd, globalLimitUsd, adminState.systemKeysEnabled);
+    const globalDotClass = globalState === 'danger'
+      ? 'dot-danger'
+      : globalState === 'warning'
+        ? 'dot-warning'
+        : globalState === 'inactive'
+          ? 'dot-muted'
+          : 'dot-active';
+
+    container.innerHTML = `
+      <div class="admin-key-shell">
+        <div class="admin-key-toolbar">
+          <label class="admin-key-search-wrap">
+            <span class="material-icons-round">search</span>
+            <input id="admin-system-key-search" placeholder="Suche nach Keys, Assignments oder Usern..." value="${escapeHtml(searchQuery)}" />
+          </label>
+          <label>Status
+            <select id="admin-system-key-filter-status">
+              <option value="all" ${statusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
+              <option value="active" ${statusFilter === 'active' ? 'selected' : ''}>Active</option>
+              <option value="warning" ${statusFilter === 'warning' ? 'selected' : ''}>Warning</option>
+              <option value="danger" ${statusFilter === 'danger' ? 'selected' : ''}>Over Budget</option>
+              <option value="inactive" ${statusFilter === 'inactive' ? 'selected' : ''}>Inactive</option>
+            </select>
+          </label>
+          <label>Level
+            <select id="admin-system-key-filter-level">
+              <option value="all" ${levelFilter === 'all' ? 'selected' : ''}>All Levels</option>
+              <option value="keys" ${levelFilter === 'keys' ? 'selected' : ''}>Keys</option>
+              <option value="assignments" ${levelFilter === 'assignments' ? 'selected' : ''}>Assignments</option>
+              <option value="quotas" ${levelFilter === 'quotas' ? 'selected' : ''}>User Quotas</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="admin-global-budget-row admin-level-row">
+          <div class="admin-level-left">
+            <input type="checkbox" class="admin-row-check" />
+            <span class="admin-state-dot ${globalDotClass}"></span>
+            <span class="material-icons-round admin-row-icon">public</span>
+            <div class="admin-key-ident">
+              <strong>Global System Budget</strong>
+              <small>${keys.length} Keys im Katalog</small>
             </div>
           </div>
-        `;
-      })
-      .join('');
+          <div class="admin-level-right">
+            <div class="admin-budget-input-wrap admin-budget-readonly">
+              <span>Set Budget</span>
+              <input type="text" value="aggregiert aus Key-Limits" readonly />
+            </div>
+            <small class="admin-used-total"><span>Used/Total:</span> <strong>${globalLabel}</strong></small>
+            <label class="admin-toggle">
+              <input id="admin-system-keys-enabled" type="checkbox" ${adminState.systemKeysEnabled ? 'checked' : ''} />
+              <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+              <span class="admin-toggle-text">${adminState.systemKeysEnabled ? 'On' : 'Off'}</span>
+            </label>
+            <button id="admin-system-keys-enabled-save" type="button" class="secondary small">Save</button>
+          </div>
+        </div>
+
+        <div class="admin-key-list ${filteredKeys.length ? '' : 'is-empty'}">
+          ${filteredKeys.length
+            ? filteredKeys.map((key) => {
+              const keyId = String(key.systemKeyId || '');
+              const keyExpanded = (adminState.expandedSystemKeyIds || []).includes(keyId);
+              const keyEditOpen = adminState.openSystemKeyId === keyId;
+              const keyState = getUsageState(Number(key.usage?.spendUsd || 0), key.budgetLimitUsd, key.isActive);
+              const keyDotClass = keyState === 'danger'
+                ? 'dot-danger'
+                : keyState === 'warning'
+                  ? 'dot-warning'
+                  : keyState === 'inactive'
+                    ? 'dot-muted'
+                    : 'dot-active';
+              const keyUsageLabel = formatUsedTotalLabel({
+                usedUsd: Number(key.usage?.spendUsd || 0),
+                limitUsd: key.budgetLimitUsd,
+              });
+              const assignments = Array.isArray(key.assignments) ? key.assignments : [];
+
+              return `
+                <div class="admin-key-node admin-level-1">
+                  <div class="admin-key-row admin-level-row">
+                    <div class="admin-level-left">
+                      <input type="checkbox" class="admin-row-check" />
+                      <span class="admin-state-dot ${keyDotClass}"></span>
+                      <button type="button" class="secondary small admin-collapse-btn" data-admin-toggle-key="${escapeHtml(keyId)}" aria-label="Key ein-/ausklappen">
+                        <span class="material-icons-round">${keyExpanded ? 'expand_more' : 'chevron_right'}</span>
+                      </button>
+                      <span class="material-icons-round admin-row-icon">key</span>
+                      <div class="admin-key-ident">
+                        <strong>Key: ${escapeHtml(key.name || keyId)}</strong>
+                        <small>${escapeHtml(key.systemKeyId)} | ${escapeHtml(key.providerKind)} | ${escapeHtml(key.modelHint || '-')}</small>
+                      </div>
+                    </div>
+                    <div class="admin-level-right">
+                      <div class="admin-budget-input-wrap">
+                        <span>Set Budget</span>
+                        <input type="number" min="0" step="0.000001" data-system-key-budget-limit="${escapeHtml(keyId)}" value="${key.budgetLimitUsd ?? ''}" placeholder="optional" />
+                        <span class="admin-budget-unit">USD</span>
+                        <select data-system-key-budget-period="${escapeHtml(keyId)}">
+                          <option value="daily" ${key.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                          <option value="weekly" ${key.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                          <option value="monthly" ${(!key.budgetPeriod || key.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+                        </select>
+                      </div>
+                      <small class="admin-used-total"><span>Used/Total:</span> <strong>${keyUsageLabel}</strong></small>
+                      <label class="admin-toggle">
+                        <input type="checkbox" data-system-key-active="${escapeHtml(keyId)}" ${key.isActive ? 'checked' : ''} />
+                        <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                        <span class="admin-toggle-text">${key.isActive ? 'On' : 'Off'}</span>
+                      </label>
+                      <span class="inline-actions">
+                        <button type="button" class="secondary small" data-toggle-system-key-details="${escapeHtml(keyId)}">${keyEditOpen ? 'Editor schließen' : 'Edit key'}</button>
+                        <button type="button" class="secondary small" data-save-system-key-row="${escapeHtml(keyId)}">Speichern</button>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="admin-key-content ${keyExpanded ? '' : 'is-hidden'}" data-system-key-collapse="${escapeHtml(keyId)}">
+                    <div class="admin-key-edit-grid ${keyEditOpen ? '' : 'is-hidden'}" data-system-key-details="${escapeHtml(keyId)}">
+                      <label>Name
+                        <input type="text" data-system-key-name="${escapeHtml(keyId)}" value="${escapeHtml(key.name || '')}" />
+                      </label>
+                      <label>Provider
+                        <select data-system-key-provider-kind="${escapeHtml(keyId)}">
+                          <option value="openai" ${key.providerKind === 'openai' ? 'selected' : ''}>openai</option>
+                          <option value="anthropic" ${key.providerKind === 'anthropic' ? 'selected' : ''}>anthropic</option>
+                          <option value="google" ${key.providerKind === 'google' ? 'selected' : ''}>google</option>
+                          <option value="mistral" ${key.providerKind === 'mistral' ? 'selected' : ''}>mistral</option>
+                          <option value="custom" ${key.providerKind === 'custom' ? 'selected' : ''}>custom</option>
+                        </select>
+                      </label>
+                      <label>Modell-Hinweis
+                        <input type="text" data-system-key-model-hint="${escapeHtml(keyId)}" value="${escapeHtml(key.modelHint || '')}" placeholder="z. B. gpt-4.1" />
+                      </label>
+                      <label>Base URL
+                        <input type="text" data-system-key-base-url="${escapeHtml(keyId)}" value="${escapeHtml(key.baseUrl || '')}" placeholder="optional" />
+                      </label>
+                      <label>API-Key (optional)
+                        <input type="password" data-system-key-api-key="${escapeHtml(keyId)}" placeholder="leer = vorhandenen Key behalten" />
+                      </label>
+                    </div>
+
+                    <div class="admin-assignment-group">
+                      ${assignments.length
+                        ? assignments.map((assignment) => {
+                          const assignmentRef = `${keyId}:${assignment.id}`;
+                          const assignmentExpanded = (adminState.expandedAssignmentIds || []).includes(assignmentRef);
+                          const assignmentState = getUsageState(
+                            Number(assignment.usage?.spendUsd || 0),
+                            assignment.budgetLimitUsd,
+                            assignment.isActive
+                          );
+                          const assignmentDotClass = assignmentState === 'danger'
+                            ? 'dot-danger'
+                            : assignmentState === 'warning'
+                              ? 'dot-warning'
+                              : assignmentState === 'inactive'
+                                ? 'dot-muted'
+                                : 'dot-active';
+                          const assignmentUsageLabel = formatUsedTotalLabel({
+                            usedUsd: Number(assignment.usage?.spendUsd || 0),
+                            limitUsd: assignment.budgetLimitUsd,
+                          });
+                          const assignmentScopeLabel = assignment.scopeType === 'global'
+                            ? 'global'
+                            : `${assignment.scopeType}:${assignment.scopeValue}`;
+
+                          return `
+                            <div class="admin-assignment-node admin-level-2">
+                              <div class="admin-assignment-head admin-level-row">
+                                <div class="admin-level-left">
+                                  <input type="checkbox" class="admin-row-check" />
+                                  <span class="admin-state-dot ${assignmentDotClass}"></span>
+                                  <button type="button" class="secondary small admin-collapse-btn" data-admin-toggle-assignment="${escapeHtml(assignmentRef)}" aria-label="Assignment ein-/ausklappen">
+                                    <span class="material-icons-round">${assignmentExpanded ? 'expand_more' : 'chevron_right'}</span>
+                                  </button>
+                                  <span class="material-icons-round admin-row-icon">assignment</span>
+                                  <div class="admin-key-ident">
+                                    <strong>Assignment: ${escapeHtml(assignmentScopeLabel)}</strong>
+                                    <small>${escapeHtml(getUsageStateLabel(assignmentState))}</small>
+                                  </div>
+                                </div>
+                                <div class="admin-level-right">
+                                  <div class="admin-budget-input-wrap">
+                                    <span>Set Budget</span>
+                                    <input type="number" min="0" step="0.000001" data-assignment-budget-limit="${escapeHtml(assignmentRef)}" value="${assignment.budgetLimitUsd ?? ''}" placeholder="optional" />
+                                    <span class="admin-budget-unit">USD</span>
+                                    <select data-assignment-budget-period="${escapeHtml(assignmentRef)}">
+                                      <option value="daily" ${assignment.budgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                                      <option value="weekly" ${assignment.budgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                                      <option value="monthly" ${(!assignment.budgetPeriod || assignment.budgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+                                    </select>
+                                  </div>
+                                  <small class="admin-used-total"><span>Used/Total:</span> <strong>${assignmentUsageLabel}</strong></small>
+                                  <label class="admin-toggle">
+                                    <input type="checkbox" data-assignment-active="${escapeHtml(assignmentRef)}" ${assignment.isActive ? 'checked' : ''} />
+                                    <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+                                    <span class="admin-toggle-text">${assignment.isActive ? 'On' : 'Off'}</span>
+                                  </label>
+                                  <span class="inline-actions">
+                                    <button type="button" class="secondary small" data-save-system-key-assignment="${escapeHtml(assignmentRef)}">Speichern</button>
+                                    <button type="button" class="secondary small" data-delete-system-key-assignment="${escapeHtml(assignmentRef)}">Löschen</button>
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div class="admin-quota-row admin-level-3 ${assignmentExpanded ? '' : 'is-hidden'}" data-assignment-collapse="${escapeHtml(assignmentRef)}">
+                                <div class="admin-level-left">
+                                  <span class="admin-state-dot dot-active"></span>
+                                  <span class="material-icons-round admin-row-icon">person</span>
+                                  <div class="admin-key-ident">
+                                    <strong>Per User Quota</strong>
+                                    <small>Gilt pro User innerhalb dieser Zuweisung</small>
+                                  </div>
+                                </div>
+                                <div class="admin-level-right">
+                                  <div class="admin-budget-input-wrap">
+                                    <span>Set Budget</span>
+                                    <input type="number" min="0" step="0.000001" data-assignment-per-user-budget-limit="${escapeHtml(assignmentRef)}" value="${assignment.perUserBudgetLimitUsd ?? ''}" placeholder="optional" />
+                                    <span class="admin-budget-unit">USD</span>
+                                    <select data-assignment-per-user-budget-period="${escapeHtml(assignmentRef)}">
+                                      <option value="daily" ${assignment.perUserBudgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                                      <option value="weekly" ${assignment.perUserBudgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                                      <option value="monthly" ${(!assignment.perUserBudgetPeriod || assignment.perUserBudgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+                                    </select>
+                                  </div>
+                                  <small class="admin-used-total"><span>Limit/User:</span> <strong>${assignment.perUserBudgetLimitUsd !== null && assignment.perUserBudgetLimitUsd !== undefined ? formatUsd(assignment.perUserBudgetLimitUsd) : 'unbegrenzt'}</strong></small>
+                                  <button type="button" class="secondary small" data-save-system-key-assignment="${escapeHtml(assignmentRef)}">Speichern</button>
+                                </div>
+                              </div>
+                            </div>
+                          `;
+                        }).join('')
+                        : '<p class="hint">Keine Zuweisungen vorhanden.</p>'
+                      }
+
+                      <div class="admin-add-row admin-level-2">
+                        <select data-system-key-assign-type="${escapeHtml(keyId)}">
+                          <option value="global">global</option>
+                          <option value="user">user</option>
+                          <option value="role">role</option>
+                          <option value="group">group</option>
+                        </select>
+                        <span data-system-key-assign-value-wrap="${escapeHtml(keyId)}">
+                          <input data-system-key-assign-value="${escapeHtml(keyId)}" placeholder="z. B. teachers oder username" />
+                        </span>
+                        <button type="button" class="secondary small" data-add-system-key-assignment="${escapeHtml(keyId)}">Add Assignment</button>
+                      </div>
+                    </div>
+                    <small class="hint top-space" data-system-key-row-status="${escapeHtml(keyId)}"></small>
+                  </div>
+                </div>
+              `;
+            }).join('')
+            : '<p class="hint admin-empty-state">Keine Treffer für die aktuellen Filter.</p>'
+          }
+        </div>
+      </div>
+    `;
+
+    const searchInput = el('admin-system-key-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        adminState.systemKeySearchQuery = String(searchInput.value || '');
+        renderSystemKeyList();
+      });
+    }
+
+    const statusSelect = el('admin-system-key-filter-status');
+    if (statusSelect) {
+      statusSelect.addEventListener('change', () => {
+        adminState.systemKeyStatusFilter = String(statusSelect.value || 'all');
+        renderSystemKeyList();
+      });
+    }
+
+    const levelSelect = el('admin-system-key-filter-level');
+    if (levelSelect) {
+      levelSelect.addEventListener('change', () => {
+        adminState.systemKeyLevelFilter = String(levelSelect.value || 'all');
+        renderSystemKeyList();
+      });
+    }
+
+    container.querySelectorAll('[data-admin-toggle-key]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const keyId = String(button.getAttribute('data-admin-toggle-key') || '').trim();
+        if (!keyId) return;
+        const expanded = new Set(adminState.expandedSystemKeyIds || []);
+        if (expanded.has(keyId)) expanded.delete(keyId);
+        else expanded.add(keyId);
+        adminState.expandedSystemKeyIds = Array.from(expanded);
+        renderSystemKeyList();
+      });
+    });
+
+    container.querySelectorAll('[data-admin-toggle-assignment]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const assignmentRef = String(button.getAttribute('data-admin-toggle-assignment') || '').trim();
+        if (!assignmentRef) return;
+        const expanded = new Set(adminState.expandedAssignmentIds || []);
+        if (expanded.has(assignmentRef)) expanded.delete(assignmentRef);
+        else expanded.add(assignmentRef);
+        adminState.expandedAssignmentIds = Array.from(expanded);
+        renderSystemKeyList();
+      });
+    });
 
     container.querySelectorAll('[data-save-system-key-row]').forEach((button) => {
       button.onclick = () => saveSystemKeyRow(button.dataset.saveSystemKeyRow).catch((error) => alert(error.message));
     });
+
     container.querySelectorAll('[data-toggle-system-key-details]').forEach((button) => {
       button.onclick = () => {
         const keyId = String(button.dataset.toggleSystemKeyDetails || '').trim();
@@ -538,9 +818,11 @@ function createAdminController({
         renderSystemKeyList();
       };
     });
+
     container.querySelectorAll('[data-add-system-key-assignment]').forEach((button) => {
       button.onclick = () => addSystemKeyAssignment(button.dataset.addSystemKeyAssignment).catch((error) => alert(error.message));
     });
+
     container.querySelectorAll('[data-system-key-assign-type]').forEach((selectNode) => {
       const keyId = String(selectNode.getAttribute('data-system-key-assign-type') || '').trim();
       const updateVisibility = () => {
@@ -551,6 +833,7 @@ function createAdminController({
       selectNode.addEventListener('change', updateVisibility);
       updateVisibility();
     });
+
     container.querySelectorAll('[data-save-system-key-assignment]').forEach((button) => {
       button.onclick = () => {
         const [systemKeyId, assignmentId] = String(button.dataset.saveSystemKeyAssignment || '').split(':');
@@ -558,22 +841,24 @@ function createAdminController({
         saveSystemKeyAssignment(systemKeyId, assignmentId).catch((error) => alert(error.message));
       };
     });
-    container.querySelectorAll('input[data-system-key-active], input[data-assignment-active]').forEach((toggleNode) => {
-      const label = toggleNode.closest('.admin-toggle');
-      const textNode = label?.querySelector('.admin-toggle-text');
-      const syncLabel = () => {
-        if (!textNode) return;
-        textNode.textContent = toggleNode.checked ? 'Aktiv' : 'Inaktiv';
-      };
-      toggleNode.addEventListener('change', syncLabel);
-      syncLabel();
-    });
+
     container.querySelectorAll('[data-delete-system-key-assignment]').forEach((button) => {
       button.onclick = () => {
         const [systemKeyId, assignmentId] = String(button.dataset.deleteSystemKeyAssignment || '').split(':');
         if (!systemKeyId || !assignmentId) return;
         removeSystemKeyAssignment(systemKeyId, assignmentId).catch((error) => alert(error.message));
       };
+    });
+
+    container.querySelectorAll('input[data-system-key-active], input[data-assignment-active]').forEach((toggleNode) => {
+      const label = toggleNode.closest('.admin-toggle');
+      const textNode = label?.querySelector('.admin-toggle-text');
+      const syncLabel = () => {
+        if (!textNode) return;
+        textNode.textContent = toggleNode.checked ? 'On' : 'Off';
+      };
+      toggleNode.addEventListener('change', syncLabel);
+      syncLabel();
     });
 
     container.querySelectorAll('input[data-system-key-name], input[data-system-key-model-hint], input[data-system-key-base-url], input[data-system-key-api-key], input[data-system-key-budget-limit], input[data-assignment-budget-limit], input[data-assignment-per-user-budget-limit]').forEach((input) => {
@@ -597,8 +882,20 @@ function createAdminController({
         saveSystemKeyAssignment(systemKeyId, assignmentId).catch((error) => alert(error.message));
       });
     });
-  }
 
+    const globalToggle = el('admin-system-keys-enabled');
+    if (globalToggle) {
+      globalToggle.addEventListener('change', () => {
+        const textNode = globalToggle.closest('.admin-toggle')?.querySelector('.admin-toggle-text');
+        if (textNode) textNode.textContent = globalToggle.checked ? 'On' : 'Off';
+      });
+    }
+
+    const globalSave = el('admin-system-keys-enabled-save');
+    if (globalSave) {
+      globalSave.addEventListener('click', () => saveSystemKeysGlobalConfig().catch((error) => alert(error.message)));
+    }
+  }
   function renderBudgetList() {
     const container = el('admin-budget-list');
     if (!container) return;
@@ -918,6 +1215,7 @@ function createAdminController({
       setStatus('System-Key angelegt.', { systemKey: true });
     }
     clearSystemKeyForm();
+    adminState.showSystemKeyCreateForm = false;
     await loadAdminData();
   }
 
@@ -937,6 +1235,7 @@ function createAdminController({
     if (!keyId) return;
     const scope = el('admin-system-key-list');
     const rowStatus = scope.querySelector(`[data-system-key-row-status="${keyId}"]`);
+    const keyData = (adminState.systemKeys || []).find((entry) => String(entry.systemKeyId || '').trim() === keyId) || {};
     const nameNode = scope.querySelector(`[data-system-key-name="${keyId}"]`);
     const providerNode = scope.querySelector(`[data-system-key-provider-kind="${keyId}"]`);
     const modelNode = scope.querySelector(`[data-system-key-model-hint="${keyId}"]`);
@@ -945,21 +1244,22 @@ function createAdminController({
     const activeNode = scope.querySelector(`[data-system-key-active="${keyId}"]`);
     const budgetLimitNode = scope.querySelector(`[data-system-key-budget-limit="${keyId}"]`);
     const budgetPeriodNode = scope.querySelector(`[data-system-key-budget-period="${keyId}"]`);
-    if (!nameNode || !providerNode || !modelNode || !baseNode || !apiKeyNode || !activeNode || !budgetLimitNode || !budgetPeriodNode) return;
+    if (!activeNode || !budgetLimitNode || !budgetPeriodNode) return;
 
-    const budgetLimitUsd = parseOptionalNonNegativeNumber(budgetLimitNode.value);
+    const budgetLimitRaw = budgetLimitNode ? budgetLimitNode.value : keyData.budgetLimitUsd;
+    const budgetLimitUsd = parseOptionalNonNegativeNumber(budgetLimitRaw);
     const budgetIsActive = budgetLimitUsd !== null;
 
     const payload = {
-      name: String(nameNode.value || '').trim(),
-      providerKind: String(providerNode.value || '').trim().toLowerCase(),
-      modelHint: String(modelNode.value || '').trim(),
-      baseUrl: String(baseNode.value || '').trim(),
-      apiKey: String(apiKeyNode.value || '').trim(),
+      name: String(nameNode?.value ?? keyData.name ?? '').trim(),
+      providerKind: String(providerNode?.value ?? keyData.providerKind ?? '').trim().toLowerCase(),
+      modelHint: String(modelNode?.value ?? keyData.modelHint ?? '').trim(),
+      baseUrl: String(baseNode?.value ?? keyData.baseUrl ?? '').trim(),
+      apiKey: String(apiKeyNode?.value || '').trim(),
       isActive: activeNode.checked,
       budgetIsActive,
       budgetLimitUsd,
-      budgetPeriod: String(budgetPeriodNode.value || 'monthly').trim(),
+      budgetPeriod: String(budgetPeriodNode?.value ?? keyData.budgetPeriod ?? 'monthly').trim(),
       budgetMode: 'hybrid',
       budgetWarningRatio: 0.9,
     };
@@ -1156,6 +1456,12 @@ function createAdminController({
       systemKeys: Array.isArray(systemKeysPayload?.keys) ? systemKeysPayload.keys : (Array.isArray(systemKeysPayload) ? systemKeysPayload : []),
       selectedSystemKeyId: adminState.selectedSystemKeyId || '',
       openSystemKeyId: adminState.openSystemKeyId || '',
+      expandedSystemKeyIds: Array.isArray(adminState.expandedSystemKeyIds) ? adminState.expandedSystemKeyIds : [],
+      expandedAssignmentIds: Array.isArray(adminState.expandedAssignmentIds) ? adminState.expandedAssignmentIds : [],
+      systemKeySearchQuery: adminState.systemKeySearchQuery || '',
+      systemKeyStatusFilter: adminState.systemKeyStatusFilter || 'all',
+      systemKeyLevelFilter: adminState.systemKeyLevelFilter || 'all',
+      showSystemKeyCreateForm: !!adminState.showSystemKeyCreateForm,
       budgets: Array.isArray(budgets) ? budgets : [],
       selectedBudgetId: adminState.selectedBudgetId,
       systemKeysEnabled: systemKeysConfig?.systemKeysEnabled ?? systemKeysPayload?.systemKeysEnabled ?? true,
@@ -1171,6 +1477,21 @@ function createAdminController({
     renderBudgetList();
     clearPricingForm();
     clearSystemKeyForm();
+    const systemKeyCreateForm = el('admin-system-key-create-form');
+    if (systemKeyCreateForm) {
+      systemKeyCreateForm.classList.toggle('is-hidden', !adminState.showSystemKeyCreateForm);
+    }
+    const systemKeyCreateActions = el('admin-system-key-create-actions');
+    if (systemKeyCreateActions) {
+      systemKeyCreateActions.classList.toggle('is-hidden', !adminState.showSystemKeyCreateForm);
+    }
+    const systemKeyCreateToggle = el('admin-system-key-create-toggle');
+    if (systemKeyCreateToggle) {
+      const iconNode = systemKeyCreateToggle.querySelector('.material-icons-round');
+      const labelNode = systemKeyCreateToggle.querySelector('.admin-create-label');
+      if (iconNode) iconNode.textContent = adminState.showSystemKeyCreateForm ? 'remove_circle_outline' : 'add_circle';
+      if (labelNode) labelNode.textContent = adminState.showSystemKeyCreateForm ? 'Create form schließen' : 'Add New API Key';
+    }
     const globalToggle = el('admin-system-keys-enabled');
     if (globalToggle) globalToggle.checked = !!adminState.systemKeysEnabled;
     clearBudgetForm();
@@ -1350,6 +1671,29 @@ function createAdminController({
     if (el('admin-system-key-save')) {
       el('admin-system-key-save').addEventListener('click', () => saveSystemKey().catch((error) => alert(error.message)));
     }
+    if (el('admin-system-key-create-toggle')) {
+      el('admin-system-key-create-toggle').addEventListener('click', () => {
+        adminState.showSystemKeyCreateForm = !adminState.showSystemKeyCreateForm;
+        if (adminState.showSystemKeyCreateForm) {
+          clearSystemKeyForm();
+        }
+        const systemKeyCreateForm = el('admin-system-key-create-form');
+        if (systemKeyCreateForm) {
+          systemKeyCreateForm.classList.toggle('is-hidden', !adminState.showSystemKeyCreateForm);
+        }
+        const systemKeyCreateActions = el('admin-system-key-create-actions');
+        if (systemKeyCreateActions) {
+          systemKeyCreateActions.classList.toggle('is-hidden', !adminState.showSystemKeyCreateForm);
+        }
+        const systemKeyCreateToggle = el('admin-system-key-create-toggle');
+        if (systemKeyCreateToggle) {
+          const iconNode = systemKeyCreateToggle.querySelector('.material-icons-round');
+          const labelNode = systemKeyCreateToggle.querySelector('.admin-create-label');
+          if (iconNode) iconNode.textContent = adminState.showSystemKeyCreateForm ? 'remove_circle_outline' : 'add_circle';
+          if (labelNode) labelNode.textContent = adminState.showSystemKeyCreateForm ? 'Create form schließen' : 'Add New API Key';
+        }
+      });
+    }
     if (el('admin-system-key-provider-kind')) {
       el('admin-system-key-provider-kind').addEventListener('change', () => {
         syncSystemKeyModelOptions();
@@ -1362,9 +1706,6 @@ function createAdminController({
         if (!customWrap) return;
         customWrap.classList.toggle('is-hidden', el('admin-system-key-model-select').value !== SYSTEM_CUSTOM_MODEL);
       });
-    }
-    if (el('admin-system-keys-enabled-save')) {
-      el('admin-system-keys-enabled-save').addEventListener('click', () => saveSystemKeysGlobalConfig().catch((error) => alert(error.message)));
     }
     if (el('admin-system-key-clear')) {
       el('admin-system-key-clear').addEventListener('click', clearSystemKeyForm);

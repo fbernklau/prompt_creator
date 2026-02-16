@@ -587,6 +587,427 @@ button.cta {
   max-width: 92px;
 }
 
+.admin-key-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-key-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.9fr) repeat(2, minmax(160px, 0.55fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--surface-soft), var(--surface));
+}
+
+.admin-key-toolbar label {
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.admin-key-toolbar label input,
+.admin-key-toolbar label select {
+  min-height: 40px;
+  text-transform: none;
+  font-size: 13px;
+}
+
+.admin-key-search-wrap {
+  position: relative;
+}
+
+.admin-key-search-wrap .material-icons-round {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 20px;
+}
+
+.admin-key-search-wrap input {
+  padding-left: 36px !important;
+}
+
+.admin-key-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-key-list.is-empty {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--surface-soft);
+}
+
+.admin-empty-state {
+  margin: 0;
+}
+
+.admin-key-node,
+.admin-assignment-node,
+.admin-global-budget-row,
+.admin-quota-row {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.admin-key-node {
+  overflow: hidden;
+}
+
+.admin-level-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.admin-level-left,
+.admin-level-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-level-left {
+  flex-wrap: nowrap;
+}
+
+.admin-level-right {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.admin-row-check {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-soft);
+  margin: 0;
+}
+
+.admin-row-icon {
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.admin-state-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.dot-active {
+  background: #10b981;
+  box-shadow: 0 0 9px rgba(16, 185, 129, 0.42);
+}
+
+.dot-warning {
+  background: #f59e0b;
+  box-shadow: 0 0 9px rgba(245, 158, 11, 0.42);
+}
+
+.dot-danger {
+  background: #ef4444;
+  box-shadow: 0 0 9px rgba(239, 68, 68, 0.42);
+}
+
+.dot-muted {
+  background: #94a3b8;
+}
+
+.admin-collapse-btn {
+  min-height: 30px;
+  min-width: 34px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+}
+
+.admin-collapse-btn .material-icons-round {
+  font-size: 18px;
+}
+
+.admin-key-ident {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.admin-key-ident strong {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.admin-key-ident small {
+  font-size: 12px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-budget-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: nowrap;
+}
+
+.admin-budget-input-wrap > span:first-child {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-budget-input-wrap input {
+  min-height: 34px;
+  width: 108px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.admin-budget-input-wrap select {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.admin-budget-unit {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 9px;
+  background: var(--surface-soft);
+  font-size: 12px;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.admin-budget-readonly input[readonly] {
+  width: 180px;
+  color: var(--text-soft);
+}
+
+.admin-used-total {
+  font-size: 12px;
+  color: var(--text-soft);
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.admin-used-total span {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+.admin-used-total strong {
+  color: var(--text);
+}
+
+.admin-key-content {
+  border-top: 1px solid var(--line);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  background: linear-gradient(180deg, var(--surface), var(--surface-soft));
+}
+
+.admin-key-edit-grid {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.admin-key-edit-grid label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-assignment-group {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-assignment-node {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
+.admin-assignment-head {
+  padding: 8px 10px;
+}
+
+.admin-assignment-head .admin-key-ident strong {
+  font-size: 15px;
+}
+
+.admin-assignment-head .admin-budget-input-wrap input {
+  width: 94px;
+}
+
+.admin-assignment-head .admin-budget-input-wrap select {
+  min-width: 88px;
+}
+
+.admin-level-2 {
+  margin-left: 12px;
+}
+
+.admin-level-3 {
+  margin: 6px 10px 10px 42px;
+}
+
+.admin-quota-row {
+  padding: 8px 10px;
+  background: var(--surface);
+}
+
+.admin-quota-row .admin-key-ident strong {
+  font-size: 14px;
+}
+
+.admin-quota-row .admin-budget-input-wrap input {
+  width: 88px;
+}
+
+.admin-add-row {
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: transparent;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(110px, 140px) minmax(190px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-add-row button.secondary {
+  width: 100%;
+}
+
+.admin-create-dashed {
+  width: 100%;
+  border: 2px dashed var(--line-strong);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  font-weight: 700;
+}
+
+.admin-create-dashed:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 36%, transparent);
+}
+
+.admin-create-dashed .material-icons-round {
+  font-size: 20px;
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-key-shell .panel,
+:is(body[data-theme='dark'], html.dark body) .admin-key-shell {
+  box-shadow: none;
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-key-toolbar,
+:is(body[data-theme='dark'], html.dark body) .admin-key-node,
+:is(body[data-theme='dark'], html.dark body) .admin-global-budget-row,
+:is(body[data-theme='dark'], html.dark body) .admin-assignment-node,
+:is(body[data-theme='dark'], html.dark body) .admin-quota-row {
+  background: #111d34;
+  border-color: #2b3b5d;
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-key-content {
+  background: #0f1a30;
+  border-top-color: #2b3b5d;
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-key-edit-grid {
+  background: #101d36;
+  border-color: #2b3b5d;
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-add-row {
+  border-color: #355182;
+  background: rgba(22, 36, 61, 0.35);
+}
+
+:is(body[data-theme='dark'], html.dark body) .admin-row-check {
+  border-color: #3b5280;
+  background: #16243d;
+}
+
+@media (max-width: 1180px) {
+  .admin-key-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-level-row,
+  .admin-global-budget-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .admin-level-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-add-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-key-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-level-2 {
+    margin-left: 0;
+  }
+
+  .admin-level-3 {
+    margin-left: 0;
+  }
+}
+
 .admin-toggle {
   display: inline-flex;
   align-items: center;

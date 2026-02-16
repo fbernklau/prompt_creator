@@ -1,0 +1,159 @@
+% Appendix include file for the thesis project.
+% Erwartete Pakete im Hauptdokument: graphicx
+
+\chapter{Systembeschreibung des Prompt Creators}
+\label{app:prompt-creator-systembeschreibung}
+
+\section{Ziel und Einordnung}
+Der Prompt Creator unterst\"utzt Lehrkr\"afte bei der strukturierten Erstellung von KI-gest\"utzten Arbeitsmaterialien. Die Anwendung f\"uhrt von der Auswahl eines p\"adagogischen Kontexts \"uber die Parametrisierung eines Templates bis zur Generierung und Ablage der Ergebnisse in einer pers\"onlichen Bibliothek.
+
+\section{Hinweis zu Light- und Dark-Mode}
+Alle Abbildungen in diesem Anhang stammen aus dem Light-Mode. Die Anwendung verf\"ugt zus\"atzlich \"uber einen Dark-Mode mit identischer Informationsarchitektur und gleicher Funktionslogik. Die gezeigten Screenshots sind daher stellvertretend f\"ur beide Darstellungsmodi.
+
+\section{Aufbau der Anwendung}
+Die Benutzeroberfl\"ache ist in folgende Funktionsbereiche gegliedert:
+\begin{itemize}
+  \item Neue Aufgabe: Einstieg in Kategorien, Unterkategorien und Templates.
+  \item Bibliothek: Verwaltung, Bewertung und Wiederverwendung gespeicherter Prompts/Ergebnisse.
+  \item Dashboard: API-Provider, Nutzungskennzahlen, Verlauf und pers\"onliche Optionen.
+  \item Administration: Rollen, Berechtigungen, Modellkatalog sowie systemweite API-Keys.
+\end{itemize}
+
+\section{Seiten\"ubersicht und Funktionsweise}
+
+\subsection{Einstieg und Template-Auswahl}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/main_page.png}
+  \caption{Startseite mit Suche, Handlungskategorien und Template-Discovery.}
+  \label{fig:pc-main-page}
+\end{figure}
+Die Startseite dient als zentraler Einstieg. \"Uber Suche, Kategorien und Discovery-Listen werden passende Vorlagen schnell auffindbar.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/template_page.png}
+  \caption{Template-\"Ubersicht innerhalb einer gew\"ahlten Kategorie.}
+  \label{fig:pc-template-page}
+\end{figure}
+Nach Auswahl einer Kategorie werden passende Templates als Karten angezeigt. Dies unterst\"utzt den \"Ubergang von einem allgemeinen Aufgabenfeld zu konkreten Prompt-Bausteinen.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/template_selection.png}
+  \caption{Template-Detailseite mit Pflichtfeldern, optionalen Feldern und Generierungsbereich.}
+  \label{fig:pc-template-selection}
+\end{figure}
+Die Template-Detailseite ist in Eingabebereich und Ausgabebereich gegliedert. Pflichtfelder sichern die Mindestqualit\"at der Eingaben, optionale Felder erweitern die Steuerung f\"ur differenzierte Ergebnisse.
+
+\subsection{Generierung und Bibliothek}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/result_page.png}
+  \caption{Ergebnisseite mit erzeugtem Metaprompt, direktem Ergebnis und Metadaten.}
+  \label{fig:pc-result-page}
+\end{figure}
+Die Ergebnisseite zeigt den finalen Metaprompt sowie optional ein direkt erzeugtes Ergebnis. Zus\"atzliche Metadaten (Provider, Modell, Kosten/Tokens) erh\"ohen Nachvollziehbarkeit und Reproduzierbarkeit.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/library_page.png}
+  \caption{Bibliothek mit Filterung, Bewertungsfunktionen und Wiederverwendung gespeicherter Eintr\"age.}
+  \label{fig:pc-library-page}
+\end{figure}
+In der Bibliothek werden erzeugte Eintr\"age gespeichert, bewertet und bei Bedarf erneut verwendet. Damit wird aus Einzelgenerierung ein langfristig nutzbarer Wissens- und Prompt-Bestand.
+
+\subsection{Dashboard}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/dashboard_api_provider_1.png}
+  \caption{Dashboard: API-Provider-Konfiguration (Modelle, Key-Quelle, Base-URL, Pricing-Modus).}
+  \label{fig:pc-dashboard-api-provider-1}
+\end{figure}
+Im API-Provider-Bereich wird die technische Anbindung der Modelle konfiguriert. Die Trennung aus Provider, Modell, Key-Quelle und URL erlaubt flexible Integrationen.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/dashboard_api_provider_2.png}
+  \caption{Dashboard: Key-Auswahl und Budgetsteuerung je Schl\"ussel/Zuordnung.}
+  \label{fig:pc-dashboard-api-provider-2}
+\end{figure}
+Die zweite Ansicht vertieft die operative Steuerung \"uber aktive Keys, Zuweisungen und Budgetgrenzen. Dadurch lassen sich Kosten und Zugriffspfade kontrollieren.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/dashboard_usage.png}
+  \caption{Dashboard: Nutzungsstatistiken (Requests, Latenz, Token, Kosten, Provider-\"Ubersicht).}
+  \label{fig:pc-dashboard-usage}
+\end{figure}
+Die Nutzungsansicht bietet Transparenz \"uber technische und \"okonomische Kennzahlen pro Zeitraum sowie aggregiert pro Provider und API-Key.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/dashboard_history.png}
+  \caption{Dashboard: Prompt-Verlauf mit Zeitstempeln und Wiederverwendung.}
+  \label{fig:pc-dashboard-history}
+\end{figure}
+Der Verlauf dokumentiert erzeugte Prompts chronologisch. Eintr\"age k\"onnen direkt wiederverwendet werden, was iterative Verbesserung unterst\"utzt.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/dashboard_options.png}
+  \caption{Dashboard: Benutzeroptionen (Theme, Flow-Modus, Generierungsmodus, Navigation, Detailansicht).}
+  \label{fig:pc-dashboard-options}
+\end{figure}
+In den Optionen werden pers\"onliche Arbeitsmodi festgelegt, darunter auch Light- oder Dark-Mode. Damit l\"asst sich die Oberfl\"ache an Pr\"aferenzen und Arbeitskontext anpassen.
+
+\subsection{Administration}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/admin_apikey_management1.png}
+  \caption{Administration: Systemweite API-Key-Verwaltung mit Zuweisungen und Budgetparametern.}
+  \label{fig:pc-admin-apikey-management-1}
+\end{figure}
+Das API-Key-Management erm\"oglicht die zentrale Verwaltung von System-Keys inklusive Aktivstatus und rollen-/gruppenbezogener Zuweisung.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/admin_apikey_management2.png}
+  \caption{Administration: Detailbearbeitung einzelner Schl\"ussel und System-Key-Eintr\"age.}
+  \label{fig:pc-admin-apikey-management-2}
+\end{figure}
+Auf Detailebene lassen sich Schl\"usselparameter, Budgets und System-Key-Definitionen pro Provider feingranular bearbeiten.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/admin_model_administration.png}
+  \caption{Administration: Modellkatalog mit Preisparametern, W\"ahrung und Aktivstatus.}
+  \label{fig:pc-admin-model-administration}
+\end{figure}
+Die Modelladministration verwaltet den systemweiten Katalog verf\"ugbarer Modelle inklusive Preis- und Statusdaten, die in den Provider-Workflows genutzt werden.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/admin_permissions_1.png}
+  \caption{Administration: Rollen- und Berechtigungsgrundlagen (Rollenpflege, Permission-Definitionen).}
+  \label{fig:pc-admin-permissions-1}
+\end{figure}
+Die Rollen- und Berechtigungsansicht bildet die Grundlage des Rechtekonzepts und trennt Rollendefinitionen von atomaren Berechtigungen.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{screenshots_prompt_creator/light_mode/admin_permissions_2.png}
+  \caption{Administration: Dom\"anenspezifische Berechtigungszuweisung auf Rollenebene.}
+  \label{fig:pc-admin-permissions-2}
+\end{figure}
+Die detaillierte Zuordnung erfolgt dom\"anenorientiert (z.\,B. Core, Templates, Provider) und erlaubt eine granulare Freigabe pro Rolle.
+
+\section{Beispielhafter User-Flow (End-to-End)}
+Der folgende Ablauf deckt die Kernfunktionalit\"at von der API-Einrichtung bis zur Bibliotheksablage ab:
+\begin{enumerate}
+  \item API-Provider konfigurieren: Im Dashboard werden Provider, Modell, Key-Quelle und technische Parameter angelegt (vgl. Abbildung~\ref{fig:pc-dashboard-api-provider-1}).
+  \item Key-Auswahl und Budget setzen: Aktive Keys werden einer Stage zugewiesen und bei Bedarf budgetiert (vgl. Abbildung~\ref{fig:pc-dashboard-api-provider-2}).
+  \item Arbeitsmodus einstellen: In den Optionen werden Theme (Light/Dark), Flow-Modus und Generierungsmodus festgelegt (vgl. Abbildung~\ref{fig:pc-dashboard-options}).
+  \item Aufgabe starten: \"Uber die Startseite wird eine passende Kategorie bzw. Unterkategorie ausgew\"ahlt (vgl. Abbildung~\ref{fig:pc-main-page}).
+  \item Template ausw\"ahlen: Aus der Kategorienansicht wird ein konkretes Template ge\"offnet (vgl. Abbildung~\ref{fig:pc-template-page}).
+  \item Parameter eingeben und generieren: Pflicht- und optionale Felder werden ausgef\"ullt; anschlie{\ss}end wird Metaprompt und optional ein direktes Ergebnis erzeugt (vgl. Abbildung~\ref{fig:pc-template-selection} und Abbildung~\ref{fig:pc-result-page}).
+  \item Ergebnis speichern und wiederverwenden: Das Ergebnis wird in der Bibliothek abgelegt, gefiltert, bewertet und bei Bedarf erneut genutzt (vgl. Abbildung~\ref{fig:pc-library-page}).
+  \item Nachkontrolle: Nutzung und Verlauf k\"onnen f\"ur Monitoring und iterative Verbesserung im Dashboard gepr\"uft werden (vgl. Abbildung~\ref{fig:pc-dashboard-usage} und Abbildung~\ref{fig:pc-dashboard-history}).
+\end{enumerate}
