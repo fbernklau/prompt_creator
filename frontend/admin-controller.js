@@ -60,6 +60,15 @@ function createAdminController({
     budgets: [],
     selectedBudgetId: null,
     systemKeysEnabled: true,
+    systemKeyGlobalBudgetIsActive: false,
+    systemKeyGlobalBudgetLimitUsd: null,
+    systemKeyGlobalBudgetPeriod: 'monthly',
+    systemKeyGlobalBudgetMode: 'hybrid',
+    systemKeyGlobalBudgetWarningRatio: 0.9,
+    systemKeyGlobalBudgetUsage: {
+      totalRequests: 0,
+      spendUsd: 0,
+    },
     activeTab: 'roles',
     activeModelProvider: 'openai',
   };
@@ -438,12 +447,15 @@ function createAdminController({
     const statusFilter = String(adminState.systemKeyStatusFilter || 'all').trim();
     const levelFilter = String(adminState.systemKeyLevelFilter || 'all').trim();
 
-    const totalUsedUsd = keys.reduce((sum, key) => sum + Number(key.usage?.spendUsd || 0), 0);
-    const totalLimitValues = keys
-      .map((key) => (key.budgetLimitUsd === null || key.budgetLimitUsd === undefined ? null : Number(key.budgetLimitUsd)))
-      .filter((value) => Number.isFinite(value));
-    const globalLimitUsd = totalLimitValues.length ? totalLimitValues.reduce((sum, value) => sum + value, 0) : null;
-    const globalLabel = formatUsedTotalLabel({ usedUsd: totalUsedUsd, limitUsd: globalLimitUsd });
+    const globalUsageUsd = Number(adminState.systemKeyGlobalBudgetUsage?.spendUsd || 0);
+    const globalLimitUsd = adminState.systemKeyGlobalBudgetLimitUsd;
+    const globalBudgetActive = Boolean(adminState.systemKeyGlobalBudgetIsActive)
+      && globalLimitUsd !== null
+      && globalLimitUsd !== undefined;
+    const globalLabel = formatUsedTotalLabel({
+      usedUsd: globalUsageUsd,
+      limitUsd: globalBudgetActive ? globalLimitUsd : null,
+    });
 
     const filteredKeys = keys.filter((key) => {
       const keyState = getUsageState(Number(key.usage?.spendUsd || 0), key.budgetLimitUsd, key.isActive);
@@ -496,7 +508,7 @@ function createAdminController({
       return keyState === statusFilter || assignmentStates.some((state) => state === statusFilter);
     });
 
-    const globalState = getUsageState(totalUsedUsd, globalLimitUsd, adminState.systemKeysEnabled);
+    const globalState = getUsageState(globalUsageUsd, globalBudgetActive ? globalLimitUsd : null, adminState.systemKeysEnabled);
     const globalDotClass = globalState === 'danger'
       ? 'dot-danger'
       : globalState === 'warning'
@@ -538,13 +550,19 @@ function createAdminController({
             <span class="material-icons-round admin-row-icon">public</span>
             <div class="admin-key-ident">
               <strong>Global System Budget</strong>
-              <small>${keys.length} Keys im Katalog</small>
+              <small>${keys.length} Keys im Katalog | ${Number(adminState.systemKeyGlobalBudgetUsage?.totalRequests || 0)} Requests</small>
             </div>
           </div>
           <div class="admin-level-right">
-            <div class="admin-budget-input-wrap admin-budget-readonly">
+            <div class="admin-budget-input-wrap">
               <span>Set Budget</span>
-              <input type="text" value="aggregiert aus Key-Limits" readonly />
+              <input id="admin-system-global-budget-limit" type="number" min="0" step="0.000001" value="${globalBudgetActive ? Number(globalLimitUsd || 0) : ''}" placeholder="optional" />
+              <span class="admin-budget-unit">USD</span>
+              <select id="admin-system-global-budget-period">
+                <option value="daily" ${adminState.systemKeyGlobalBudgetPeriod === 'daily' ? 'selected' : ''}>daily</option>
+                <option value="weekly" ${adminState.systemKeyGlobalBudgetPeriod === 'weekly' ? 'selected' : ''}>weekly</option>
+                <option value="monthly" ${(!adminState.systemKeyGlobalBudgetPeriod || adminState.systemKeyGlobalBudgetPeriod === 'monthly') ? 'selected' : ''}>monthly</option>
+              </select>
             </div>
             <small class="admin-used-total"><span>Used/Total:</span> <strong>${globalLabel}</strong></small>
             <label class="admin-toggle">
@@ -895,6 +913,21 @@ function createAdminController({
     if (globalSave) {
       globalSave.addEventListener('click', () => saveSystemKeysGlobalConfig().catch((error) => alert(error.message)));
     }
+
+    const globalBudgetLimit = el('admin-system-global-budget-limit');
+    const globalBudgetPeriod = el('admin-system-global-budget-period');
+    if (globalBudgetLimit) {
+      globalBudgetLimit.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        saveSystemKeysGlobalConfig().catch((error) => alert(error.message));
+      });
+    }
+    if (globalBudgetPeriod) {
+      globalBudgetPeriod.addEventListener('change', () => {
+        saveSystemKeysGlobalConfig().catch((error) => alert(error.message));
+      });
+    }
   }
   function renderBudgetList() {
     const container = el('admin-budget-list');
@@ -1221,12 +1254,29 @@ function createAdminController({
 
   async function saveSystemKeysGlobalConfig() {
     const enabled = !!el('admin-system-keys-enabled')?.checked;
+    const globalBudgetLimitUsd = parseOptionalNonNegativeNumber(el('admin-system-global-budget-limit')?.value);
+    if (Number.isNaN(globalBudgetLimitUsd)) {
+      alert('Globales Budget-Limit muss leer oder >= 0 sein.');
+      return;
+    }
+    const globalBudgetPeriod = String(el('admin-system-global-budget-period')?.value || 'monthly').trim();
+    const globalBudgetIsActive = globalBudgetLimitUsd !== null;
     await api('/api/admin/system-provider-keys/config', {
       method: 'PUT',
-      body: JSON.stringify({ systemKeysEnabled: enabled }),
+      body: JSON.stringify({
+        systemKeysEnabled: enabled,
+        globalBudgetLimitUsd,
+        globalBudgetPeriod,
+        globalBudgetMode: 'hybrid',
+        globalBudgetWarningRatio: 0.9,
+        globalBudgetIsActive,
+      }),
     });
     adminState.systemKeysEnabled = enabled;
-    setStatus(`System-Keys global ${enabled ? 'aktiviert' : 'deaktiviert'}.`, { systemKey: true });
+    adminState.systemKeyGlobalBudgetLimitUsd = globalBudgetLimitUsd;
+    adminState.systemKeyGlobalBudgetPeriod = globalBudgetPeriod;
+    adminState.systemKeyGlobalBudgetIsActive = globalBudgetIsActive;
+    setStatus(`Global-Konfiguration gespeichert (${enabled ? 'aktiv' : 'inaktiv'}).`, { systemKey: true });
     await loadAdminData();
   }
 
@@ -1465,6 +1515,15 @@ function createAdminController({
       budgets: Array.isArray(budgets) ? budgets : [],
       selectedBudgetId: adminState.selectedBudgetId,
       systemKeysEnabled: systemKeysConfig?.systemKeysEnabled ?? systemKeysPayload?.systemKeysEnabled ?? true,
+      systemKeyGlobalBudgetIsActive: Boolean(systemKeysConfig?.globalBudgetIsActive ?? systemKeysPayload?.globalBudgetIsActive ?? false),
+      systemKeyGlobalBudgetLimitUsd: systemKeysConfig?.globalBudgetLimitUsd ?? systemKeysPayload?.globalBudgetLimitUsd ?? null,
+      systemKeyGlobalBudgetPeriod: String(systemKeysConfig?.globalBudgetPeriod || systemKeysPayload?.globalBudgetPeriod || 'monthly').trim() || 'monthly',
+      systemKeyGlobalBudgetMode: String(systemKeysConfig?.globalBudgetMode || systemKeysPayload?.globalBudgetMode || 'hybrid').trim() || 'hybrid',
+      systemKeyGlobalBudgetWarningRatio: Number(systemKeysConfig?.globalBudgetWarningRatio ?? systemKeysPayload?.globalBudgetWarningRatio ?? 0.9),
+      systemKeyGlobalBudgetUsage: {
+        totalRequests: Number(systemKeysConfig?.globalBudgetUsage?.totalRequests || 0),
+        spendUsd: Number(systemKeysConfig?.globalBudgetUsage?.spendUsd || 0),
+      },
       activeTab: adminState.activeTab || 'roles',
       activeModelProvider: adminState.activeModelProvider || 'openai',
     };

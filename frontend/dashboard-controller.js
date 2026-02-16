@@ -245,35 +245,38 @@ function createDashboardController({
           ? `$${Number(assignedBudget.budgetLimitUsd || 0).toFixed(4)} (${assignedBudget.budgetPeriod || 'monthly'})`
           : 'kein explizites Zuweisungsbudget';
         return `
-          <li class="admin-assignment-row">
-            <div class="span-col">
-              <strong>${row.name}</strong><br/>
-              <small>${row.providerKind || '-'} | ${row.model || '-'} | ${row.sourceLabel}</small><br/>
-              <small>Used / Total: $${Number(usage.totalCostUsd || 0).toFixed(4)} / ${policy ? `$${Number(policy.limitUsd || 0).toFixed(4)}` : 'kein Limit'}</small><br/>
-              ${row.sourceLabel === 'zugewiesen' ? `<small>Zuweisungsbudget: ${assignedBudgetLabel}</small><br/>` : ''}
-              <small class="hint">Fingerprint: ${keyFingerprint || 'nicht verfügbar'}</small>
+          <li class="provider-budget-row">
+            <div class="provider-budget-left">
+              <span class="admin-state-dot ${policy?.isActive ? 'dot-active' : 'dot-muted'}"></span>
+              <div class="provider-budget-meta">
+                <strong>${row.name}</strong>
+                <small>${row.providerKind || '-'} | ${row.model || '-'} | ${row.sourceLabel}</small>
+                <small>Used / Total: $${Number(usage.totalCostUsd || 0).toFixed(4)} / ${policy ? `$${Number(policy.limitUsd || 0).toFixed(4)}` : 'kein Limit'}</small>
+                ${row.sourceLabel === 'zugewiesen' ? `<small>Zuweisungsbudget: ${assignedBudgetLabel}</small>` : ''}
+                <small class="hint">Fingerprint: ${keyFingerprint || 'nicht verfügbar'}</small>
+              </div>
             </div>
-            <label>Limit USD
-              <input type="number" min="0" step="0.000001" data-usage-key-budget-limit="${row.rowId}" value="${policy ? Number(policy.limitUsd || 0) : ''}" placeholder="optional" ${canSave ? '' : 'disabled'} />
-            </label>
-            <label>Periode
-              <select data-usage-key-budget-period="${row.rowId}" ${canSave ? '' : 'disabled'}>
-                <option value="daily" ${policy?.period === 'daily' ? 'selected' : ''}>daily</option>
-                <option value="weekly" ${policy?.period === 'weekly' ? 'selected' : ''}>weekly</option>
-                <option value="monthly" ${(!policy?.period || policy.period === 'monthly') ? 'selected' : ''}>monthly</option>
-              </select>
-            </label>
-            <label>Aktiv
-              <span class="admin-toggle">
+            <div class="provider-budget-right">
+              <div class="admin-budget-input-wrap">
+                <span>Set Budget</span>
+                <input type="number" min="0" step="0.000001" data-usage-key-budget-limit="${row.rowId}" value="${policy ? Number(policy.limitUsd || 0) : ''}" placeholder="optional" ${canSave ? '' : 'disabled'} />
+                <span class="admin-budget-unit">USD</span>
+                <select data-usage-key-budget-period="${row.rowId}" ${canSave ? '' : 'disabled'}>
+                  <option value="daily" ${policy?.period === 'daily' ? 'selected' : ''}>daily</option>
+                  <option value="weekly" ${policy?.period === 'weekly' ? 'selected' : ''}>weekly</option>
+                  <option value="monthly" ${(!policy?.period || policy.period === 'monthly') ? 'selected' : ''}>monthly</option>
+                </select>
+              </div>
+              <label class="admin-toggle">
                 <input type="checkbox" data-usage-key-budget-active="${row.rowId}" ${policy?.isActive ? 'checked' : ''} ${canSave ? '' : 'disabled'} />
                 <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-                <span class="admin-toggle-text">${policy?.isActive ? 'Aktiv' : 'Inaktiv'}</span>
+                <span class="admin-toggle-text">${policy?.isActive ? 'On' : 'Off'}</span>
+              </label>
+              <span class="inline-actions">
+                <button type="button" class="secondary small" data-save-usage-key-budget="${row.rowId}" data-usage-key-fingerprint="${keyFingerprint}" ${canSave ? '' : 'disabled'}>Speichern</button>
+                ${policy ? `<button type="button" class="secondary small" data-delete-own-budget="${policy.id}">Löschen</button>` : ''}
               </span>
-            </label>
-            <span class="inline-actions">
-              <button type="button" class="secondary small" data-save-usage-key-budget="${row.rowId}" data-usage-key-fingerprint="${keyFingerprint}" ${canSave ? '' : 'disabled'}>Speichern</button>
-              ${policy ? `<button type="button" class="secondary small" data-delete-own-budget="${policy.id}">Löschen</button>` : ''}
-            </span>
+            </div>
           </li>
         `;
       }).join('')

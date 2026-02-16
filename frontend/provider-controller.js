@@ -433,6 +433,7 @@ function createProviderController({
     const allProviders = Array.isArray(state.providers) ? state.providers : [];
     const activeLabel = el('provider-active-label');
     if (activeLabel) activeLabel.textContent = 'Aktive Key-Auswahl je Stage';
+    const currentStage = getProviderStage();
 
     const firstProviderId = allProviders[0]?.id || '';
     const currentMeta = getAssignedProviderId('metaprompt');
@@ -472,54 +473,96 @@ function createProviderController({
     const availableAssignedKeys = (Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [])
       .filter((entry) => !configuredSystemKeyIds.has(entry.systemKeyId));
 
-    const renderProviderRow = (provider) => `
-      <li>
-        <span>
-          <strong>${provider.name}</strong> | ${provider.kind} | ${provider.model}<br/>
-          <small>${redactKeyState(provider)}</small>
-        </span>
-        <span class="inline-actions">
-          <label class="admin-toggle">
-            <input type="radio" name="provider-stage-metaprompt" data-select-stage-provider="metaprompt:${provider.id}" ${provider.id === getAssignedProviderId('metaprompt') ? 'checked' : ''} />
-            <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-            <span class="admin-toggle-text">Metaprompt</span>
-          </label>
-          <label class="admin-toggle">
-            <input type="radio" name="provider-stage-result" data-select-stage-provider="result:${provider.id}" ${provider.id === getAssignedProviderId('result') ? 'checked' : ''} />
-            <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
-            <span class="admin-toggle-text">Result</span>
-          </label>
-          <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
-          <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
-        </span>
-      </li>
-    `;
+    const renderProviderRow = (provider) => {
+      const metaActive = provider.id === getAssignedProviderId('metaprompt');
+      const resultActive = provider.id === getAssignedProviderId('result');
+      const isStageActive = currentStage === 'result' ? resultActive : metaActive;
+      return `
+        <li class="provider-stage-row ${isStageActive ? 'is-stage-active' : ''}">
+          <div class="provider-stage-row-left">
+            <span class="admin-state-dot ${provider.systemKeyId ? 'dot-warning' : 'dot-active'}"></span>
+            <span class="material-icons-round provider-stage-row-icon">${provider.systemKeyId ? 'hub' : 'vpn_key'}</span>
+            <div class="provider-stage-row-meta">
+              <strong>${provider.name}</strong>
+              <small>${provider.kind} | ${provider.model}</small>
+              <small>${redactKeyState(provider)}</small>
+            </div>
+          </div>
+          <div class="provider-stage-row-right">
+            <label class="admin-toggle provider-stage-toggle">
+              <input type="radio" name="provider-stage-metaprompt" data-select-stage-provider="metaprompt:${provider.id}" ${metaActive ? 'checked' : ''} />
+              <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+              <span class="admin-toggle-text">Metaprompt</span>
+            </label>
+            <label class="admin-toggle provider-stage-toggle">
+              <input type="radio" name="provider-stage-result" data-select-stage-provider="result:${provider.id}" ${resultActive ? 'checked' : ''} />
+              <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+              <span class="admin-toggle-text">Result</span>
+            </label>
+            <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
+            <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
+          </div>
+        </li>
+      `;
+    };
 
     const list = el('provider-list');
     const assignedHint = state.systemKeysEnabled
       ? ''
-      : '<li><span><small>System-Keys sind global deaktiviert.</small></span></li>';
+      : '<li class="provider-stage-note"><span><small>System-Keys sind global deaktiviert.</small></span></li>';
     list.innerHTML = `
-      <li>
-        <span><strong>Persönliche Keys</strong></span>
+      <li class="provider-stage-shell">
+        <div class="provider-stage-group">
+          <div class="provider-stage-group-head">
+            <h4>Persönliche Keys</h4>
+            <small>${personalProviders.length} Einträge</small>
+          </div>
+          <ul class="provider-stage-rows">
+            ${personalProviders.length
+    ? personalProviders.map(renderProviderRow).join('')
+    : '<li class="provider-stage-note"><span>Keine persönlichen Keys.</span></li>'}
+          </ul>
+        </div>
+
+        <div class="provider-stage-group">
+          <div class="provider-stage-group-head">
+            <h4>Zugewiesene Keys</h4>
+            <small>${assignedProviders.length} gespeichert</small>
+          </div>
+          <ul class="provider-stage-rows">
+            ${assignedProviders.length
+    ? assignedProviders.map(renderProviderRow).join('')
+    : '<li class="provider-stage-note"><span>Noch keine zugewiesenen Keys als Provider gespeichert.</span></li>'}
+            ${assignedHint}
+          </ul>
+        </div>
+
+        ${availableAssignedKeys.length ? `
+          <div class="provider-stage-group">
+            <div class="provider-stage-group-head">
+              <h4>Verfügbare zugewiesene Keys</h4>
+              <small>noch nicht als Provider angelegt</small>
+            </div>
+            <ul class="provider-stage-rows">
+              ${availableAssignedKeys.map((entry) => `
+                <li class="provider-stage-row provider-stage-row-addable">
+                  <div class="provider-stage-row-left">
+                    <span class="admin-state-dot dot-active"></span>
+                    <span class="material-icons-round provider-stage-row-icon">key</span>
+                    <div class="provider-stage-row-meta">
+                      <strong>${entry.name}</strong>
+                      <small>${entry.providerKind} | ${entry.modelHint || 'Modell frei wählen'}</small>
+                    </div>
+                  </div>
+                  <div class="provider-stage-row-right">
+                    <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Provider hinzufügen</button>
+                  </div>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        ` : ''}
       </li>
-      ${personalProviders.length ? personalProviders.map(renderProviderRow).join('') : '<li><span>Keine persönlichen Keys.</span></li>'}
-      <li>
-        <span><strong>Zugewiesene Keys</strong></span>
-      </li>
-      ${assignedProviders.length ? assignedProviders.map(renderProviderRow).join('') : '<li><span>Noch keine zugewiesenen Keys als Provider gespeichert.</span></li>'}
-      ${assignedHint}
-      ${availableAssignedKeys.length ? `
-        <li><span><strong>Verfügbare zugewiesene Keys</strong> (noch nicht als Provider angelegt)</span></li>
-        ${availableAssignedKeys.map((entry) => `
-          <li>
-            <span><strong>${entry.name}</strong> | ${entry.providerKind} | ${entry.modelHint || 'Modell frei wählen'}</span>
-            <span class="inline-actions">
-              <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Provider hinzufügen</button>
-            </span>
-          </li>
-        `).join('')}
-      ` : ''}
     `;
 
     list.querySelectorAll('[data-select-stage-provider]').forEach((input) => {
@@ -533,6 +576,7 @@ function createProviderController({
             [getSettingsKeyForStage(stage)]: providerId,
           });
           setStageAssignmentStatus(`Aktiver ${stage === 'result' ? 'Result' : 'Metaprompt'}-Key gespeichert.`, 'ok');
+          renderProviders();
         } catch (error) {
           setStageAssignmentStatus(`Speichern fehlgeschlagen: ${error.message}`, 'error');
         }

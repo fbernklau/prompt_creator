@@ -117,6 +117,74 @@ function normalizeOptionalPerUserBudgetPayload(payload = {}) {
   };
 }
 
+function normalizeSystemKeySettings(raw = {}) {
+  const globalBudgetLimitUsd = parseNonNegativeNumberOrNull(raw?.globalBudgetLimitUsd);
+  const globalBudgetPeriod = normalizeBudgetPeriod(raw?.globalBudgetPeriod || 'monthly') || 'monthly';
+  const globalBudgetMode = normalizeBudgetMode(raw?.globalBudgetMode || 'hybrid');
+  const globalBudgetWarningRatio = parseWarningRatio(raw?.globalBudgetWarningRatio);
+  const enabled = raw?.enabled === undefined ? true : Boolean(raw.enabled);
+  const globalBudgetIsActiveRaw = raw?.globalBudgetIsActive;
+  let globalBudgetIsActive = globalBudgetIsActiveRaw === undefined
+    ? globalBudgetLimitUsd !== null
+    : Boolean(globalBudgetIsActiveRaw);
+  if (globalBudgetLimitUsd === null) globalBudgetIsActive = false;
+  return {
+    enabled,
+    globalBudgetIsActive,
+    globalBudgetLimitUsd,
+    globalBudgetPeriod,
+    globalBudgetMode,
+    globalBudgetWarningRatio,
+  };
+}
+
+async function getSystemKeySettings() {
+  const result = await pool.query(
+    `SELECT setting_value_json
+     FROM app_runtime_settings
+     WHERE setting_key = 'system_keys'`
+  );
+  if (!result.rowCount) {
+    return normalizeSystemKeySettings({});
+  }
+  return normalizeSystemKeySettings(result.rows[0]?.setting_value_json || {});
+}
+
+async function setSystemKeySettings(partial = {}, updatedBy = 'system') {
+  const current = await getSystemKeySettings();
+  const next = normalizeSystemKeySettings({
+    ...current,
+    ...(partial || {}),
+  });
+  await pool.query(
+    `INSERT INTO app_runtime_settings (setting_key, setting_value_json, updated_by, updated_at)
+     VALUES ('system_keys', $1::jsonb, $2, NOW())
+     ON CONFLICT (setting_key)
+     DO UPDATE SET
+       setting_value_json = EXCLUDED.setting_value_json,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = NOW()`,
+    [JSON.stringify(next), String(updatedBy || 'system')]
+  );
+  return next;
+}
+
+async function resolveGlobalSystemUsage(period = 'monthly') {
+  const result = await pool.query(
+    `SELECT
+       COUNT(*)::int AS total_count,
+       COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND created_at >= NOW() - ($1::interval)`,
+    [periodToIntervalLiteral(period)]
+  );
+  return {
+    totalCount: Number(result.rows[0]?.total_count || 0),
+    spendUsd: Number(result.rows[0]?.spend_usd || 0),
+  };
+}
+
 async function resolveSystemKeyUsage(systemKeyId, period = 'monthly') {
   const result = await pool.query(
     `SELECT
@@ -187,29 +255,6 @@ async function resolveAssignmentUsage({ systemKeyId, scopeType, scopeValue, peri
     totalCount: Number(result.rows[0]?.total_count || 0),
     spendUsd: Number(result.rows[0]?.spend_usd || 0),
   };
-}
-
-async function getSystemKeysEnabled() {
-  const result = await pool.query(
-    `SELECT setting_value_json
-     FROM app_runtime_settings
-     WHERE setting_key = 'system_keys'`
-  );
-  if (!result.rowCount) return true;
-  return Boolean(result.rows[0]?.setting_value_json?.enabled !== false);
-}
-
-async function setSystemKeysEnabled(enabled, updatedBy = 'system') {
-  await pool.query(
-    `INSERT INTO app_runtime_settings (setting_key, setting_value_json, updated_by, updated_at)
-     VALUES ('system_keys', $1::jsonb, $2, NOW())
-     ON CONFLICT (setting_key)
-     DO UPDATE SET
-       setting_value_json = EXCLUDED.setting_value_json,
-       updated_by = EXCLUDED.updated_by,
-       updated_at = NOW()`,
-    [JSON.stringify({ enabled: Boolean(enabled) }), String(updatedBy || 'system')]
-  );
 }
 
 function createAdminRouter() {
@@ -489,7 +534,7 @@ function createAdminRouter() {
   }));
 
   router.get('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (_req, res) => {
-    const systemKeysEnabled = await getSystemKeysEnabled();
+    const systemSettings = await getSystemKeySettings();
     const [keysResult, assignmentsResult] = await Promise.all([
       pool.query(
         `SELECT
@@ -605,20 +650,73 @@ function createAdminRouter() {
     }));
 
     res.json({
-      systemKeysEnabled,
+      systemKeysEnabled: Boolean(systemSettings.enabled),
+      globalBudgetIsActive: Boolean(systemSettings.globalBudgetIsActive),
+      globalBudgetLimitUsd: systemSettings.globalBudgetLimitUsd,
+      globalBudgetPeriod: systemSettings.globalBudgetPeriod,
+      globalBudgetMode: systemSettings.globalBudgetMode,
+      globalBudgetWarningRatio: systemSettings.globalBudgetWarningRatio,
       keys: payload,
     });
   }));
 
   router.get('/admin/system-provider-keys/config', ...systemKeyGuard, asyncHandler(async (_req, res) => {
-    const systemKeysEnabled = await getSystemKeysEnabled();
-    res.json({ systemKeysEnabled });
+    const settings = await getSystemKeySettings();
+    const usage = await resolveGlobalSystemUsage(settings.globalBudgetPeriod);
+    res.json({
+      systemKeysEnabled: Boolean(settings.enabled),
+      globalBudgetIsActive: Boolean(settings.globalBudgetIsActive),
+      globalBudgetLimitUsd: settings.globalBudgetLimitUsd,
+      globalBudgetPeriod: settings.globalBudgetPeriod,
+      globalBudgetMode: settings.globalBudgetMode,
+      globalBudgetWarningRatio: settings.globalBudgetWarningRatio,
+      globalBudgetUsage: {
+        totalRequests: usage.totalCount,
+        spendUsd: usage.spendUsd,
+      },
+    });
   }));
 
   router.put('/admin/system-provider-keys/config', ...systemKeyGuard, asyncHandler(async (req, res) => {
-    const enabled = Boolean(req.body?.systemKeysEnabled);
-    await setSystemKeysEnabled(enabled, req.userId);
-    res.json({ ok: true, systemKeysEnabled: enabled });
+    const payload = req.body || {};
+    const update = {};
+    if (Object.prototype.hasOwnProperty.call(payload, 'systemKeysEnabled')) {
+      update.enabled = Boolean(payload.systemKeysEnabled);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetLimitUsd')) {
+      update.globalBudgetLimitUsd = parseNonNegativeNumberOrNull(payload.globalBudgetLimitUsd);
+      if (!Object.prototype.hasOwnProperty.call(payload, 'globalBudgetIsActive')) {
+        update.globalBudgetIsActive = update.globalBudgetLimitUsd !== null;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetPeriod')) {
+      update.globalBudgetPeriod = normalizeBudgetPeriod(payload.globalBudgetPeriod || 'monthly') || 'monthly';
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetMode')) {
+      update.globalBudgetMode = normalizeBudgetMode(payload.globalBudgetMode || 'hybrid');
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetWarningRatio')) {
+      update.globalBudgetWarningRatio = parseWarningRatio(payload.globalBudgetWarningRatio);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetIsActive')) {
+      update.globalBudgetIsActive = Boolean(payload.globalBudgetIsActive);
+    }
+
+    const settings = await setSystemKeySettings(update, req.userId);
+    const usage = await resolveGlobalSystemUsage(settings.globalBudgetPeriod);
+    res.json({
+      ok: true,
+      systemKeysEnabled: Boolean(settings.enabled),
+      globalBudgetIsActive: Boolean(settings.globalBudgetIsActive),
+      globalBudgetLimitUsd: settings.globalBudgetLimitUsd,
+      globalBudgetPeriod: settings.globalBudgetPeriod,
+      globalBudgetMode: settings.globalBudgetMode,
+      globalBudgetWarningRatio: settings.globalBudgetWarningRatio,
+      globalBudgetUsage: {
+        totalRequests: usage.totalCount,
+        spendUsd: usage.spendUsd,
+      },
+    });
   }));
 
   router.post('/admin/system-provider-keys', ...systemKeyGuard, asyncHandler(async (req, res) => {

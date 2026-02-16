@@ -103,13 +103,41 @@ function buildKeyFingerprint(apiKey = '') {
 }
 
 async function getSystemKeysEnabled() {
+  const settings = await getSystemKeysSettings();
+  return Boolean(settings.enabled);
+}
+
+function normalizeSystemKeysSettings(raw = {}) {
+  const enabled = raw?.enabled === undefined ? true : Boolean(raw.enabled);
+  const globalBudgetLimitUsd = parseNonNegativeFloatOrNull(raw?.globalBudgetLimitUsd);
+  const globalBudgetPeriod = normalizeBudgetPeriod(raw?.globalBudgetPeriod || 'monthly') || 'monthly';
+  const globalBudgetMode = normalizeBudgetMode(raw?.globalBudgetMode || 'hybrid');
+  const globalBudgetWarningRatio = Number.isFinite(Number(raw?.globalBudgetWarningRatio))
+    ? Math.min(Math.max(Number(raw.globalBudgetWarningRatio), 0.1), 1)
+    : 0.9;
+  const globalBudgetIsActiveRaw = raw?.globalBudgetIsActive;
+  let globalBudgetIsActive = globalBudgetIsActiveRaw === undefined
+    ? globalBudgetLimitUsd !== null
+    : Boolean(globalBudgetIsActiveRaw);
+  if (globalBudgetLimitUsd === null) globalBudgetIsActive = false;
+  return {
+    enabled,
+    globalBudgetIsActive,
+    globalBudgetLimitUsd,
+    globalBudgetPeriod,
+    globalBudgetMode,
+    globalBudgetWarningRatio,
+  };
+}
+
+async function getSystemKeysSettings() {
   const result = await pool.query(
     `SELECT setting_value_json
      FROM app_runtime_settings
      WHERE setting_key = 'system_keys'`
   );
-  if (!result.rowCount) return true;
-  return Boolean(result.rows[0]?.setting_value_json?.enabled !== false);
+  if (!result.rowCount) return normalizeSystemKeysSettings({});
+  return normalizeSystemKeysSettings(result.rows[0]?.setting_value_json || {});
 }
 
 async function resolvePricingForProvider(provider) {
@@ -501,6 +529,19 @@ async function resolveSystemAssignmentUserSpendUsd({
   return Number(result.rows[0]?.spend_usd || 0);
 }
 
+async function resolveSystemGlobalBudgetSpendUsd({
+  period = 'monthly',
+}) {
+  const result = await pool.query(
+    `SELECT COALESCE(SUM(total_cost_usd), 0)::numeric AS spend_usd
+     FROM provider_generation_events
+     WHERE effective_key_type = 'system'
+       AND created_at >= NOW() - ($1::interval)`,
+    [periodToIntervalLiteral(period)]
+  );
+  return Number(result.rows[0]?.spend_usd || 0);
+}
+
 function normalizeSystemBudgetMode(value = '') {
   return normalizeBudgetMode(value || 'hybrid');
 }
@@ -586,6 +627,72 @@ async function enforceSystemAssignmentBudget({
       throw httpError(402, `${phaseLabel}: Pro-Nutzer-Budget erreicht — aktuell $${spendUsd.toFixed(4)} / Limit $${perUserLimit.toFixed(4)}.`);
     }
   }
+  return warnings;
+}
+
+async function enforceSystemGlobalBudget({
+  req,
+  effectiveKeyType = 'user',
+  estimatedIncrementUsd = 0,
+  reservedIncrementUsd = 0,
+  phaseLabel = 'Generierung',
+  onWarning = null,
+}) {
+  if (String(effectiveKeyType || '').trim().toLowerCase() !== 'system') return [];
+  const incrementUsd = Number(estimatedIncrementUsd);
+  if (!Number.isFinite(incrementUsd) || incrementUsd <= 0) return [];
+  const reservedUsd = Number(reservedIncrementUsd);
+  const reservedSafe = Number.isFinite(reservedUsd) && reservedUsd > 0 ? reservedUsd : 0;
+
+  const settings = await getSystemKeysSettings();
+  const limitUsd = parseNonNegativeFloatOrNull(settings.globalBudgetLimitUsd);
+  if (!settings.globalBudgetIsActive || limitUsd === null) return [];
+
+  const period = normalizeBudgetPeriod(settings.globalBudgetPeriod || 'monthly') || 'monthly';
+  const mode = normalizeBudgetMode(settings.globalBudgetMode || 'hybrid');
+  const warningRatio = Number(settings.globalBudgetWarningRatio || 0.9);
+  const spendUsd = await resolveSystemGlobalBudgetSpendUsd({ period });
+  const effectiveSpendUsd = spendUsd + reservedSafe;
+  const projectedUsd = effectiveSpendUsd + incrementUsd;
+  const warningThreshold = limitUsd * warningRatio;
+  const shouldWarn = projectedUsd >= warningThreshold;
+  const shouldBlock = (mode === 'hard' && projectedUsd > limitUsd)
+    || (mode === 'hybrid' && effectiveSpendUsd >= limitUsd);
+
+  const warnings = [];
+  if (shouldWarn) {
+    const message = `${phaseLabel}: Globales System-Budget-Hinweis — aktuell $${effectiveSpendUsd.toFixed(4)}, prognostiziert $${projectedUsd.toFixed(4)} bei Limit $${limitUsd.toFixed(4)}.`;
+    warnings.push({
+      type: 'system_global',
+      scopeType: 'system',
+      scopeValue: 'global',
+      period,
+      mode,
+      message,
+      spendUsd: effectiveSpendUsd,
+      projectedUsd,
+      limitUsd,
+    });
+    if (typeof onWarning === 'function') onWarning(message);
+    await pool.query(
+      `INSERT INTO budget_events
+         (user_id, policy_id, scope_type, scope_value, action, message, projected_cost_usd, current_spend_usd, limit_usd)
+       VALUES ($1,NULL,'system','global','warn',$2,$3,$4,$5)`,
+      [req.userId, message, projectedUsd, effectiveSpendUsd, limitUsd]
+    );
+  }
+
+  if (shouldBlock) {
+    const message = `${phaseLabel}: Globales System-Budget erreicht — aktuell $${effectiveSpendUsd.toFixed(4)} / Limit $${limitUsd.toFixed(4)}.`;
+    await pool.query(
+      `INSERT INTO budget_events
+         (user_id, policy_id, scope_type, scope_value, action, message, projected_cost_usd, current_spend_usd, limit_usd)
+       VALUES ($1,NULL,'system','global','block',$2,$3,$4,$5)`,
+      [req.userId, message, projectedUsd, effectiveSpendUsd, limitUsd]
+    );
+    throw httpError(402, message);
+  }
+
   return warnings;
 }
 
@@ -1246,6 +1353,7 @@ function createGenerateRouter() {
     let handoffPrompt = '';
     let resultOutput = null;
     const budgetWarnings = [];
+    let projectedSystemGlobalUsd = 0;
 
     try {
       metapromptCredential = await resolveProviderCredential(req, metapromptProvider);
@@ -1268,6 +1376,17 @@ function createGenerateRouter() {
         phaseLabel: 'Metaprompt-Phase',
       });
       budgetWarnings.push(...metapromptAssignmentBudgetWarnings);
+      const metapromptSystemGlobalWarnings = await enforceSystemGlobalBudget({
+        req,
+        effectiveKeyType: metapromptCredential?.effectiveKeyType,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        reservedIncrementUsd: projectedSystemGlobalUsd,
+        phaseLabel: 'Metaprompt-Phase',
+      });
+      budgetWarnings.push(...metapromptSystemGlobalWarnings);
+      if (String(metapromptCredential?.effectiveKeyType || '').trim().toLowerCase() === 'system') {
+        projectedSystemGlobalUsd += Number(metapromptEstimated.projectedCostUsd || 0);
+      }
       const metapromptBudgetWarnings = await enforceBudgetPolicies({
         req,
         keyFingerprint: metapromptKeyFingerprint,
@@ -1337,6 +1456,17 @@ function createGenerateRouter() {
           phaseLabel: 'Direktes Ergebnis',
         });
         budgetWarnings.push(...resultAssignmentBudgetWarnings);
+        const resultSystemGlobalWarnings = await enforceSystemGlobalBudget({
+          req,
+          effectiveKeyType: resultCredential?.effectiveKeyType,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          reservedIncrementUsd: projectedSystemGlobalUsd,
+          phaseLabel: 'Direktes Ergebnis',
+        });
+        budgetWarnings.push(...resultSystemGlobalWarnings);
+        if (String(resultCredential?.effectiveKeyType || '').trim().toLowerCase() === 'system') {
+          projectedSystemGlobalUsd += Number(resultEstimated.projectedCostUsd || 0);
+        }
         const resultBudgetWarnings = await enforceBudgetPolicies({
           req,
           keyFingerprint: resultKeyFingerprint,
@@ -1557,6 +1687,7 @@ function createGenerateRouter() {
     let metapromptCredential = null;
     let resultCredential = null;
     const budgetWarnings = [];
+    let projectedSystemGlobalUsd = 0;
 
     try {
       const {
@@ -1634,6 +1765,20 @@ function createGenerateRouter() {
         },
       });
       budgetWarnings.push(...metapromptAssignmentBudgetWarnings);
+      const metapromptSystemGlobalWarnings = await enforceSystemGlobalBudget({
+        req,
+        effectiveKeyType: metapromptCredential?.effectiveKeyType,
+        estimatedIncrementUsd: metapromptEstimated.projectedCostUsd,
+        reservedIncrementUsd: projectedSystemGlobalUsd,
+        phaseLabel: 'Metaprompt-Phase',
+        onWarning: (message) => {
+          writeStreamEvent(res, 'status', { stage: 'budget', message });
+        },
+      });
+      budgetWarnings.push(...metapromptSystemGlobalWarnings);
+      if (String(metapromptCredential?.effectiveKeyType || '').trim().toLowerCase() === 'system') {
+        projectedSystemGlobalUsd += Number(metapromptEstimated.projectedCostUsd || 0);
+      }
       const metapromptBudgetWarnings = await enforceBudgetPolicies({
         req,
         keyFingerprint: metapromptKeyFingerprint,
@@ -1760,6 +1905,20 @@ function createGenerateRouter() {
           },
         });
         budgetWarnings.push(...resultAssignmentBudgetWarnings);
+        const resultSystemGlobalWarnings = await enforceSystemGlobalBudget({
+          req,
+          effectiveKeyType: resultCredential?.effectiveKeyType,
+          estimatedIncrementUsd: resultEstimated.projectedCostUsd,
+          reservedIncrementUsd: projectedSystemGlobalUsd,
+          phaseLabel: 'Direktes Ergebnis',
+          onWarning: (message) => {
+            writeStreamEvent(res, 'status', { stage: 'budget', message });
+          },
+        });
+        budgetWarnings.push(...resultSystemGlobalWarnings);
+        if (String(resultCredential?.effectiveKeyType || '').trim().toLowerCase() === 'system') {
+          projectedSystemGlobalUsd += Number(resultEstimated.projectedCostUsd || 0);
+        }
         const resultBudgetWarnings = await enforceBudgetPolicies({
           req,
           keyFingerprint: resultKeyFingerprint,
