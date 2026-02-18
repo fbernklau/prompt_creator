@@ -42,6 +42,7 @@ const introTourState = {
   index: 0,
   highlightedSelector: '',
   highlightedNode: null,
+  highlightedClass: '',
   anchorClickCleanup: null,
   waitConditionCleanup: null,
   spotlightCleanup: null,
@@ -233,9 +234,15 @@ function clearIntroductionHighlight() {
   }
   if (!introTourState.highlightedSelector) return;
   const node = introTourState.highlightedNode || document.querySelector(introTourState.highlightedSelector);
-  if (node) node.classList.remove('tour-highlight');
+  if (node) {
+    node.classList.remove('tour-highlight');
+    if (introTourState.highlightedClass) {
+      node.classList.remove(introTourState.highlightedClass);
+    }
+  }
   introTourState.highlightedSelector = '';
   introTourState.highlightedNode = null;
+  introTourState.highlightedClass = '';
 }
 
 function applyIntroductionSpotlight(targetNode) {
@@ -368,31 +375,91 @@ function getIntroductionSteps() {
     {
       title: 'Navigation',
       text: 'Navigation: Neue Aufgabe, Bibliothek, Dashboard, API-Provider und Optionen. Die wichtigsten Einstellungen liegen im Dashboard.',
-      anchors: ['.topbar-actions', '#mobile-bottom-nav'],
+      anchors: ['#btn-options', '#mb-options'],
       anchorHint: 'Klicke auf „Optionen“, um den nächsten Schritt auszulösen.',
+      highlightClass: 'tour-highlight-arrow-up',
       waitForAnchorClick: true,
       anchorsAdvanceSelectors: ['#btn-options', '#mb-options'],
     },
     {
-      title: 'Optionen',
-      text: 'Empfehlung: Flow-Modus „Schrittweise Ansicht“. Result-Modus kannst du optional aktivieren, falls du direktes Ergebnis erzeugen willst.',
+      title: 'Optionen öffnen',
+      text: 'Für diese Tour setzen wir kurz empfohlene Werte: Light Mode, Schrittweise Ansicht, Prompt-only. Du kannst danach alles wieder ändern.',
       anchors: ['#dashboard-options-host', '#btn-options'],
       anchorHint: 'Optionen sind pro Nutzerprofil gespeichert.',
+      autoAction: true,
       action: async () => {
         await dashboardController.openDashboard('options');
+        await queueSettingsSave(
+          { theme: 'light', flowMode: 'step', resultModeEnabled: false },
+          { refreshCatalog: false, showStatus: false }
+        );
+        introTourContext.providerCheckSummary = '';
       },
       actionLabel: 'Optionen anzeigen',
     },
     {
-      title: 'API-Key Verfügbarkeit',
+      title: 'Option: Theme',
+      text: 'Theme steuert nur die Darstellung. Für die Tour ist „Light“ gesetzt. Später kannst du jederzeit auf „Dark“ oder „System“ wechseln.',
+      anchor: '#option-panel-theme',
+      anchorHint: 'Aktueller Tour-Wert: Light.',
+    },
+    {
+      title: 'Option: Flow-Modus',
+      text: 'Schrittweise Ansicht führt klar durch Kategorie → Template → Formular. Für die Tour ist dieser Modus aktiv.',
+      anchor: '#option-panel-flow',
+      anchorHint: 'Empfehlung für Einstieg: Schrittweise Ansicht.',
+    },
+    {
+      title: 'Option: Generierungsmodus',
+      text: 'Global steht die App auf Prompt-only. Für einzelne Läufe kannst du später auf der Template-Seite auf „Direktes Ergebnis“ umschalten.',
+      anchor: '#option-panel-generation',
+      anchorHint: 'Tour-Standard: Prompt-only.',
+    },
+    {
+      title: 'Option: Navigation',
+      text: 'Hier wählst du Topbar oder Sidebar (Desktop). Auf Mobil bleibt die kompakte Navigation aktiv.',
+      anchor: '#option-panel-nav',
+      anchorHint: 'Die Navigation beeinflusst nur das Layout.',
+    },
+    {
+      title: 'Option: Library-Detailansicht',
+      text: 'Bestimmt, ob Bibliothekseinträge als Seitenansicht oder Modal geöffnet werden.',
+      anchor: '#option-panel-library',
+      anchorHint: 'Empfehlung: Seitenansicht für klare Nachvollziehbarkeit.',
+    },
+    {
+      title: 'Option: Standardverhalten',
+      text: 'Hier steuerst du sinnvolle Defaults (z. B. Metadata beim Kopieren oder Community-Sichtbarkeit).',
+      anchor: '#option-panel-defaults',
+      anchorHint: 'Diese Werte kannst du jederzeit anpassen.',
+    },
+    {
+      title: 'API-Provider Überblick',
+      text: 'Hier siehst du persönliche und zugewiesene Keys. Pro Stage (Metaprompt/Result) muss genau ein aktiver Key gesetzt sein.',
+      anchors: ['#dashboard-provider-host', '#btn-provider'],
+      anchorHint: 'Wir wechseln jetzt in den API-Provider-Bereich.',
+      action: async () => {
+        await providerController.refreshModelCatalogAndSync().catch(() => {});
+        await dashboardController.openDashboard('providers');
+      },
+      actionLabel: 'API-Provider öffnen',
+    },
+    {
+      title: 'Aktive Stages',
+      text: 'Oben siehst du die aktuell aktiven Keys für Metaprompt und Result. Diese Zuordnung wird beim Generieren verwendet.',
+      anchor: '#provider-stage-summary',
+      anchorHint: 'Zwei Stages, zwei aktive Zuordnungen.',
+    },
+    {
+      title: 'API-Key Verfügbarkeit prüfen',
       text: () => {
         const checkText = introTourContext.providerCheckSummary
           ? ` ${introTourContext.providerCheckSummary}`
-          : ' Wir prüfen jetzt automatisch, ob die aktiven Stage-Zuordnungen funktionieren.';
-        return `Lege persönliche Keys an oder nutze zugewiesene System-Keys.${checkText}`;
+          : ' Wir prüfen jetzt automatisch die aktiven Stage-Zuordnungen.';
+        return `Statusprüfung zeigt dir direkt, welcher Key je Stage funktioniert.${checkText}`;
       },
-      anchors: ['#dashboard-provider-host', '#btn-provider'],
-      anchorHint: 'Falls nur eine Stage funktioniert, kann die andere auf den funktionierenden Key umgestellt werden.',
+      anchor: '#provider-check-stages',
+      anchorHint: 'Wenn nur eine Stage funktioniert, wird automatisch auf den funktionierenden Key umgestellt.',
       autoAction: true,
       action: async () => {
         introTourContext.providerCheckSummary = 'Statuscheck läuft …';
@@ -401,28 +468,39 @@ function getIntroductionSteps() {
         await dashboardController.openDashboard('providers');
         try {
           const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
-          const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
-          const result = check.results.find((entry) => entry.stage === 'result');
-          const metaText = metaprompt?.ok ? 'Metaprompt: bereit' : 'Metaprompt: Fehler';
-          const resultText = result?.ok ? 'Result: bereit' : 'Result: Fehler';
+          let metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
+          let result = check.results.find((entry) => entry.stage === 'result');
+          let metaText = metaprompt?.ok
+            ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
+            : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
+          let resultText = result?.ok
+            ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
+            : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
           let switchText = '';
           const oneWorksOneFails = !!(metaprompt?.ok !== result?.ok);
           if (oneWorksOneFails) {
             const working = metaprompt?.ok ? metaprompt : result;
             const failing = metaprompt?.ok ? result : metaprompt;
-            const shouldSwitch = window.confirm(
-              `${failing?.stage === 'result' ? 'Result' : 'Metaprompt'} funktioniert aktuell nicht.\n` +
-              `Soll stattdessen der funktionierende Key von ${working?.stage === 'result' ? 'Result' : 'Metaprompt'} übernommen werden?`
-            );
-            if (shouldSwitch && working?.providerId && failing?.stage) {
+            if (working?.providerId && failing?.stage) {
               await providerController.selectProviderForStage(failing.stage, working.providerId);
-              switchText = ' Die fehlerhafte Stage wurde auf den funktionierenden Key umgestellt.';
-              await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
-            } else {
-              switchText = ' Du kannst die Stage-Zuweisung manuell über die Slider setzen.';
+              switchText = ` ${failing?.stage === 'result' ? 'Result' : 'Metaprompt'} wurde automatisch auf den funktionierenden Key umgestellt.`;
+              const recheck = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+              metaprompt = recheck.results.find((entry) => entry.stage === 'metaprompt');
+              result = recheck.results.find((entry) => entry.stage === 'result');
+              metaText = metaprompt?.ok
+                ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
+                : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
+              resultText = result?.ok
+                ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
+                : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
             }
           }
-          introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}.${switchText}`;
+          const noWorkingKey = !metaprompt?.ok && !result?.ok;
+          if (noWorkingKey) {
+            introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}. Kein funktionierender Key gefunden. Nutze „API-Key hinzufügen“, um einen persönlichen Key anzulegen.`;
+          } else {
+            introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}.${switchText}`;
+          }
           notify(introTourContext.providerCheckSummary, { type: (metaprompt?.ok || result?.ok) ? 'ok' : 'error' });
         } catch (error) {
           introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
@@ -430,6 +508,28 @@ function getIntroductionSteps() {
         }
       },
       actionLabel: 'Status prüfen',
+    },
+    {
+      title: 'API-Key anlegen (falls nötig)',
+      text: 'Wenn kein funktionierender Key vorhanden ist, lege hier einen persönlichen Key an. Danach geht die Tour automatisch weiter.',
+      anchors: ['#provider-list [data-open-provider-editor]', '#provider-form-modal', '#provider-form'],
+      anchorHint: 'Öffne „API-Key hinzufügen“, speichere das Profil und prüfe den Status erneut.',
+      action: async () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false };
+        if (summary.hasReadyProvider) return;
+        const addButton = document.querySelector('#provider-list [data-open-provider-editor]');
+        if (addButton instanceof HTMLElement) addButton.click();
+      },
+      actionLabel: 'API-Key hinzufügen',
+      waitForCondition: () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false };
+        return summary.hasReadyProvider;
+      },
+      waitForHint: 'Sobald ein nutzbarer Key hinterlegt ist, geht es weiter.',
     },
     {
       title: 'Zurück zur Hauptseite',
@@ -455,22 +555,34 @@ function getIntroductionSteps() {
       waitForHint: 'Warte auf den Wechsel zur Template-Maske.',
     },
     {
-      title: 'Pflichtfelder & Ergebnis-Modus',
-      text: 'Fülle alle Pflichtfelder aus und aktiviere „Direktes Ergebnis“ für den Tourlauf. Lass „Klärende Rückfragen“ deaktiviert, sonst kann das direkte Ergebnis unvollständig oder blockiert sein. Das Generieren kann je nach Modell etwas dauern.',
-      anchors: ['#screen-form #form-required-panel', '#run-mode-result-toggle'],
-      anchorHint: 'Pflichtfelder + Toggle müssen gesetzt sein.',
+      title: 'Pflichtfelder ausfüllen',
+      text: 'Fülle jetzt alle Pflichtfelder des Templates aus.',
+      anchor: '#screen-form #form-required-panel',
+      anchorHint: 'Sobald alle Pflichtfelder gültig sind, geht es weiter.',
       waitForCondition: () => {
-        const runModeToggle = el('run-mode-result-toggle');
-        const clarifyingQuestionsToggle = el('rueckfragen');
-        return Boolean(runModeToggle?.checked)
-          && !Boolean(clarifyingQuestionsToggle?.checked)
-          && isTemplateFormReadyForGeneration();
+        return isTemplateFormReadyForGeneration();
       },
-      waitForHint: 'Sobald Pflichtfelder vollständig sind, Direktes Ergebnis aktiv ist und „Klärende Rückfragen“ aus ist, geht es automatisch weiter.',
+      waitForHint: 'Pflichtfelder vollständig ausfüllen.',
+    },
+    {
+      title: 'Klärende Rückfragen',
+      text: 'Lass „Klärende Rückfragen“ deaktiviert. Für direktes Ergebnis kann diese Option den Lauf sonst unterbrechen oder unvollständig machen.',
+      anchor: '#rueckfragen',
+      anchorHint: 'Diese Option muss für den Tourlauf aus sein.',
+      waitForCondition: () => !Boolean(el('rueckfragen')?.checked),
+      waitForHint: 'Deaktiviere „Klärende Rückfragen“, um fortzufahren.',
+    },
+    {
+      title: 'Direktes Ergebnis aktivieren',
+      text: 'Schalte jetzt auf „Direktes Ergebnis“ um.',
+      anchor: '#run-mode-result-toggle',
+      anchorHint: 'Dieser Lauf erzeugt Metaprompt plus direktes Ergebnis.',
+      waitForCondition: () => Boolean(el('run-mode-result-toggle')?.checked),
+      waitForHint: 'Aktiviere den Toggle „Direktes Ergebnis“.',
     },
     {
       title: 'Generierung starten',
-      text: 'Klicke jetzt auf „Direktes Ergebnis generieren“.',
+      text: 'Klicke jetzt auf „Direktes Ergebnis generieren“. Das Generieren kann je nach Modell ein wenig dauern.',
       anchors: ['#generate-submit', '#screen-form .tw-form-submit-row'],
       anchorHint: 'Der Lauf startet sofort und wechselt zur Ergebnisansicht.',
       waitForAnchorClick: true,
@@ -485,15 +597,33 @@ function getIntroductionSteps() {
       waitForHint: 'Warte auf den Status „bereit“.',
     },
     {
-      title: 'Ergebnis verstehen',
-      text: 'Oben siehst du den Handoff-Prompt (Metaprompt-Ergebnis). Im Modus „Direktes Ergebnis“ erscheint darunter zusätzlich das direkte Ergebnis. Im Prompt-Modus bleibt nur das obere Feld sichtbar.',
-      anchors: ['#screen-result .result-prompt-panel', '#screen-result #result-direct-panel'],
-      anchorHint: 'Hier kannst du beide Ausgaben vergleichen und kopieren.',
+      title: 'Ergebnis: Metaprompt',
+      text: 'Hier steht der Handoff-Prompt (Metaprompt), der den eigentlichen Arbeitsprompt strukturiert.',
+      anchor: '#screen-result .result-prompt-panel',
+      anchorHint: 'Das obere Feld ist immer der Metaprompt/Handoff.',
+    },
+    {
+      title: 'Ergebnis: Direktes Ergebnis',
+      text: 'Da „Direktes Ergebnis“ aktiv ist, siehst du zusätzlich unten das direkte Resultat. Es basiert auf dem Metaprompt/Handoff.',
+      anchor: '#screen-result #result-direct-panel',
+      anchorHint: 'Im Prompt-only Modus wäre dieses Feld nicht sichtbar.',
+    },
+    {
+      title: 'Bibliothek: Titel',
+      text: 'Vergib einen klaren Titel, damit du den Eintrag später schnell wiederfindest.',
+      anchor: '#library-title',
+      anchorHint: 'Titel kurz und präzise wählen.',
+    },
+    {
+      title: 'Bibliothek: Bewertung & Sichtbarkeit',
+      text: 'Du kannst den Eintrag bewerten und optional öffentlich speichern. Öffentlich bedeutet: andere Nutzer können den Eintrag sehen.',
+      anchors: ['#library-rating', '#library-public'],
+      anchorHint: 'Bewertung und Sichtbarkeit sind optional.',
     },
     {
       title: 'In Bibliothek speichern',
       text: 'Speichere den Lauf in deiner Bibliothek, damit du ihn später mit „Reuse“ wiederverwenden kannst.',
-      anchors: ['#save-library', '#screen-result'],
+      anchor: '#save-library',
       anchorHint: 'Klicke auf „In Bibliothek speichern“.',
       waitForAnchorClick: true,
       anchorsAdvanceSelectors: ['#save-library'],
@@ -551,6 +681,12 @@ function renderIntroductionStep(index) {
   const anchor = resolveIntroductionAnchor(step);
   if (anchor?.node) {
     anchor.node.classList.add('tour-highlight');
+    if (step.highlightClass) {
+      anchor.node.classList.add(step.highlightClass);
+      introTourState.highlightedClass = step.highlightClass;
+    } else {
+      introTourState.highlightedClass = '';
+    }
     introTourState.highlightedSelector = anchor.selector;
     introTourState.highlightedNode = anchor.node;
     applyIntroductionSpotlight(anchor.node);
