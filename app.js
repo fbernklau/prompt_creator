@@ -341,30 +341,12 @@ function resolveIntroductionAnchor(step) {
 }
 
 function getIntroductionSteps() {
-  const providerAvailability = providerController.getProviderAvailabilitySummary
-    ? providerController.getProviderAvailabilitySummary()
-    : {
-      hasReadyProvider: false,
-      readyProviderCount: 0,
-      totalProviders: 0,
-      assignedSystemKeys: 0,
-    };
-  const readinessHint = providerAvailability.hasReadyProvider
-    ? `Es ist bereits mindestens ein nutzbarer API-Key hinterlegt (${providerAvailability.readyProviderCount} verfügbar).`
-    : 'Aktuell ist noch kein nutzbarer API-Key hinterlegt. Das richten wir gemeinsam ein.';
-
   return [
     {
       title: 'Willkommen',
-      text: `${readinessHint} In dieser Tour lernst du den gesamten Ablauf von Auswahl bis Bibliothek.`,
+      text: 'EduPrompt-AT hilft dir, aus strukturierten Eingaben hochwertige KI-Prompts oder direkte Ergebnisse für den Unterricht zu erstellen.',
       anchor: '#screen-home .tw-home-hero',
       anchorHint: 'Startpunkt: Home-Übersicht.',
-    },
-    {
-      title: 'Allgemeiner Ablauf',
-      text: 'Ablauf: Kategorie wählen → Template öffnen → Felder ausfüllen → Metaprompt oder direktes Ergebnis generieren → in Bibliothek speichern.',
-      anchor: '#screen-home .tw-home-hero',
-      anchorHint: 'Die Kernschritte bleiben immer gleich.',
     },
     {
       title: 'Hauptseite',
@@ -568,9 +550,15 @@ function getIntroductionSteps() {
       title: 'Klärende Rückfragen',
       text: 'Lass „Klärende Rückfragen“ deaktiviert. Für direktes Ergebnis kann diese Option den Lauf sonst unterbrechen oder unvollständig machen.',
       anchor: '#rueckfragen',
-      anchorHint: 'Diese Option muss für den Tourlauf aus sein.',
-      waitForCondition: () => !Boolean(el('rueckfragen')?.checked),
-      waitForHint: 'Deaktiviere „Klärende Rückfragen“, um fortzufahren.',
+      anchorHint: 'Für die Tour bleibt diese Option deaktiviert.',
+      autoAction: true,
+      action: async () => {
+        const toggle = el('rueckfragen');
+        if (toggle && toggle.checked) {
+          toggle.checked = false;
+          toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      },
     },
     {
       title: 'Direktes Ergebnis aktivieren',
@@ -610,7 +598,7 @@ function getIntroductionSteps() {
     },
     {
       title: 'Bibliothek: Titel',
-      text: 'Vergib einen klaren Titel, damit du den Eintrag später schnell wiederfindest.',
+      text: 'Speichern ist optional. Für die Tour speichern wir einmal in die Bibliothek. Vergib dafür einen klaren Titel.',
       anchor: '#library-title',
       anchorHint: 'Titel kurz und präzise wählen.',
     },
@@ -622,7 +610,7 @@ function getIntroductionSteps() {
     },
     {
       title: 'In Bibliothek speichern',
-      text: 'Speichere den Lauf in deiner Bibliothek, damit du ihn später mit „Reuse“ wiederverwenden kannst.',
+      text: 'Das Speichern ist nicht verpflichtend. Für die Tour klicken wir jetzt auf „In Bibliothek speichern“, um den Ablauf vollständig zu zeigen.',
       anchor: '#save-library',
       anchorHint: 'Klicke auf „In Bibliothek speichern“.',
       waitForAnchorClick: true,
@@ -638,7 +626,7 @@ function getIntroductionSteps() {
     },
     {
       title: 'Bibliothek',
-      text: 'Speichere gute Ergebnisse in der Bibliothek und nutze „Reuse“, um Felder später vorauszufüllen.',
+      text: 'Hier findest du gespeicherte Einträge wieder, kannst sie filtern, öffnen und mit „Reuse“ für neue Läufe vorausfüllen.',
       anchor: '#btn-library',
       anchorHint: 'Zum Abschluss öffnen wir die Bibliothek.',
       actionLabel: 'Bibliothek öffnen',
@@ -970,6 +958,14 @@ function bindEvents() {
     });
   }
   if (el('mb-options')) el('mb-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
+  if (el('btn-brand-home')) {
+    el('btn-brand-home').addEventListener('click', () => uiShell.showScreen('home'));
+    el('btn-brand-home').addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      uiShell.showScreen('home');
+    });
+  }
 
   el('btn-new-task').addEventListener('click', taskController.resetTaskState);
   el('btn-restart-from-result').addEventListener('click', taskController.resetTaskState);

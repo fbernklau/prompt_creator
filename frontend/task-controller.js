@@ -1275,13 +1275,52 @@ function createTaskController({
       if (field.required) input.required = true;
       if (field.type !== 'checkbox') wrap.appendChild(input);
 
+      const hoverHelpBase = String(field.hoverHelp || field.helpText || dynamicFieldDefaultHelp(field) || '').trim();
+      const optionHelpMap = field.optionHelp && typeof field.optionHelp === 'object'
+        ? field.optionHelp
+        : null;
+      const applyFieldHoverHelp = () => {
+        let hoverText = hoverHelpBase;
+        if (optionHelpMap && (field.type === 'select' || field.type === 'multiselect')) {
+          if (field.type === 'select') {
+            const selected = String(input.value || '').trim();
+            if (selected && optionHelpMap[selected]) hoverText = String(optionHelpMap[selected] || '').trim() || hoverText;
+          } else {
+            const selectedValues = [...input.selectedOptions].map((option) => String(option.value || '').trim()).filter(Boolean);
+            const selectedHelp = selectedValues
+              .map((value) => String(optionHelpMap[value] || '').trim())
+              .filter(Boolean)
+              .join(' | ');
+            if (selectedHelp) hoverText = selectedHelp;
+          }
+        }
+        if (hoverText) {
+          wrap.title = hoverText;
+          input.title = hoverText;
+        } else {
+          wrap.removeAttribute('title');
+          input.removeAttribute('title');
+        }
+      };
+      applyFieldHoverHelp();
+      if (field.type === 'select' || field.type === 'multiselect') {
+        input.addEventListener('change', applyFieldHoverHelp);
+      }
+
       if (field.type !== 'checkbox') {
         const hint = document.createElement('small');
         hint.className = 'hint';
         const explanation = (field.helpText || '').trim() || dynamicFieldDefaultHelp(field);
-        const optionHint = Array.isArray(field.options) && field.options.length
-          ? `Optionen: ${field.options.join(', ')}`
-          : '';
+        let optionHint = '';
+        if (Array.isArray(field.options) && field.options.length) {
+          if (field.optionHelp && typeof field.optionHelp === 'object') {
+            optionHint = 'Optionen im Dropdown (Kurzinfo per Hover).';
+          } else if (field.options.length <= 5) {
+            optionHint = `Optionen: ${field.options.join(', ')}`;
+          } else {
+            optionHint = 'Mehrere Optionen im Dropdown verfügbar.';
+          }
+        }
         const requiredHint = field.required ? 'Pflichtfeld.' : 'Optional.';
         const placeholderHint = field.placeholder ? ` Beispiel: ${field.placeholder}` : '';
         const customHint = allowCustom

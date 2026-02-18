@@ -1259,7 +1259,8 @@ function writeStreamEvent(res, event, payload = {}) {
 
 const RESULT_EXECUTION_SYSTEM_INSTRUCTION = `Du bist ein fachlich-didaktischer Assistent fuer Lehrkraefte.
 Fuehre den erhaltenen Prompt direkt aus und liefere ausschliesslich das angeforderte Endergebnis.
-Stelle keine Rueckfragen und keine Meta-Erklaerungen, ausser der Prompt fordert dies explizit.`;
+Stelle keine Rueckfragen und keine Meta-Erklaerungen, ausser der Prompt fordert dies explizit.
+Achte auf korrekte Orthografie und saubere Leerzeichen zwischen Woertern.`;
 
 function normalizeGenerationMode(value) {
   return String(value || '').trim().toLowerCase() === 'result' ? 'result' : 'prompt';
