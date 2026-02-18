@@ -60,6 +60,7 @@ function createAdminController({
     budgets: [],
     selectedBudgetId: null,
     systemKeysEnabled: true,
+    welcomeFlowEnabled: true,
     systemKeyGlobalBudgetIsActive: false,
     systemKeyGlobalBudgetLimitUsd: null,
     systemKeyGlobalBudgetPeriod: 'monthly',
@@ -573,6 +574,11 @@ function createAdminController({
               <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
               <span class="admin-toggle-text">${adminState.systemKeysEnabled ? 'On' : 'Off'}</span>
             </label>
+            <label class="admin-toggle">
+              <input id="admin-welcome-flow-enabled" type="checkbox" ${adminState.welcomeFlowEnabled !== false ? 'checked' : ''} />
+              <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
+              <span class="admin-toggle-text">${adminState.welcomeFlowEnabled !== false ? 'Welcome On' : 'Welcome Off'}</span>
+            </label>
             <button id="admin-system-keys-enabled-save" type="button" class="secondary small">Save</button>
           </div>
         </div>
@@ -975,6 +981,13 @@ function createAdminController({
         if (textNode) textNode.textContent = globalToggle.checked ? 'On' : 'Off';
       });
     }
+    const welcomeFlowToggle = el('admin-welcome-flow-enabled');
+    if (welcomeFlowToggle) {
+      welcomeFlowToggle.addEventListener('change', () => {
+        const textNode = welcomeFlowToggle.closest('.admin-toggle')?.querySelector('.admin-toggle-text');
+        if (textNode) textNode.textContent = welcomeFlowToggle.checked ? 'Welcome On' : 'Welcome Off';
+      });
+    }
 
     const globalSave = el('admin-system-keys-enabled-save');
     if (globalSave) {
@@ -1342,6 +1355,7 @@ function createAdminController({
 
   async function saveSystemKeysGlobalConfig() {
     const enabled = !!el('admin-system-keys-enabled')?.checked;
+    const welcomeFlowEnabled = !!el('admin-welcome-flow-enabled')?.checked;
     const globalBudgetLimitUsd = parseOptionalNonNegativeNumber(el('admin-system-global-budget-limit')?.value);
     if (Number.isNaN(globalBudgetLimitUsd)) {
       alert('Globales Budget-Limit muss leer oder >= 0 sein.');
@@ -1353,6 +1367,7 @@ function createAdminController({
       method: 'PUT',
       body: JSON.stringify({
         systemKeysEnabled: enabled,
+        welcomeFlowEnabled,
         globalBudgetLimitUsd,
         globalBudgetPeriod,
         globalBudgetMode: 'hybrid',
@@ -1361,10 +1376,11 @@ function createAdminController({
       }),
     });
     adminState.systemKeysEnabled = enabled;
+    adminState.welcomeFlowEnabled = welcomeFlowEnabled;
     adminState.systemKeyGlobalBudgetLimitUsd = globalBudgetLimitUsd;
     adminState.systemKeyGlobalBudgetPeriod = globalBudgetPeriod;
     adminState.systemKeyGlobalBudgetIsActive = globalBudgetIsActive;
-    setStatus(`Global-Konfiguration gespeichert (${enabled ? 'aktiv' : 'inaktiv'}).`, { systemKey: true });
+    setStatus(`Global-Konfiguration gespeichert (Keys ${enabled ? 'aktiv' : 'inaktiv'}, Welcome ${welcomeFlowEnabled ? 'aktiv' : 'inaktiv'}).`, { systemKey: true });
     await loadAdminData();
   }
 
@@ -1603,6 +1619,7 @@ function createAdminController({
       budgets: Array.isArray(budgets) ? budgets : [],
       selectedBudgetId: adminState.selectedBudgetId,
       systemKeysEnabled: systemKeysConfig?.systemKeysEnabled ?? systemKeysPayload?.systemKeysEnabled ?? true,
+      welcomeFlowEnabled: systemKeysConfig?.welcomeFlowEnabled ?? systemKeysPayload?.welcomeFlowEnabled ?? true,
       systemKeyGlobalBudgetIsActive: Boolean(systemKeysConfig?.globalBudgetIsActive ?? systemKeysPayload?.globalBudgetIsActive ?? false),
       systemKeyGlobalBudgetLimitUsd: systemKeysConfig?.globalBudgetLimitUsd ?? systemKeysPayload?.globalBudgetLimitUsd ?? null,
       systemKeyGlobalBudgetPeriod: String(systemKeysConfig?.globalBudgetPeriod || systemKeysPayload?.globalBudgetPeriod || 'monthly').trim() || 'monthly',
@@ -1641,6 +1658,8 @@ function createAdminController({
     }
     const globalToggle = el('admin-system-keys-enabled');
     if (globalToggle) globalToggle.checked = !!adminState.systemKeysEnabled;
+    const welcomeFlowToggle = el('admin-welcome-flow-enabled');
+    if (welcomeFlowToggle) welcomeFlowToggle.checked = adminState.welcomeFlowEnabled !== false;
     clearBudgetForm();
     ensureAdminVisible();
     setActiveAdminTab(adminState.activeTab);

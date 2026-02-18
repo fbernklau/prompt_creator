@@ -19,6 +19,7 @@ let presetOptions = { ...DEFAULT_PRESET_OPTIONS };
 const state = {
   currentUser: null,
   logoutUrl: '',
+  welcomeFlowEnabled: true,
   access: { roles: [], permissions: [] },
   settings: { ...SETTINGS_DEFAULTS },
   providers: [],
@@ -171,6 +172,7 @@ function shouldShowSetupWizard() {
 }
 
 function shouldShowIntroductionTour() {
+  if (state.welcomeFlowEnabled === false) return false;
   if (sessionStorage.getItem('eduprompt_intro_skip_session') === '1') return false;
   const hasSeen = state.settings?.hasSeenIntroduction === true;
   const version = Number(state.settings?.introTourVersion || 0);
@@ -339,6 +341,7 @@ async function loadServerData() {
   const me = await api('/api/me');
   state.currentUser = me.userId;
   state.logoutUrl = String(me.logoutUrl || '').trim();
+  state.welcomeFlowEnabled = me.welcomeFlowEnabled !== false;
   state.access = {
     roles: Array.isArray(me.roles) ? me.roles : [],
     permissions: Array.isArray(me.permissions) ? me.permissions : [],

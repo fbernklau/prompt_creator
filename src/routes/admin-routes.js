@@ -123,6 +123,7 @@ function normalizeSystemKeySettings(raw = {}) {
   const globalBudgetMode = normalizeBudgetMode(raw?.globalBudgetMode || 'hybrid');
   const globalBudgetWarningRatio = parseWarningRatio(raw?.globalBudgetWarningRatio);
   const enabled = raw?.enabled === undefined ? true : Boolean(raw.enabled);
+  const welcomeFlowEnabled = raw?.welcomeFlowEnabled === undefined ? true : Boolean(raw.welcomeFlowEnabled);
   const globalBudgetIsActiveRaw = raw?.globalBudgetIsActive;
   let globalBudgetIsActive = globalBudgetIsActiveRaw === undefined
     ? globalBudgetLimitUsd !== null
@@ -130,6 +131,7 @@ function normalizeSystemKeySettings(raw = {}) {
   if (globalBudgetLimitUsd === null) globalBudgetIsActive = false;
   return {
     enabled,
+    welcomeFlowEnabled,
     globalBudgetIsActive,
     globalBudgetLimitUsd,
     globalBudgetPeriod,
@@ -651,6 +653,7 @@ function createAdminRouter() {
 
     res.json({
       systemKeysEnabled: Boolean(systemSettings.enabled),
+      welcomeFlowEnabled: Boolean(systemSettings.welcomeFlowEnabled),
       globalBudgetIsActive: Boolean(systemSettings.globalBudgetIsActive),
       globalBudgetLimitUsd: systemSettings.globalBudgetLimitUsd,
       globalBudgetPeriod: systemSettings.globalBudgetPeriod,
@@ -665,6 +668,7 @@ function createAdminRouter() {
     const usage = await resolveGlobalSystemUsage(settings.globalBudgetPeriod);
     res.json({
       systemKeysEnabled: Boolean(settings.enabled),
+      welcomeFlowEnabled: Boolean(settings.welcomeFlowEnabled),
       globalBudgetIsActive: Boolean(settings.globalBudgetIsActive),
       globalBudgetLimitUsd: settings.globalBudgetLimitUsd,
       globalBudgetPeriod: settings.globalBudgetPeriod,
@@ -682,6 +686,9 @@ function createAdminRouter() {
     const update = {};
     if (Object.prototype.hasOwnProperty.call(payload, 'systemKeysEnabled')) {
       update.enabled = Boolean(payload.systemKeysEnabled);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'welcomeFlowEnabled')) {
+      update.welcomeFlowEnabled = Boolean(payload.welcomeFlowEnabled);
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'globalBudgetLimitUsd')) {
       update.globalBudgetLimitUsd = parseNonNegativeNumberOrNull(payload.globalBudgetLimitUsd);
@@ -707,6 +714,7 @@ function createAdminRouter() {
     res.json({
       ok: true,
       systemKeysEnabled: Boolean(settings.enabled),
+      welcomeFlowEnabled: Boolean(settings.welcomeFlowEnabled),
       globalBudgetIsActive: Boolean(settings.globalBudgetIsActive),
       globalBudgetLimitUsd: settings.globalBudgetLimitUsd,
       globalBudgetPeriod: settings.globalBudgetPeriod,
