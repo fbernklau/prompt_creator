@@ -169,14 +169,7 @@ async function listAssignedSystemKeysForUser(req, providerKind = '') {
 }
 
 function buildProviderTestPrompt() {
-  return `Erstelle einen sehr kurzen Handoff-Prompt fuer ein KI-Modell.
-
-Kontext:
-- Ziel: Nur Verbindungstest, kein inhaltlicher Output.
-- Ausgabeformat: JSON mit Feld "handoff_prompt".
-- "handoff_prompt" soll mit "Du bist" beginnen und den Text "Test erfolgreich" enthalten.
-
-Gib nur JSON aus.`;
+  return 'Gib nur JSON aus: {"handoff_prompt":"Du bist Test erfolgreich."}';
 }
 
 async function getSystemKeysEnabled() {

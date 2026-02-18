@@ -16,7 +16,6 @@ function createDashboardController({
   };
   state.dashboard = state.dashboard || {
     activeTab: 'providers',
-    providerStage: 'metaprompt',
   };
 
   function emitNotice(message = '', type = 'info') {
@@ -412,26 +411,13 @@ function createDashboardController({
   }
 
   function renderProviderStageTabs() {
-    const stage = state.dashboard.providerStage === 'result' ? 'result' : 'metaprompt';
-    state.dashboard.providerStage = stage;
-    document.querySelectorAll('[data-provider-stage]').forEach((button) => {
-      button.classList.toggle('is-active', button.dataset.providerStage === stage);
-    });
     const hint = el('dashboard-provider-stage-hint');
     const resultModeEnabled = !!state.settings?.resultModeEnabled;
     if (hint) {
-      hint.textContent = stage === 'result'
-        ? (resultModeEnabled
-          ? 'Diese Zuordnung wird im aktivierten Result-Modus verwendet.'
-          : 'Result-Modus ist aktuell deaktiviert (Optionen). Die Zuordnung wird bereits gespeichert.')
-        : 'Diese Zuordnung wird für die Metaprompt-Generierung verwendet.';
+      hint.textContent = resultModeEnabled
+        ? 'Metaprompt und Result haben jeweils eine eigene aktive Key-Zuordnung.'
+        : 'Result-Modus ist aktuell deaktiviert. Die Result-Zuordnung kann trotzdem vorbereitet werden.';
     }
-  }
-
-  function emitProviderStageChange() {
-    document.dispatchEvent(new CustomEvent('dashboard:provider-stage-change', {
-      detail: { stage: state.dashboard.providerStage },
-    }));
   }
 
   async function setDashboardTab(tabName, { refreshUsage = false } = {}) {
@@ -485,13 +471,6 @@ function createDashboardController({
           .catch((error) => emitNotice(error.message, 'error'));
       });
     });
-    document.querySelectorAll('[data-provider-stage]').forEach((button) => {
-      button.addEventListener('click', () => {
-        state.dashboard.providerStage = button.dataset.providerStage === 'result' ? 'result' : 'metaprompt';
-        renderProviderStageTabs();
-        emitProviderStageChange();
-      });
-    });
     el('usage-refresh').addEventListener('click', () => refreshSummary().catch((error) => emitNotice(error.message, 'error')));
     el('usage-window-days').addEventListener('change', () => refreshSummary().catch((error) => emitNotice(error.message, 'error')));
     if (el('usage-budget-global-save')) {
@@ -505,7 +484,6 @@ function createDashboardController({
     renderHistory();
     renderOwnBudgetPolicies();
     clearOwnBudgetForm();
-    emitProviderStageChange();
   }
 
   return {
@@ -514,7 +492,6 @@ function createDashboardController({
     openDashboard,
     setDashboardTab,
     setOpenHistoryHandler,
-    getProviderStage: () => state.dashboard.providerStage,
   };
 }
 

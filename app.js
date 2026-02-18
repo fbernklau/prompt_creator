@@ -41,6 +41,12 @@ const introTourState = {
   active: false,
   index: 0,
   highlightedSelector: '',
+  highlightedNode: null,
+  anchorClickCleanup: null,
+  autoActionStep: -1,
+};
+const introTourContext = {
+  providerCheckSummary: '',
 };
 
 function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
@@ -80,10 +86,21 @@ function notifyError(error, prefix = '') {
 }
 
 function resolveLogoutTarget(rawUrl = '') {
-  const fallback = '/outpost.goauthentik.io/sign_out';
+  const fallback = `/outpost.goauthentik.io/sign_out?rd=${encodeURIComponent(`${window.location.origin}/`)}`;
   const normalized = String(rawUrl || '').trim();
   if (!normalized) return fallback;
-  if (normalized.toLowerCase().includes('backchannel-logout')) return fallback;
+  const lower = normalized.toLowerCase();
+  if (lower.includes('backchannel-logout')) {
+    try {
+      const parsed = new URL(normalized);
+      return `${parsed.origin}/outpost.goauthentik.io/sign_out?rd=${encodeURIComponent(`${window.location.origin}/`)}`;
+    } catch (_error) {
+      return fallback;
+    }
+  }
+  if (normalized.startsWith('/outpost.goauthentik.io/sign_out') && !normalized.includes('?rd=')) {
+    return `${normalized}?rd=${encodeURIComponent(`${window.location.origin}/`)}`;
+  }
   return normalized;
 }
 
@@ -188,10 +205,15 @@ function shouldShowIntroductionTour() {
 }
 
 function clearIntroductionHighlight() {
+  if (typeof introTourState.anchorClickCleanup === 'function') {
+    introTourState.anchorClickCleanup();
+  }
+  introTourState.anchorClickCleanup = null;
   if (!introTourState.highlightedSelector) return;
-  const node = document.querySelector(introTourState.highlightedSelector);
+  const node = introTourState.highlightedNode || document.querySelector(introTourState.highlightedSelector);
   if (node) node.classList.remove('tour-highlight');
   introTourState.highlightedSelector = '';
+  introTourState.highlightedNode = null;
 }
 
 function resolveIntroductionAnchor(step) {
@@ -209,51 +231,126 @@ function resolveIntroductionAnchor(step) {
 }
 
 function getIntroductionSteps() {
+  const providerAvailability = providerController.getProviderAvailabilitySummary
+    ? providerController.getProviderAvailabilitySummary()
+    : {
+      hasReadyProvider: false,
+      readyProviderCount: 0,
+      totalProviders: 0,
+      assignedSystemKeys: 0,
+    };
+  const readinessHint = providerAvailability.hasReadyProvider
+    ? `Es ist bereits mindestens ein nutzbarer API-Key hinterlegt (${providerAvailability.readyProviderCount} verfügbar).`
+    : 'Aktuell ist noch kein nutzbarer API-Key hinterlegt. Das richten wir gemeinsam ein.';
+
   return [
     {
       title: 'Willkommen',
-      text: 'Kurze Tour: so findest du Templates, richtest Provider ein und arbeitest sicher mit der Bibliothek.',
+      text: `${readinessHint} In dieser Tour lernst du den gesamten Ablauf von Auswahl bis Bibliothek.`,
       anchor: '#screen-home .tw-home-hero',
       anchorHint: 'Startpunkt: Home-Übersicht.',
     },
     {
-      title: 'Template Suche',
-      text: 'Suche nach Template-Namen oder kombiniere Tags. Ergebnisse erscheinen direkt unter dem Suchfeld.',
+      title: 'Allgemeiner Ablauf',
+      text: 'Ablauf: Kategorie wählen → Template öffnen → Felder ausfüllen → Metaprompt oder direktes Ergebnis generieren → in Bibliothek speichern.',
+      anchor: '#screen-home .tw-home-hero',
+      anchorHint: 'Die Kernschritte bleiben immer gleich.',
+    },
+    {
+      title: 'Hauptseite',
+      text: 'Suche nach Templates, kombiniere Tags und starte über die Handlungsfelder direkt in den passenden Flow.',
       anchor: '#screen-home .tw-home-search-card',
       anchorHint: 'Hier startest du typischerweise jeden Lauf.',
     },
     {
-      title: 'Handlungsfelder',
-      text: 'Wähle zuerst ein Handlungsfeld. Danach öffnest du ein passendes Template und füllst die Pflichtfelder.',
-      anchor: '#category-grid',
-      anchorHint: 'Diese Karten öffnen die Kategorie- und Template-Auswahl.',
-    },
-    {
-      title: 'API-Provider Setup',
-      text: 'Lege einen persönlichen Provider an oder verwende einen zugewiesenen System-Key. Beides wird in deinem Dashboard verwaltet.',
-      anchors: ['#dashboard-provider-host', '#btn-provider'],
-      anchorHint: 'Tipp: Mit „API-Provider öffnen“ springst du direkt zur Konfiguration.',
-      actionLabel: 'API-Provider öffnen',
-      action: async () => {
-        await providerController.refreshModelCatalogAndSync().catch(() => {});
-        await dashboardController.openDashboard('providers');
-      },
+      title: 'Navigation',
+      text: 'Navigation: Neue Aufgabe, Bibliothek, Dashboard, API-Provider und Optionen. Die wichtigsten Einstellungen liegen im Dashboard.',
+      anchors: ['.topbar-actions', '#mobile-bottom-nav'],
+      anchorHint: 'Klicke auf „Optionen“, um den nächsten Schritt auszulösen.',
+      waitForAnchorClick: true,
+      anchorsAdvanceSelectors: ['#btn-options', '#mb-options'],
     },
     {
       title: 'Optionen',
-      text: 'Hier stellst du Theme, Flow-Modus und Generierungsmodus ein. Für den Start reicht meist Prompt-only.',
+      text: 'Empfehlung: Flow-Modus „Schrittweise Ansicht“. Result-Modus kannst du optional aktivieren, falls du direktes Ergebnis erzeugen willst.',
       anchors: ['#dashboard-options-host', '#btn-options'],
-      anchorHint: 'Diese Einstellungen kannst du jederzeit ändern.',
-      actionLabel: 'Optionen öffnen',
+      anchorHint: 'Optionen sind pro Nutzerprofil gespeichert.',
       action: async () => {
         await dashboardController.openDashboard('options');
       },
+      actionLabel: 'Optionen anzeigen',
     },
     {
-      title: 'Bibliothek & Verlauf',
-      text: 'Speichere gute Prompts in der Bibliothek und öffne sie später wieder mit vorausgefüllten Feldern.',
+      title: 'API-Key Verfügbarkeit',
+      text: () => {
+        const checkText = introTourContext.providerCheckSummary
+          ? ` ${introTourContext.providerCheckSummary}`
+          : ' Wir prüfen jetzt automatisch, ob die aktiven Stage-Zuordnungen funktionieren.';
+        return `Lege persönliche Keys an oder nutze zugewiesene System-Keys.${checkText}`;
+      },
+      anchors: ['#dashboard-provider-host', '#btn-provider'],
+      anchorHint: 'Falls nur eine Stage funktioniert, kann die andere auf den funktionierenden Key umgestellt werden.',
+      autoAction: true,
+      action: async () => {
+        await providerController.refreshModelCatalogAndSync().catch(() => {});
+        await dashboardController.openDashboard('providers');
+        try {
+          const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+          const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
+          const result = check.results.find((entry) => entry.stage === 'result');
+          const metaText = metaprompt?.ok ? 'Metaprompt: bereit' : 'Metaprompt: Fehler';
+          const resultText = result?.ok ? 'Result: bereit' : 'Result: Fehler';
+          let switchText = '';
+          const oneWorksOneFails = !!(metaprompt?.ok !== result?.ok);
+          if (oneWorksOneFails) {
+            const working = metaprompt?.ok ? metaprompt : result;
+            const failing = metaprompt?.ok ? result : metaprompt;
+            const shouldSwitch = window.confirm(
+              `${failing?.stage === 'result' ? 'Result' : 'Metaprompt'} funktioniert aktuell nicht.\n` +
+              `Soll stattdessen der funktionierende Key von ${working?.stage === 'result' ? 'Result' : 'Metaprompt'} übernommen werden?`
+            );
+            if (shouldSwitch && working?.providerId && failing?.stage) {
+              await providerController.selectProviderForStage(failing.stage, working.providerId);
+              switchText = ' Die fehlerhafte Stage wurde auf den funktionierenden Key umgestellt.';
+              await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+            } else {
+              switchText = ' Du kannst die Stage-Zuweisung manuell über die Slider setzen.';
+            }
+          }
+          introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}.${switchText}`;
+        } catch (error) {
+          introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
+        }
+      },
+      actionLabel: 'Status prüfen',
+    },
+    {
+      title: 'Zurück zur Hauptseite',
+      text: 'Starte den ersten Lauf über eine Kategoriekarte.',
+      anchors: ['#btn-new-task', '#mb-new-task'],
+      anchorHint: 'Klicke auf „Neue Aufgabe“, um zurückzugehen.',
+      waitForAnchorClick: true,
+      anchorsAdvanceSelectors: ['#btn-new-task', '#mb-new-task'],
+    },
+    {
+      title: 'Erste Template-Auswahl',
+      text: 'Wähle ein Handlungsfeld und danach ein Template. Die Tour läuft weiter, sobald du auswählst.',
+      anchors: ['#category-grid .tw-home-category-card', '#category-grid'],
+      anchorHint: 'Klicke auf eine Kategoriekarte.',
+      waitForAnchorClick: true,
+    },
+    {
+      title: 'Ausgabe-Modus',
+      text: 'Im Formular kannst du zwischen „Prompt“ und „Direktes Ergebnis“ wechseln. Bitte aktiviere einmal „Direktes Ergebnis“ für den Testlauf.',
+      anchors: ['#run-mode-result-toggle', '#screen-form .tw-form-submit-row'],
+      anchorHint: 'Klicke auf den Toggle bei „Ausgabe für diesen Lauf“.',
+      waitForAnchorClick: true,
+    },
+    {
+      title: 'Bibliothek',
+      text: 'Speichere gute Ergebnisse in der Bibliothek und nutze „Reuse“, um Felder später vorauszufüllen.',
       anchor: '#btn-library',
-      anchorHint: 'Nach der ersten Generierung lohnt sich der Blick in Bibliothek und Verlauf.',
+      anchorHint: 'Zum Abschluss öffnen wir die Bibliothek.',
       actionLabel: 'Bibliothek öffnen',
       action: async () => {
         uiShell.showScreen('library');
@@ -269,12 +366,16 @@ function renderIntroductionStep(index) {
   if (!total) return;
   const boundedIndex = Math.max(0, Math.min(index, total - 1));
   const step = steps[boundedIndex];
+  const previousIndex = introTourState.index;
+  if (previousIndex !== boundedIndex) {
+    introTourState.autoActionStep = -1;
+  }
   introTourState.index = boundedIndex;
 
   el('intro-tour-progress').textContent = `Schritt ${boundedIndex + 1} von ${total}`;
   el('intro-tour-title').textContent = step.title;
-  el('intro-tour-text').textContent = step.text;
-  el('intro-tour-anchor').textContent = step.anchorHint || '';
+  el('intro-tour-text').textContent = typeof step.text === 'function' ? step.text() : (step.text || '');
+  el('intro-tour-anchor').textContent = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
 
   const prev = el('intro-tour-prev');
   const next = el('intro-tour-next');
@@ -291,11 +392,47 @@ function renderIntroductionStep(index) {
   if (!anchor?.node) return;
   anchor.node.classList.add('tour-highlight');
   introTourState.highlightedSelector = anchor.selector;
+  introTourState.highlightedNode = anchor.node;
   anchor.node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+  if (step.waitForAnchorClick) {
+    next.classList.add('is-hidden');
+    finish.classList.toggle('is-hidden', true);
+    const clickableSelectors = Array.isArray(step.anchorsAdvanceSelectors) && step.anchorsAdvanceSelectors.length
+      ? step.anchorsAdvanceSelectors
+      : [anchor.selector];
+    const onAnchorClick = (event) => {
+      if (!introTourState.active) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const matched = clickableSelectors.some((selector) => target.closest(selector));
+      if (!matched) return;
+      window.setTimeout(() => {
+        renderIntroductionStep(introTourState.index + 1);
+      }, 180);
+    };
+    document.addEventListener('click', onAnchorClick, true);
+    introTourState.anchorClickCleanup = () => {
+      document.removeEventListener('click', onAnchorClick, true);
+    };
+    const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
+    el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}Klicke auf den markierten Bereich, um fortzufahren.`;
+  }
+
+  if (step.autoAction && step.action && introTourState.autoActionStep !== boundedIndex) {
+    introTourState.autoActionStep = boundedIndex;
+    window.setTimeout(() => {
+      runIntroductionStepAction({ rerender: true }).catch((error) => {
+        notifyError(error, 'Tour-Aktion fehlgeschlagen');
+      });
+    }, 120);
+  }
 }
 
 function showIntroductionTour() {
   hideSetupWizard();
+  introTourContext.providerCheckSummary = '';
+  introTourState.autoActionStep = -1;
   introTourState.active = true;
   el('intro-tour-modal').classList.remove('is-hidden');
   renderIntroductionStep(0);
@@ -303,6 +440,7 @@ function showIntroductionTour() {
 
 async function finishIntroductionTour({ markSeen = true, skipSession = false } = {}) {
   clearIntroductionHighlight();
+  introTourState.autoActionStep = -1;
   introTourState.active = false;
   el('intro-tour-modal').classList.add('is-hidden');
   if (skipSession) {
@@ -323,15 +461,13 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
   }
 }
 
-async function runIntroductionStepAction() {
+async function runIntroductionStepAction({ rerender = true } = {}) {
   const steps = getIntroductionSteps();
   const step = steps[introTourState.index];
   if (!step?.action) return;
-  try {
-    await step.action();
+  await step.action();
+  if (rerender) {
     renderIntroductionStep(introTourState.index);
-  } catch (error) {
-    notifyError(error, 'Tour-Aktion fehlgeschlagen');
   }
 }
 
@@ -434,10 +570,28 @@ function bindEvents() {
     await providerController.refreshModelCatalogAndSync().catch(() => {});
     await dashboardController.openDashboard('providers');
   });
+  if (el('provider-check-stages')) {
+    el('provider-check-stages').addEventListener('click', async () => {
+      try {
+        await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+        notify('Stage-Status wurde aktualisiert.', { type: 'ok' });
+      } catch (error) {
+        notifyError(error, 'Stage-Status konnte nicht geprüft werden');
+      }
+    });
+  }
   el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
   if (el('btn-logout')) {
     el('btn-logout').addEventListener('click', () => {
-      window.location.assign(resolveLogoutTarget(state.logoutUrl));
+      const target = resolveLogoutTarget(state.logoutUrl || '') || '/api/logout';
+      window.location.assign(target);
+    });
+  }
+  if (el('btn-start-tour')) {
+    el('btn-start-tour').addEventListener('click', () => {
+      sessionStorage.removeItem('eduprompt_intro_skip_session');
+      uiShell.showScreen('home');
+      showIntroductionTour();
     });
   }
   el('btn-library').addEventListener('click', async () => {
@@ -595,7 +749,9 @@ function bindEvents() {
     if (!introTourState.active) return;
     renderIntroductionStep(introTourState.index + 1);
   });
-  el('intro-tour-open').addEventListener('click', () => runIntroductionStepAction());
+  el('intro-tour-open').addEventListener('click', () => {
+    runIntroductionStepAction().catch((error) => notifyError(error, 'Tour-Aktion fehlgeschlagen'));
+  });
   el('intro-tour-finish').addEventListener('click', () => {
     finishIntroductionTour({ markSeen: true }).catch((error) => notifyError(error));
   });

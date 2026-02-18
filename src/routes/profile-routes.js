@@ -19,13 +19,34 @@ async function getWelcomeFlowEnabled() {
   }
 }
 
-function resolveLogoutUrl(rawUrl = '') {
+function requestOrigin(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const proto = forwardedProto || req.protocol || 'https';
+  const host = forwardedHost || req.get('host') || '';
+  if (!host) return '';
+  return `${proto}://${host}`;
+}
+
+function buildFallbackLogoutUrl(req, originOverride = '') {
+  const origin = originOverride || requestOrigin(req);
+  if (!origin) return '/outpost.goauthentik.io/sign_out';
+  return `${origin}/outpost.goauthentik.io/sign_out?rd=${encodeURIComponent(`${origin}/`)}`;
+}
+
+function resolveLogoutUrl(rawUrl = '', req = null) {
   const raw = String(rawUrl || '').trim();
-  if (!raw) return '/outpost.goauthentik.io/sign_out';
+  if (!raw) return req ? buildFallbackLogoutUrl(req) : '/outpost.goauthentik.io/sign_out';
   const lower = raw.toLowerCase();
   // Backchannel endpoints are not interactive logout targets in browser UI.
   if (lower.includes('backchannel-logout')) {
-    return '/outpost.goauthentik.io/sign_out';
+    try {
+      const parsed = new URL(raw);
+      if (req) return buildFallbackLogoutUrl(req, parsed.origin);
+      return `${parsed.origin}/outpost.goauthentik.io/sign_out`;
+    } catch (_error) {
+      return req ? buildFallbackLogoutUrl(req) : '/outpost.goauthentik.io/sign_out';
+    }
   }
   return raw;
 }
@@ -41,12 +62,17 @@ function createProfileRouter() {
         groups: req.userGroups,
         roles: req.access?.roles || [],
         permissions: req.access?.permissions || [],
-        logoutUrl: resolveLogoutUrl(config.authLogoutUrl || ''),
+        logoutUrl: resolveLogoutUrl(config.authLogoutUrl || '', req),
         welcomeFlowEnabled,
       });
     } catch (error) {
       next(error);
     }
+  });
+
+  router.get('/logout', authMiddleware, accessMiddleware, requirePermission('app.access'), async (req, res) => {
+    const target = resolveLogoutUrl(config.authLogoutUrl || '', req);
+    res.redirect(302, target);
   });
 
   return router;

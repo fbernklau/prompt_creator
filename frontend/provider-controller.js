@@ -30,10 +30,6 @@ function createProviderController({
     notify(text, { type });
   }
 
-  function getProviderStage() {
-    return state.dashboard?.providerStage === 'result' ? 'result' : 'metaprompt';
-  }
-
   function getSettingsKeyForStage(stage) {
     return stage === 'result' ? 'resultProviderId' : 'metapromptProviderId';
   }
@@ -64,6 +60,178 @@ function createProviderController({
     if (!partial || typeof partial !== 'object' || !Object.keys(partial).length) return;
     if (typeof persistProviderStageSettings !== 'function') return;
     await persistProviderStageSettings(partial);
+  }
+
+  function getProviderById(providerId = '') {
+    const normalized = String(providerId || '').trim();
+    if (!normalized) return null;
+    return (Array.isArray(state.providers) ? state.providers : []).find((entry) => entry.id === normalized) || null;
+  }
+
+  function formatProviderSummaryLabel(provider, { emptyLabel = 'nicht gesetzt' } = {}) {
+    if (!provider) return emptyLabel;
+    return `${provider.name} (${provider.kind}, ${provider.model})`;
+  }
+
+  function setProviderStageHealth(text = '', type = 'info') {
+    const node = el('provider-stage-health');
+    if (!node) return;
+    node.textContent = text;
+    node.dataset.type = type;
+  }
+
+  function renderStageSummary() {
+    const metaProvider = getProviderById(getAssignedProviderId('metaprompt'));
+    const resultProvider = getProviderById(getAssignedProviderId('result'));
+
+    const metaChip = el('provider-stage-chip-metaprompt');
+    const resultChip = el('provider-stage-chip-result');
+    if (metaChip) {
+      metaChip.classList.toggle('is-active', !!metaProvider);
+      const strong = metaChip.querySelector('strong');
+      if (strong) strong.textContent = formatProviderSummaryLabel(metaProvider, { emptyLabel: 'nicht gesetzt' });
+    }
+    if (resultChip) {
+      resultChip.classList.toggle('is-active', !!resultProvider);
+      const strong = resultChip.querySelector('strong');
+      if (strong) strong.textContent = formatProviderSummaryLabel(resultProvider, { emptyLabel: 'nicht gesetzt' });
+    }
+  }
+
+  function getProviderAvailabilitySummary() {
+    const providers = Array.isArray(state.providers) ? state.providers : [];
+    const assigned = Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [];
+    const personal = providers.filter((entry) => !entry.systemKeyId);
+    const readyProviders = providers.filter((entry) => Boolean(entry.hasServerKey || entry.systemKeyId || entry.canUseSharedTestKey));
+    return {
+      totalProviders: providers.length,
+      personalProviders: personal.length,
+      assignedSystemKeys: assigned.length,
+      readyProviderCount: readyProviders.length,
+      hasReadyProvider: readyProviders.length > 0,
+      hasAnySystemKeyAccess: state.systemKeysEnabled !== false && assigned.length > 0,
+    };
+  }
+
+  async function selectProviderForStage(stage, providerId, { silent = false } = {}) {
+    const normalizedStage = stage === 'result' ? 'result' : 'metaprompt';
+    const normalizedProviderId = String(providerId || '').trim();
+    if (!normalizedProviderId) throw new Error('Provider-ID fehlt.');
+    const provider = getProviderById(normalizedProviderId);
+    if (!provider) throw new Error('Provider nicht gefunden.');
+    const current = getAssignedProviderId(normalizedStage);
+    if (current === normalizedProviderId) return { ok: true, changed: false };
+
+    setAssignedProviderId(normalizedStage, normalizedProviderId);
+    state.activeId = getAssignedProviderId('metaprompt') || normalizedProviderId;
+    await persistStageSettings({
+      [getSettingsKeyForStage(normalizedStage)]: normalizedProviderId,
+    });
+    renderProviders();
+    if (!silent) {
+      setStageAssignmentStatus(`Aktiver ${normalizedStage === 'result' ? 'Result' : 'Metaprompt'}-Key gespeichert.`, 'ok');
+    }
+    return { ok: true, changed: true };
+  }
+
+  async function checkStageConnectivity({ autoSwitchOnSingleSuccess = false } = {}) {
+    await syncStageAssignmentsWithProviderList({ persist: false });
+    const stages = ['metaprompt', 'result'];
+    const results = [];
+    const testedProviders = new Map();
+
+    for (const stage of stages) {
+      const providerId = getAssignedProviderId(stage);
+      const provider = getProviderById(providerId);
+      if (!provider) {
+        results.push({
+          stage,
+          ok: false,
+          providerId: '',
+          providerLabel: 'nicht gesetzt',
+          error: 'Kein aktiver Key zugeordnet.',
+        });
+        continue;
+      }
+
+      if (testedProviders.has(provider.id)) {
+        const cached = testedProviders.get(provider.id);
+        results.push({
+          stage,
+          ...cached,
+        });
+        continue;
+      }
+
+      try {
+        const payload = {
+          providerId: provider.id,
+          kind: provider.kind,
+          model: provider.model,
+          baseUrl: provider.baseUrl || getRecommendedBaseUrl(provider.kind),
+        };
+        const testResult = await api('/api/providers/test', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        results.push({
+          stage,
+          ok: true,
+          providerId: provider.id,
+          providerLabel: formatProviderSummaryLabel(provider),
+          latencyMs: Number(testResult?.latencyMs || 0),
+          keySource: testResult?.keySource || '',
+        });
+        testedProviders.set(provider.id, {
+          ok: true,
+          providerId: provider.id,
+          providerLabel: formatProviderSummaryLabel(provider),
+          latencyMs: Number(testResult?.latencyMs || 0),
+          keySource: testResult?.keySource || '',
+        });
+      } catch (error) {
+        results.push({
+          stage,
+          ok: false,
+          providerId: provider.id,
+          providerLabel: formatProviderSummaryLabel(provider),
+          error: String(error?.message || error || 'Verbindungstest fehlgeschlagen'),
+        });
+        testedProviders.set(provider.id, {
+          ok: false,
+          providerId: provider.id,
+          providerLabel: formatProviderSummaryLabel(provider),
+          error: String(error?.message || error || 'Verbindungstest fehlgeschlagen'),
+        });
+      }
+    }
+
+    let switched = false;
+    if (autoSwitchOnSingleSuccess) {
+      const okResult = results.find((entry) => entry.ok && entry.providerId);
+      if (okResult) {
+        const failed = results.filter((entry) => !entry.ok && entry.providerId && entry.providerId !== okResult.providerId);
+        for (const failedEntry of failed) {
+          await selectProviderForStage(failedEntry.stage, okResult.providerId, { silent: true });
+          switched = true;
+        }
+      }
+    }
+
+    const metaResult = results.find((entry) => entry.stage === 'metaprompt');
+    const resultResult = results.find((entry) => entry.stage === 'result');
+    if (metaResult?.ok && resultResult?.ok) {
+      setProviderStageHealth('Verbindung geprüft: Metaprompt und Result sind bereit.', 'ok');
+    } else if (metaResult?.ok || resultResult?.ok) {
+      const workingStage = metaResult?.ok ? 'Metaprompt' : 'Result';
+      const failingStage = metaResult?.ok ? 'Result' : 'Metaprompt';
+      const switchHint = switched ? ' Nicht funktionierende Stage wurde auf den funktionierenden Key umgestellt.' : '';
+      setProviderStageHealth(`Teilweise bereit: ${workingStage} funktioniert, ${failingStage} aktuell nicht.${switchHint}`, 'warn');
+    } else {
+      setProviderStageHealth('Verbindung fehlgeschlagen: Bitte Key/Modell prüfen.', 'error');
+    }
+
+    return { results, switched };
   }
 
   async function syncStageAssignmentsWithProviderList({ persist = false } = {}) {
@@ -360,9 +528,6 @@ function createProviderController({
     syncProviderBaseUi();
     syncSystemKeyUi();
     syncPricingUi();
-    document.addEventListener('dashboard:provider-stage-change', () => {
-      renderProviders();
-    });
   }
 
   function startEditProvider(id) {
@@ -388,6 +553,36 @@ function createProviderController({
     syncProviderBaseUi();
     syncSystemKeyUi({ preferredSystemKeyId: provider.systemKeyId || '' });
     syncPricingUi();
+  }
+
+  function startDuplicateProvider(id) {
+    const provider = state.providers.find((entry) => entry.id === id);
+    if (!provider) return;
+    state.editProviderId = null;
+    el('provider-name').value = `${provider.name} (Kopie)`;
+    el('provider-kind').value = provider.kind;
+    syncProviderModelUi({ preferredModel: provider.model });
+    el('provider-key').value = '';
+    el('provider-key-source').value = provider.systemKeyId ? 'system' : 'provider';
+    if (provider.systemKeyId) {
+      el('provider-key').placeholder = 'Bei System-Key nicht erforderlich';
+    } else if (provider.hasServerKey) {
+      el('provider-key').placeholder = 'Für Kopie bitte API-Key erneut eingeben';
+    } else {
+      el('provider-key').placeholder = 'API-Key (wird serverseitig verschlüsselt)';
+    }
+    el('provider-base').value = provider.baseUrl || '';
+    el('provider-pricing-mode').value = provider.pricingMode === 'custom' ? 'custom' : 'catalog';
+    el('provider-pricing-input').value = provider.inputPricePerMillion ?? '';
+    el('provider-pricing-output').value = provider.outputPricePerMillion ?? '';
+    const recommendedBaseUrl = getRecommendedBaseUrl(provider.kind);
+    const isPresetMode = provider.baseUrlMode === 'preset'
+      || (!provider.baseUrlMode && !!recommendedBaseUrl && provider.baseUrl === recommendedBaseUrl);
+    el('provider-auto-base').checked = isPresetMode;
+    syncProviderBaseUi();
+    syncSystemKeyUi({ preferredSystemKeyId: provider.systemKeyId || '' });
+    syncPricingUi();
+    emitNotice('Profil als Kopie geladen. Bei persönlichen Keys bitte den API-Key erneut eingeben.', 'info');
   }
 
   function clearProviderForm() {
@@ -440,7 +635,6 @@ function createProviderController({
     const allProviders = Array.isArray(state.providers) ? state.providers : [];
     const activeLabel = el('provider-active-label');
     if (activeLabel) activeLabel.textContent = 'Aktive Key-Auswahl je Stage';
-    const currentStage = getProviderStage();
 
     const firstProviderId = allProviders[0]?.id || '';
     const currentMeta = getAssignedProviderId('metaprompt');
@@ -483,9 +677,9 @@ function createProviderController({
     const renderProviderRow = (provider) => {
       const metaActive = provider.id === getAssignedProviderId('metaprompt');
       const resultActive = provider.id === getAssignedProviderId('result');
-      const isStageActive = currentStage === 'result' ? resultActive : metaActive;
+      const isAnyStageActive = metaActive || resultActive;
       return `
-        <li class="provider-stage-row ${isStageActive ? 'is-stage-active' : ''}">
+        <li class="provider-stage-row ${isAnyStageActive ? 'is-stage-active' : ''}">
           <div class="provider-stage-row-left">
             <span class="admin-state-dot ${provider.systemKeyId ? 'dot-warning' : 'dot-active'}"></span>
             <span class="material-icons-round provider-stage-row-icon">${provider.systemKeyId ? 'hub' : 'vpn_key'}</span>
@@ -493,19 +687,24 @@ function createProviderController({
               <strong>${provider.name}</strong>
               <small>${provider.kind} | ${provider.model}</small>
               <small>${redactKeyState(provider)}</small>
+              <small class="provider-stage-badges">
+                <span class="provider-stage-badge ${metaActive ? 'is-active' : ''}">Metaprompt</span>
+                <span class="provider-stage-badge ${resultActive ? 'is-active' : ''}">Result</span>
+              </small>
             </div>
           </div>
           <div class="provider-stage-row-right">
             <label class="admin-toggle provider-stage-toggle">
-              <input type="radio" name="provider-stage-metaprompt" data-select-stage-provider="metaprompt:${provider.id}" ${metaActive ? 'checked' : ''} />
+              <input type="checkbox" data-select-stage-provider="metaprompt:${provider.id}" ${metaActive ? 'checked' : ''} />
               <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
               <span class="admin-toggle-text">Metaprompt</span>
             </label>
             <label class="admin-toggle provider-stage-toggle">
-              <input type="radio" name="provider-stage-result" data-select-stage-provider="result:${provider.id}" ${resultActive ? 'checked' : ''} />
+              <input type="checkbox" data-select-stage-provider="result:${provider.id}" ${resultActive ? 'checked' : ''} />
               <span class="admin-toggle-track"><span class="admin-toggle-thumb"></span></span>
               <span class="admin-toggle-text">Result</span>
             </label>
+            <button type="button" class="secondary small" data-duplicate-provider="${provider.id}">Duplizieren</button>
             <button type="button" class="secondary small" data-edit-provider="${provider.id}">Bearbeiten</button>
             <button type="button" class="secondary small" data-delete-provider="${provider.id}">Löschen</button>
           </div>
@@ -548,7 +747,7 @@ function createProviderController({
           <div class="provider-stage-group">
             <div class="provider-stage-group-head">
               <h4>Verfügbare zugewiesene Keys</h4>
-              <small>noch nicht als Provider angelegt</small>
+              <small>noch nicht als Profil hinzugefügt</small>
             </div>
             <ul class="provider-stage-rows">
               ${availableAssignedKeys.map((entry) => `
@@ -562,7 +761,7 @@ function createProviderController({
                     </div>
                   </div>
                   <div class="provider-stage-row-right">
-                    <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Provider hinzufügen</button>
+                    <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Profil hinzufügen</button>
                   </div>
                 </li>
               `).join('')}
@@ -576,12 +775,16 @@ function createProviderController({
       input.addEventListener('change', async () => {
         const [stage, providerId] = String(input.dataset.selectStageProvider || '').split(':');
         if (!stage || !providerId) return;
-        setAssignedProviderId(stage, providerId);
-        state.activeId = stage === 'metaprompt' ? providerId : (getAssignedProviderId('metaprompt') || providerId);
+        const currentProviderId = getAssignedProviderId(stage);
+        const isActiveForStage = currentProviderId === providerId;
+        if (!input.checked && isActiveForStage) {
+          input.checked = true;
+          setStageAssignmentStatus('Pro Stage muss genau ein aktiver Key ausgewählt sein.', 'info');
+          return;
+        }
+        if (!input.checked) return;
         try {
-          await persistStageSettings({
-            [getSettingsKeyForStage(stage)]: providerId,
-          });
+          await selectProviderForStage(stage, providerId, { silent: true });
           setStageAssignmentStatus(`Aktiver ${stage === 'result' ? 'Result' : 'Metaprompt'}-Key gespeichert.`, 'ok');
           renderProviders();
         } catch (error) {
@@ -593,12 +796,21 @@ function createProviderController({
     list.querySelectorAll('[data-edit-provider]').forEach((button) => {
       button.onclick = () => startEditProvider(button.dataset.editProvider);
     });
+    list.querySelectorAll('[data-duplicate-provider]').forEach((button) => {
+      button.onclick = () => startDuplicateProvider(button.dataset.duplicateProvider);
+    });
     list.querySelectorAll('[data-delete-provider]').forEach((button) => {
       button.onclick = () => deleteProvider(button.dataset.deleteProvider);
     });
     list.querySelectorAll('[data-add-assigned-key]').forEach((button) => {
       button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => emitNotice(error.message, 'error'));
     });
+
+    renderStageSummary();
+    const healthNode = el('provider-stage-health');
+    if (healthNode && !String(healthNode.textContent || '').trim()) {
+      setProviderStageHealth('Tipp: Prüfe die aktive Stage-Zuordnung, um Metaprompt und Result sicher zu nutzen.', 'info');
+    }
   }
 
   async function addAssignedKeyAsProvider(systemKeyId) {
@@ -734,6 +946,9 @@ function createProviderController({
     lockVault,
     handleProviderSubmit,
     testProviderConnection,
+    checkStageConnectivity,
+    selectProviderForStage,
+    getProviderAvailabilitySummary,
   };
 }
 

@@ -73,7 +73,10 @@
     <main class="main-shell">
       <section id="screen-home" class="screen tw-home">
         <div class="tw-home-hero">
-          <h1 class="tw-home-title">Wie kann ich dir heute helfen?</h1>
+          <div class="tw-home-hero-head">
+            <h1 class="tw-home-title">Wie kann ich dir heute helfen?</h1>
+            <button id="btn-start-tour" type="button" class="secondary small">Tour starten</button>
+          </div>
           <p class="tw-home-subline">W&auml;hle ein Handlungsfeld aus dem Schulalltag, um einen ma&szlig;geschneiderten KI-Prompt zu erstellen.</p>
         </div>
 
@@ -522,7 +525,7 @@
                 </label>
               </div>
               <div class="inline-actions top-space">
-                <button id="save-library" type="button">Save to library</button>
+                <button id="save-library" type="button">In Bibliothek speichern</button>
                 <small id="save-library-status" class="hint"></small>
               </div>
               <div class="inline-actions top-space">
@@ -547,7 +550,7 @@
 
         <div id="dashboard-tab-nav" class="chip-row top-space dashboard-tab-nav">
           <button type="button" class="secondary is-active" data-dashboard-tab="providers">API-Provider</button>
-          <button type="button" class="secondary" data-dashboard-tab="usage">Usage Stats</button>
+          <button type="button" class="secondary" data-dashboard-tab="usage">Nutzungsdaten</button>
           <button type="button" class="secondary" data-dashboard-tab="history">Verlauf</button>
           <button type="button" class="secondary" data-dashboard-tab="options">Optionen</button>
         </div>
@@ -556,11 +559,7 @@
           <div class="panel">
             <div class="panel-title-row">
               <h3>API-Provider</h3>
-              <small id="dashboard-provider-stage-hint" class="hint">Metaprompt- und Result-Provider werden getrennt zugeordnet.</small>
-            </div>
-            <div id="dashboard-provider-stage-tabs" class="chip-row dashboard-provider-stage-tabs">
-              <button type="button" class="secondary is-active" data-provider-stage="metaprompt">Metaprompt-Model</button>
-              <button type="button" class="secondary" data-provider-stage="result">Result-Model</button>
+              <small id="dashboard-provider-stage-hint" class="hint">Aktiviere pro Stage genau einen Key (Metaprompt und Result getrennt).</small>
             </div>
             <div id="dashboard-provider-host" class="top-space"></div>
           </div>
@@ -628,11 +627,11 @@
 
           <div class="grid-3 top-space">
             <div class="panel">
-              <h3>Requests</h3>
+              <h3>Anfragen</h3>
               <p id="usage-total-requests" class="metric">0</p>
             </div>
             <div class="panel">
-              <h3>Success Rate</h3>
+              <h3>Erfolgsquote</h3>
               <p id="usage-success-rate" class="metric">0%</p>
             </div>
             <div class="panel">
@@ -1273,10 +1272,25 @@
         </form>
 
         <div class="panel top-space">
-          <label><span id="provider-active-label">Aktiver Provider</span>
+          <h4>Aktive Key-Auswahl je Stage</h4>
+          <div id="provider-stage-summary" class="provider-stage-summary top-space">
+            <div id="provider-stage-chip-metaprompt" class="provider-stage-summary-chip">
+              <small>Metaprompt</small>
+              <strong>-</strong>
+            </div>
+            <div id="provider-stage-chip-result" class="provider-stage-summary-chip">
+              <small>Result</small>
+              <strong>-</strong>
+            </div>
+          </div>
+          <div class="inline-actions top-space">
+            <button id="provider-check-stages" type="button" class="secondary small">API-Key Status pr&uuml;fen</button>
+          </div>
+          <small id="provider-active-stage-status" class="hint"></small>
+          <small id="provider-stage-health" class="hint"></small>
+          <label class="is-hidden"><span id="provider-active-label">Aktiver Provider</span>
             <select id="active-provider"></select>
           </label>
-          <small id="provider-active-stage-status" class="hint"></small>
           <ul id="provider-list" class="provider-list top-space"></ul>
         </div>
       </div>
@@ -1358,7 +1372,7 @@
           <button id="intro-tour-next" type="button">Weiter</button>
           <button id="intro-tour-open" type="button" class="secondary is-hidden">Bereich &ouml;ffnen</button>
           <button id="intro-tour-finish" type="button" class="secondary is-hidden">Tour abschliessen</button>
-          <button id="intro-tour-skip" type="button" class="text-btn">Sp&auml;ter</button>
+          <button id="intro-tour-skip" type="button" class="text-btn">&Uuml;berspringen</button>
         </div>
       </div>
     </div>
