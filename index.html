@@ -977,6 +977,7 @@
         <div id="admin-tab-nav" class="chip-row top-space admin-tab-nav">
           <button type="button" class="secondary is-active" data-admin-tab="roles">Rollen &amp; Berechtigungen</button>
           <button type="button" class="secondary" data-admin-tab="groups">Authentik Zuordnung</button>
+          <button type="button" class="secondary" data-admin-tab="users">Benutzer</button>
           <button type="button" class="secondary" data-admin-tab="models">Model Administration</button>
           <button type="button" class="secondary" data-admin-tab="keys">API-Key Management</button>
         </div>
@@ -1060,6 +1061,25 @@
               <button id="admin-add-binding" type="button">Zuordnung speichern</button>
             </div>
             <ul id="admin-binding-list" class="provider-list top-space"></ul>
+          </div>
+        </div>
+
+        <div id="admin-tab-users" class="admin-tab-panel top-space is-hidden">
+          <div class="panel">
+            <div class="panel-title-row">
+              <h3>Benutzerverwaltung (Phase 1)</h3>
+              <small class="hint">Settings zurücksetzen, Intro erneut auslösen, persönliche API-Keys widerrufen.</small>
+            </div>
+            <div class="grid-2 top-space">
+              <label>Suche
+                <input id="admin-user-search" placeholder="User, Gruppe, Rolle..." />
+              </label>
+              <label>Aktion
+                <button id="admin-user-refresh" type="button" class="secondary">Liste aktualisieren</button>
+              </label>
+            </div>
+            <small id="admin-user-status" class="hint top-space"></small>
+            <div id="admin-user-list" class="top-space"></div>
           </div>
         </div>
 

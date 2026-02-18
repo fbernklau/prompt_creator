@@ -79,6 +79,14 @@ function notifyError(error, prefix = '') {
   notify(prefix ? `${prefix}: ${message}` : message, { type: 'error' });
 }
 
+function resolveLogoutTarget(rawUrl = '') {
+  const fallback = '/outpost.goauthentik.io/sign_out';
+  const normalized = String(rawUrl || '').trim();
+  if (!normalized) return fallback;
+  if (normalized.toLowerCase().includes('backchannel-logout')) return fallback;
+  return normalized;
+}
+
 function getCategoryConfig() {
   return categoryConfig;
 }
@@ -340,7 +348,7 @@ async function runStartupOnboarding() {
 async function loadServerData() {
   const me = await api('/api/me');
   state.currentUser = me.userId;
-  state.logoutUrl = String(me.logoutUrl || '').trim();
+  state.logoutUrl = resolveLogoutTarget(me.logoutUrl || '');
   state.welcomeFlowEnabled = me.welcomeFlowEnabled !== false;
   state.access = {
     roles: Array.isArray(me.roles) ? me.roles : [],
@@ -429,8 +437,7 @@ function bindEvents() {
   el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
   if (el('btn-logout')) {
     el('btn-logout').addEventListener('click', () => {
-      if (!state.logoutUrl) return;
-      window.location.assign(state.logoutUrl);
+      window.location.assign(resolveLogoutTarget(state.logoutUrl));
     });
   }
   el('btn-library').addEventListener('click', async () => {

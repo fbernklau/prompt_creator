@@ -72,6 +72,8 @@ function createAdminController({
     },
     activeTab: 'roles',
     activeModelProvider: 'openai',
+    users: [],
+    userSearchQuery: '',
   };
 
   function hasPermission(key) {
@@ -130,7 +132,7 @@ function createAdminController({
     return [...providers].filter(Boolean);
   }
 
-  function setStatus(message = '', { pricing = false, systemKey = false, budget = false } = {}) {
+  function setStatus(message = '', { pricing = false, systemKey = false, budget = false, user = false } = {}) {
     if (pricing) {
       const node = el('admin-pricing-status');
       if (node) node.textContent = message;
@@ -143,6 +145,11 @@ function createAdminController({
     }
     if (budget) {
       const node = el('admin-budget-status');
+      if (node) node.textContent = message;
+      return;
+    }
+    if (user) {
+      const node = el('admin-user-status');
       if (node) node.textContent = message;
       return;
     }
@@ -162,6 +169,7 @@ function createAdminController({
     const tabs = {
       roles: el('admin-tab-roles'),
       groups: el('admin-tab-groups'),
+      users: el('admin-tab-users'),
       models: el('admin-tab-models'),
       keys: el('admin-tab-keys'),
     };
@@ -1082,6 +1090,152 @@ function createAdminController({
     });
   }
 
+  function normalizeStringArray(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((entry) => String(entry || '').trim())
+      .filter(Boolean);
+  }
+
+  function renderUserList() {
+    const container = el('admin-user-list');
+    if (!container) return;
+
+    const query = String(adminState.userSearchQuery || '').trim().toLowerCase();
+    const users = Array.isArray(adminState.users) ? adminState.users : [];
+    const filtered = users.filter((entry) => {
+      if (!query) return true;
+      const haystack = [
+        entry.userId,
+        ...(normalizeStringArray(entry.groupHints)),
+        ...(normalizeStringArray(entry.roleHints)),
+        ...(normalizeStringArray(entry.effectiveRoles)),
+        ...(normalizeStringArray(entry.effectivePermissions)),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+
+    if (!filtered.length) {
+      container.innerHTML = `
+        <div class="empty-state-card admin-empty-state-card">
+          <strong>Keine Benutzer gefunden.</strong>
+          <small class="hint">${query ? 'Passe den Suchbegriff an oder setze ihn zurück.' : 'Sobald Nutzer die App verwenden, erscheinen sie hier.'}</small>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Gruppen (Hinweis)</th>
+              <th>Rollen / Permissions</th>
+              <th>Nutzung</th>
+              <th>Einstellungen</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map((entry) => {
+    const groups = normalizeStringArray(entry.groupHints);
+    const roleHints = normalizeStringArray(entry.roleHints);
+    const effectiveRoles = normalizeStringArray(entry.effectiveRoles);
+    const effectivePermissions = normalizeStringArray(entry.effectivePermissions);
+    const settings = entry.settings || {};
+    const settingsLabel = [
+      `Tour: ${settings.hasSeenIntroduction ? 'gesehen' : 'offen'}`,
+      `Theme: ${settings.theme || 'system'}`,
+      `Flow: ${settings.flowMode || '-'}`,
+      `Result: ${settings.resultModeEnabled ? 'an' : 'aus'}`,
+    ].join(' | ');
+
+    return `
+                <tr>
+                  <td>
+                    <strong>${escapeHtml(entry.userId)}</strong><br />
+                    <small class="hint">Last seen: ${entry.lastSeenAt ? formatDateTime(entry.lastSeenAt) : '-'}</small>
+                  </td>
+                  <td>
+                    <small><strong>Gruppen:</strong> ${escapeHtml(groups.join(', ') || '-')}</small><br />
+                    <small><strong>Rollen-Hints:</strong> ${escapeHtml(roleHints.join(', ') || '-')}</small>
+                  </td>
+                  <td>
+                    <small><strong>Effektiv Rollen:</strong> ${escapeHtml(effectiveRoles.join(', ') || '-')}</small><br />
+                    <small><strong>Permissions:</strong> ${effectivePermissions.length}</small>
+                  </td>
+                  <td>
+                    <small>Provider: ${Number(entry.providerCount || 0)} (persönlich: ${Number(entry.personalProviderCount || 0)})</small><br />
+                    <small>Verlauf: ${Number(entry.historyCount || 0)} | Library: ${Number(entry.libraryCount || 0)}</small>
+                  </td>
+                  <td>
+                    <small>${escapeHtml(settingsLabel)}</small>
+                  </td>
+                  <td>
+                    <div class="inline-actions">
+                      <button type="button" class="secondary small" data-admin-user-intro-reset="${escapeHtml(entry.userId)}">Intro reset</button>
+                      <button type="button" class="secondary small" data-admin-user-settings-reset="${escapeHtml(entry.userId)}">Settings reset</button>
+                      <button type="button" class="secondary small" data-admin-user-revoke-keys="${escapeHtml(entry.userId)}">Keys widerrufen</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+  }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    container.querySelectorAll('[data-admin-user-intro-reset]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const userId = String(button.dataset.adminUserIntroReset || '').trim();
+        if (!userId) return;
+        resetUserIntroduction(userId).catch((error) => alert(error.message));
+      });
+    });
+    container.querySelectorAll('[data-admin-user-settings-reset]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const userId = String(button.dataset.adminUserSettingsReset || '').trim();
+        if (!userId) return;
+        resetUserSettings(userId).catch((error) => alert(error.message));
+      });
+    });
+    container.querySelectorAll('[data-admin-user-revoke-keys]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const userId = String(button.dataset.adminUserRevokeKeys || '').trim();
+        if (!userId) return;
+        revokeUserPersonalKeys(userId).catch((error) => alert(error.message));
+      });
+    });
+  }
+
+  async function refreshUserList() {
+    adminState.users = await api('/api/admin/users');
+    renderUserList();
+  }
+
+  async function resetUserIntroduction(userId) {
+    await api(`/api/admin/users/${encodeURIComponent(userId)}/introduction-reset`, { method: 'PUT' });
+    setStatus(`Intro-Status für ${userId} zurückgesetzt.`, { user: true });
+    await refreshUserList();
+  }
+
+  async function resetUserSettings(userId) {
+    await api(`/api/admin/users/${encodeURIComponent(userId)}/settings-reset`, { method: 'PUT' });
+    setStatus(`Einstellungen für ${userId} auf Standard gesetzt.`, { user: true });
+    await refreshUserList();
+  }
+
+  async function revokeUserPersonalKeys(userId) {
+    const result = await api(`/api/admin/users/${encodeURIComponent(userId)}/revoke-personal-keys`, { method: 'PUT' });
+    setStatus(`Persönliche API-Keys für ${userId} widerrufen (${Number(result.updatedProviders || 0)} Provider).`, { user: true });
+    await refreshUserList();
+  }
+
   function renderModelProviderTabs() {
     const container = el('admin-model-provider-tabs');
     if (!container) return;
@@ -1576,6 +1730,7 @@ function createAdminController({
       api('/api/admin/permissions'),
       api('/api/admin/roles'),
       api('/api/admin/group-role-bindings'),
+      api('/api/admin/users'),
     ];
     const canManagePricing = hasPermission('pricing.manage');
     const canManageSystemKeys = hasPermission('providers.system_keys.manage');
@@ -1592,8 +1747,8 @@ function createAdminController({
       requests.push(api('/api/admin/budgets'));
     }
     const responses = await Promise.all(requests);
-    const [permissions, roles, bindings] = responses;
-    let cursor = 3;
+    const [permissions, roles, bindings, users] = responses;
+    let cursor = 4;
     const pricingEntries = canManagePricing ? (responses[cursor++] || []) : [];
     const systemKeysPayload = canManageSystemKeys ? (responses[cursor++] || {}) : {};
     const systemKeysConfig = canManageSystemKeys ? (responses[cursor++] || {}) : {};
@@ -1631,6 +1786,8 @@ function createAdminController({
       },
       activeTab: adminState.activeTab || 'roles',
       activeModelProvider: adminState.activeModelProvider || 'openai',
+      users: Array.isArray(users) ? users : [],
+      userSearchQuery: adminState.userSearchQuery || '',
     };
     renderRoleSelect();
     renderRoleDetails();
@@ -1639,6 +1796,9 @@ function createAdminController({
     renderPricingList();
     renderSystemKeyList();
     renderBudgetList();
+    renderUserList();
+    const userSearchInput = el('admin-user-search');
+    if (userSearchInput) userSearchInput.value = adminState.userSearchQuery || '';
     clearPricingForm();
     clearSystemKeyForm();
     const systemKeyCreateForm = el('admin-system-key-create-form');
@@ -1820,6 +1980,16 @@ function createAdminController({
     el('admin-save-permissions').addEventListener('click', () => saveRolePermissions().catch((error) => alert(error.message)));
     el('admin-delete-role').addEventListener('click', () => deleteSelectedRole().catch((error) => alert(error.message)));
     el('admin-add-binding').addEventListener('click', () => addBinding().catch((error) => alert(error.message)));
+
+    if (el('admin-user-search')) {
+      el('admin-user-search').addEventListener('input', () => {
+        adminState.userSearchQuery = String(el('admin-user-search').value || '');
+        renderUserList();
+      });
+    }
+    if (el('admin-user-refresh')) {
+      el('admin-user-refresh').addEventListener('click', () => refreshUserList().catch((error) => alert(error.message)));
+    }
 
     if (el('admin-pricing-provider-kind')) {
       el('admin-pricing-provider-kind').addEventListener('change', () => {

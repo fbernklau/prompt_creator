@@ -19,19 +19,34 @@ async function getWelcomeFlowEnabled() {
   }
 }
 
+function resolveLogoutUrl(rawUrl = '') {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return '/outpost.goauthentik.io/sign_out';
+  const lower = raw.toLowerCase();
+  // Backchannel endpoints are not interactive logout targets in browser UI.
+  if (lower.includes('backchannel-logout')) {
+    return '/outpost.goauthentik.io/sign_out';
+  }
+  return raw;
+}
+
 function createProfileRouter() {
   const router = Router();
 
-  router.get('/me', authMiddleware, accessMiddleware, requirePermission('app.access'), async (req, res) => {
-    const welcomeFlowEnabled = await getWelcomeFlowEnabled();
-    res.json({
-      userId: req.userId,
-      groups: req.userGroups,
-      roles: req.access?.roles || [],
-      permissions: req.access?.permissions || [],
-      logoutUrl: config.authLogoutUrl || '',
-      welcomeFlowEnabled,
-    });
+  router.get('/me', authMiddleware, accessMiddleware, requirePermission('app.access'), async (req, res, next) => {
+    try {
+      const welcomeFlowEnabled = await getWelcomeFlowEnabled();
+      res.json({
+        userId: req.userId,
+        groups: req.userGroups,
+        roles: req.access?.roles || [],
+        permissions: req.access?.permissions || [],
+        logoutUrl: resolveLogoutUrl(config.authLogoutUrl || ''),
+        welcomeFlowEnabled,
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

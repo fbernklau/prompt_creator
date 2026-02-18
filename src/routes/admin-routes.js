@@ -88,6 +88,13 @@ function periodToIntervalLiteral(period = '') {
   return '30 days';
 }
 
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+}
+
 function normalizeOptionalBudgetPayload(payload = {}) {
   const budgetLimitUsd = parseNonNegativeNumberOrNull(payload?.budgetLimitUsd);
   const budgetPeriod = normalizeBudgetPeriod(payload?.budgetPeriod || 'monthly') || 'monthly';
@@ -256,6 +263,32 @@ async function resolveAssignmentUsage({ systemKeyId, scopeType, scopeValue, peri
   return {
     totalCount: Number(result.rows[0]?.total_count || 0),
     spendUsd: Number(result.rows[0]?.spend_usd || 0),
+  };
+}
+
+async function resolveAccessForGroups(groups = []) {
+  const normalizedGroups = normalizeStringList(groups).map((group) => group.toLowerCase());
+  if (!normalizedGroups.length) {
+    return { roles: [], permissions: [] };
+  }
+  const result = await pool.query(
+    `SELECT DISTINCT r.role_key, p.permission_key
+     FROM rbac_group_role_bindings b
+     JOIN rbac_roles r ON r.id = b.role_id
+     JOIN rbac_role_permissions rp ON rp.role_id = r.id
+     JOIN rbac_permissions p ON p.id = rp.permission_id
+     WHERE LOWER(b.group_name) = ANY($1::text[])`,
+    [normalizedGroups]
+  );
+  const roleSet = new Set();
+  const permissionSet = new Set();
+  result.rows.forEach((row) => {
+    if (row.role_key) roleSet.add(String(row.role_key));
+    if (row.permission_key) permissionSet.add(String(row.permission_key));
+  });
+  return {
+    roles: [...roleSet].sort((a, b) => a.localeCompare(b)),
+    permissions: [...permissionSet].sort((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -444,6 +477,132 @@ function createAdminRouter() {
     const result = await pool.query('DELETE FROM rbac_group_role_bindings WHERE id = $1 RETURNING id', [bindingId]);
     if (!result.rowCount) return res.status(404).json({ error: 'Binding not found.' });
     res.json({ ok: true });
+  }));
+
+  router.get('/admin/users', ...guard, asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      `WITH app_users AS (
+         SELECT user_id FROM user_settings
+         UNION SELECT user_id FROM providers
+         UNION SELECT user_id FROM prompt_history
+         UNION SELECT user_id FROM prompt_library
+         UNION SELECT user_id FROM provider_generation_events
+       )
+       SELECT
+         u.user_id,
+         us.settings_json,
+         le.user_groups_json,
+         le.user_roles_json,
+         le.created_at AS last_seen_at,
+         COALESCE((SELECT COUNT(*)::int FROM providers p WHERE p.user_id = u.user_id), 0) AS provider_count,
+         COALESCE((SELECT COUNT(*)::int FROM providers p WHERE p.user_id = u.user_id AND COALESCE(p.system_key_id, '') = ''), 0) AS personal_provider_count,
+         COALESCE((SELECT COUNT(*)::int FROM prompt_history h WHERE h.user_id = u.user_id), 0) AS history_count,
+         COALESCE((SELECT COUNT(*)::int FROM prompt_library l WHERE l.user_id = u.user_id), 0) AS library_count
+       FROM app_users u
+       LEFT JOIN user_settings us ON us.user_id = u.user_id
+       LEFT JOIN LATERAL (
+         SELECT e.user_groups_json, e.user_roles_json, e.created_at
+         FROM provider_generation_events e
+         WHERE e.user_id = u.user_id
+         ORDER BY e.created_at DESC
+         LIMIT 1
+       ) le ON TRUE
+       ORDER BY LOWER(u.user_id) ASC`
+    );
+
+    const users = await Promise.all(result.rows.map(async (row) => {
+      const settings = row.settings_json && typeof row.settings_json === 'object'
+        ? row.settings_json
+        : {};
+      const groupHints = normalizeStringList(row.user_groups_json || []);
+      const roleHints = normalizeStringList(row.user_roles_json || []);
+      const effective = await resolveAccessForGroups(groupHints);
+      return {
+        userId: row.user_id,
+        settings: {
+          hasSeenIntroduction: settings.hasSeenIntroduction === true,
+          introTourVersion: Number(settings.introTourVersion || 0),
+          theme: String(settings.theme || config.settingsDefaults.theme || 'system'),
+          flowMode: settings.flowMode || null,
+          navLayout: String(settings.navLayout || config.settingsDefaults.navLayout || 'topbar'),
+          resultModeEnabled: settings.resultModeEnabled === true,
+        },
+        groupHints,
+        roleHints,
+        effectiveRoles: effective.roles,
+        effectivePermissions: effective.permissions,
+        lastSeenAt: row.last_seen_at,
+        providerCount: Number(row.provider_count || 0),
+        personalProviderCount: Number(row.personal_provider_count || 0),
+        historyCount: Number(row.history_count || 0),
+        libraryCount: Number(row.library_count || 0),
+      };
+    }));
+
+    res.json(users);
+  }));
+
+  router.put('/admin/users/:userId/introduction-reset', ...guard, asyncHandler(async (req, res) => {
+    const targetUserId = String(req.params.userId || '').trim();
+    if (!targetUserId) return res.status(400).json({ error: 'Invalid user id.' });
+
+    const existingResult = await pool.query(
+      'SELECT settings_json FROM user_settings WHERE user_id = $1 LIMIT 1',
+      [targetUserId]
+    );
+    const existing = existingResult.rows[0]?.settings_json || {};
+    const merged = {
+      ...config.settingsDefaults,
+      ...existing,
+      hasSeenIntroduction: false,
+      introTourVersion: 0,
+    };
+    await pool.query(
+      `INSERT INTO user_settings (user_id, settings_json)
+       VALUES ($1,$2::jsonb)
+       ON CONFLICT (user_id)
+       DO UPDATE SET settings_json = EXCLUDED.settings_json, updated_at = NOW()`,
+      [targetUserId, JSON.stringify(merged)]
+    );
+    res.json({ ok: true, userId: targetUserId });
+  }));
+
+  router.put('/admin/users/:userId/settings-reset', ...guard, asyncHandler(async (req, res) => {
+    const targetUserId = String(req.params.userId || '').trim();
+    if (!targetUserId) return res.status(400).json({ error: 'Invalid user id.' });
+
+    const defaults = {
+      ...config.settingsDefaults,
+      hasSeenIntroduction: false,
+      introTourVersion: 0,
+    };
+    await pool.query(
+      `INSERT INTO user_settings (user_id, settings_json)
+       VALUES ($1,$2::jsonb)
+       ON CONFLICT (user_id)
+       DO UPDATE SET settings_json = EXCLUDED.settings_json, updated_at = NOW()`,
+      [targetUserId, JSON.stringify(defaults)]
+    );
+    res.json({ ok: true, userId: targetUserId });
+  }));
+
+  router.put('/admin/users/:userId/revoke-personal-keys', ...guard, asyncHandler(async (req, res) => {
+    const targetUserId = String(req.params.userId || '').trim();
+    if (!targetUserId) return res.status(400).json({ error: 'Invalid user id.' });
+
+    const result = await pool.query(
+      `UPDATE providers
+       SET key_meta = '{}'::jsonb,
+           updated_at = NOW()
+       WHERE user_id = $1
+         AND COALESCE(system_key_id, '') = ''`,
+      [targetUserId]
+    );
+    res.json({
+      ok: true,
+      userId: targetUserId,
+      updatedProviders: Number(result.rowCount || 0),
+    });
   }));
 
   router.get('/admin/model-pricing', ...pricingGuard, asyncHandler(async (_req, res) => {
