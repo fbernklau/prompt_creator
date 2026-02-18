@@ -282,12 +282,14 @@ function createProviderRouter() {
 
   router.put('/providers/:providerId', authMiddleware, accessMiddleware, requirePermission('providers.manage_own'), asyncHandler(async (req, res) => {
     const providerId = req.params.providerId;
-    const { name, kind, model, baseUrl, baseUrlMode, pricingMode, inputPricePerMillion, outputPricePerMillion, apiKey, systemKeyId } = req.body || {};
+    const { name, kind, model, baseUrl, baseUrlMode, pricingMode, inputPricePerMillion, outputPricePerMillion, apiKey, systemKeyId, keySource } = req.body || {};
     const normalizedBaseUrlMode = baseUrlMode === 'preset' ? 'preset' : 'custom';
     const normalizedPricingMode = pricingMode === 'custom' ? 'custom' : 'catalog';
     const normalizedInputPrice = parseNonNegativeNumberOrNull(inputPricePerMillion);
     const normalizedOutputPrice = parseNonNegativeNumberOrNull(outputPricePerMillion);
     const requestedSystemKeyId = String(systemKeyId || '').trim();
+    const normalizedKeySource = String(keySource || '').trim().toLowerCase();
+    const useSystemKeySource = normalizedKeySource === 'system' || Boolean(requestedSystemKeyId);
     const systemKeysEnabled = await getSystemKeysEnabled();
 
     if (!name || !kind || !model) {
@@ -303,8 +305,8 @@ function createProviderRouter() {
     );
     const existingKeyMeta = existingResult.rows[0]?.key_meta || {};
     const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
-    let encryptedKey = existingKeyMeta;
-    if (trimmedApiKey) {
+    let encryptedKey = useSystemKeySource ? {} : existingKeyMeta;
+    if (!useSystemKeySource && trimmedApiKey) {
       encryptedKey = encryptApiKey(trimmedApiKey, config.keyEncryptionSecret);
     }
 
@@ -392,45 +394,54 @@ function createProviderRouter() {
     }
 
     const requestedSystemKeyId = typeof req.body?.systemKeyId === 'string' ? req.body.systemKeyId.trim() : '';
+    const requestedKeySource = String(req.body?.keySource || '').trim().toLowerCase();
+    const forceSystemKeySource = requestedKeySource === 'system';
     const systemKeysEnabled = await getSystemKeysEnabled();
     const inlineApiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
-    let apiKey = inlineApiKey || getStoredApiKey(existing);
+    let apiKey = inlineApiKey;
     let keySource = inlineApiKey ? 'inline_test' : 'provider';
+    const resolveSystemKey = async (targetSystemKeyId) => {
+      const normalizedTarget = String(targetSystemKeyId || '').trim();
+      if (!normalizedTarget) return null;
+      const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
+      const selected = assignedKeys.find((entry) => entry.systemKeyId === normalizedTarget);
+      if (!selected) return null;
+      const selectedKey = await pool.query(
+        `SELECT key_meta
+         FROM system_provider_keys
+         WHERE system_key_id = $1
+           AND is_active = TRUE`,
+        [selected.systemKeyId]
+      );
+      if (!selectedKey.rowCount || !hasServerEncryptedKey(selectedKey.rows[0].key_meta)) return null;
+      return {
+        apiKey: decryptApiKey(selectedKey.rows[0].key_meta, config.keyEncryptionSecret),
+        keySource: `system:${selected.systemKeyId}`,
+      };
+    };
+
     if (!systemKeysEnabled && requestedSystemKeyId) {
       return res.status(400).json({ error: 'System-Keys sind global deaktiviert.' });
     }
-    if (!apiKey && requestedSystemKeyId && systemKeysEnabled) {
-      const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
-      const selected = assignedKeys.find((entry) => entry.systemKeyId === requestedSystemKeyId);
-      if (selected) {
-        const selectedKey = await pool.query(
-          `SELECT key_meta
-           FROM system_provider_keys
-           WHERE system_key_id = $1
-             AND is_active = TRUE`,
-          [selected.systemKeyId]
-        );
-        if (selectedKey.rowCount && hasServerEncryptedKey(selectedKey.rows[0].key_meta)) {
-          apiKey = decryptApiKey(selectedKey.rows[0].key_meta, config.keyEncryptionSecret);
-          keySource = `system:${selected.systemKeyId}`;
-        }
+    if (!apiKey && systemKeysEnabled && (requestedSystemKeyId || forceSystemKeySource)) {
+      const resolved = await resolveSystemKey(requestedSystemKeyId || existing?.system_key_id || '');
+      if (resolved?.apiKey) {
+        apiKey = resolved.apiKey;
+        keySource = resolved.keySource;
+      }
+      if (!apiKey && forceSystemKeySource) {
+        return res.status(400).json({ error: 'Ausgewählter System-Key ist nicht verfügbar oder hat keinen aktiven API-Key.' });
       }
     }
+    if (!apiKey && !forceSystemKeySource) {
+      apiKey = getStoredApiKey(existing);
+      keySource = apiKey ? 'provider' : keySource;
+    }
     if (!apiKey && existing?.system_key_id && systemKeysEnabled) {
-      const assignedKeys = await listAssignedSystemKeysForUser(req, kind);
-      const selected = assignedKeys.find((entry) => entry.systemKeyId === existing.system_key_id);
-      if (selected) {
-        const selectedKey = await pool.query(
-          `SELECT key_meta
-           FROM system_provider_keys
-           WHERE system_key_id = $1
-             AND is_active = TRUE`,
-          [selected.systemKeyId]
-        );
-        if (selectedKey.rowCount && hasServerEncryptedKey(selectedKey.rows[0].key_meta)) {
-          apiKey = decryptApiKey(selectedKey.rows[0].key_meta, config.keyEncryptionSecret);
-          keySource = `system:${selected.systemKeyId}`;
-        }
+      const resolved = await resolveSystemKey(existing.system_key_id);
+      if (resolved?.apiKey) {
+        apiKey = resolved.apiKey;
+        keySource = resolved.keySource;
       }
     }
     if (!apiKey && kind === 'google' && isSharedGoogleAllowed(req)) {

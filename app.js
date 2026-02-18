@@ -43,6 +43,7 @@ const introTourState = {
   highlightedSelector: '',
   highlightedNode: null,
   anchorClickCleanup: null,
+  waitConditionCleanup: null,
   autoActionStep: -1,
 };
 const introTourContext = {
@@ -209,11 +210,49 @@ function clearIntroductionHighlight() {
     introTourState.anchorClickCleanup();
   }
   introTourState.anchorClickCleanup = null;
+  if (typeof introTourState.waitConditionCleanup === 'function') {
+    introTourState.waitConditionCleanup();
+  }
+  introTourState.waitConditionCleanup = null;
   if (!introTourState.highlightedSelector) return;
   const node = introTourState.highlightedNode || document.querySelector(introTourState.highlightedSelector);
   if (node) node.classList.remove('tour-highlight');
   introTourState.highlightedSelector = '';
   introTourState.highlightedNode = null;
+}
+
+function isScreenVisible(screenId) {
+  const node = el(screenId);
+  return !!node && !node.classList.contains('is-hidden');
+}
+
+function isFieldEffectivelyVisible(node) {
+  if (!node) return false;
+  if (node.disabled) return false;
+  if (node.closest('.is-hidden')) return false;
+  const style = window.getComputedStyle(node);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  return true;
+}
+
+function isTemplateFormReadyForGeneration() {
+  const form = el('prompt-form');
+  if (!form || !isScreenVisible('screen-form')) return false;
+  const requiredNodes = Array.from(form.querySelectorAll('input[required], select[required], textarea[required]'))
+    .filter((node) => isFieldEffectivelyVisible(node));
+  return requiredNodes.every((node) => {
+    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
+      return node.checkValidity();
+    }
+    return true;
+  });
+}
+
+function isResultReadyForTour() {
+  if (!isScreenVisible('screen-result')) return false;
+  const banner = el('result-ready-banner');
+  if (!banner || banner.classList.contains('is-hidden')) return false;
+  return String(banner.textContent || '').trim().length > 0;
 }
 
 function resolveIntroductionAnchor(step) {
@@ -334,17 +373,67 @@ function getIntroductionSteps() {
     },
     {
       title: 'Erste Template-Auswahl',
-      text: 'Wähle ein Handlungsfeld und danach ein Template. Die Tour läuft weiter, sobald du auswählst.',
+      text: 'Wähle jetzt ein Handlungsfeld.',
       anchors: ['#category-grid .tw-home-category-card', '#category-grid'],
       anchorHint: 'Klicke auf eine Kategoriekarte.',
       waitForAnchorClick: true,
     },
     {
-      title: 'Ausgabe-Modus',
-      text: 'Im Formular kannst du zwischen „Prompt“ und „Direktes Ergebnis“ wechseln. Bitte aktiviere einmal „Direktes Ergebnis“ für den Testlauf.',
-      anchors: ['#run-mode-result-toggle', '#screen-form .tw-form-submit-row'],
-      anchorHint: 'Klicke auf den Toggle bei „Ausgabe für diesen Lauf“.',
+      title: 'Template auswählen',
+      text: 'Wähle nun ein Template in der Unterkategorie-Ansicht.',
+      anchors: ['#screen-subcategory #subcategory-list [data-subcategory]', '#screen-subcategory #subcategory-list'],
+      anchorHint: 'Klicke auf eine Template-Karte.',
+      waitForCondition: () => isScreenVisible('screen-form') && Boolean(state.selectedSubcategory),
+      waitForHint: 'Warte auf den Wechsel zur Template-Maske.',
+    },
+    {
+      title: 'Pflichtfelder & Ergebnis-Modus',
+      text: 'Fülle alle Pflichtfelder aus und aktiviere „Direktes Ergebnis“ für den Tourlauf. Das Generieren kann je nach Modell etwas dauern.',
+      anchors: ['#screen-form #form-required-panel', '#run-mode-result-toggle'],
+      anchorHint: 'Pflichtfelder + Toggle müssen gesetzt sein.',
+      waitForCondition: () => {
+        const runModeToggle = el('run-mode-result-toggle');
+        return Boolean(runModeToggle?.checked) && isTemplateFormReadyForGeneration();
+      },
+      waitForHint: 'Sobald alles vollständig ist, geht es automatisch weiter.',
+    },
+    {
+      title: 'Generierung starten',
+      text: 'Klicke jetzt auf „Direktes Ergebnis generieren“.',
+      anchors: ['#generate-submit', '#screen-form .tw-form-submit-row'],
+      anchorHint: 'Der Lauf startet sofort und wechselt zur Ergebnisansicht.',
       waitForAnchorClick: true,
+      anchorsAdvanceSelectors: ['#generate-submit'],
+    },
+    {
+      title: 'Bitte kurz warten',
+      text: 'Jetzt werden Metaprompt und (optional) direktes Ergebnis erstellt. Das kann je nach Provider ein paar Sekunden dauern.',
+      anchors: ['#screen-result #result-progress-panel', '#screen-result'],
+      anchorHint: 'Sobald der Lauf abgeschlossen ist, geht die Tour automatisch weiter.',
+      waitForCondition: () => isResultReadyForTour(),
+      waitForHint: 'Warte auf den Status „bereit“.',
+    },
+    {
+      title: 'Ergebnis verstehen',
+      text: 'Oben siehst du den Handoff-Prompt (Metaprompt-Ergebnis). Im Modus „Direktes Ergebnis“ erscheint darunter zusätzlich das direkte Ergebnis. Im Prompt-Modus bleibt nur das obere Feld sichtbar.',
+      anchors: ['#screen-result .result-prompt-panel', '#screen-result #result-direct-panel'],
+      anchorHint: 'Hier kannst du beide Ausgaben vergleichen und kopieren.',
+    },
+    {
+      title: 'In Bibliothek speichern',
+      text: 'Speichere den Lauf in deiner Bibliothek, damit du ihn später mit „Reuse“ wiederverwenden kannst.',
+      anchors: ['#save-library', '#screen-result'],
+      anchorHint: 'Klicke auf „In Bibliothek speichern“.',
+      waitForAnchorClick: true,
+      anchorsAdvanceSelectors: ['#save-library'],
+    },
+    {
+      title: 'Speichern bestätigen',
+      text: 'Wir warten kurz auf die Speicherbestätigung.',
+      anchors: ['#save-library-status', '#screen-result'],
+      anchorHint: 'Sobald „Gespeichert.“ erscheint, geht es weiter.',
+      waitForCondition: () => String(el('save-library-status')?.textContent || '').toLowerCase().includes('gespeichert'),
+      waitForHint: 'Warte auf den Status „Gespeichert.“.',
     },
     {
       title: 'Bibliothek',
@@ -389,18 +478,22 @@ function renderIntroductionStep(index) {
 
   clearIntroductionHighlight();
   const anchor = resolveIntroductionAnchor(step);
-  if (!anchor?.node) return;
-  anchor.node.classList.add('tour-highlight');
-  introTourState.highlightedSelector = anchor.selector;
-  introTourState.highlightedNode = anchor.node;
-  anchor.node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (anchor?.node) {
+    anchor.node.classList.add('tour-highlight');
+    introTourState.highlightedSelector = anchor.selector;
+    introTourState.highlightedNode = anchor.node;
+    anchor.node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
 
   if (step.waitForAnchorClick) {
     next.classList.add('is-hidden');
     finish.classList.toggle('is-hidden', true);
+    const fallbackSelectors = Array.isArray(step.anchors) && step.anchors.length
+      ? step.anchors
+      : [step.anchor].filter(Boolean);
     const clickableSelectors = Array.isArray(step.anchorsAdvanceSelectors) && step.anchorsAdvanceSelectors.length
       ? step.anchorsAdvanceSelectors
-      : [anchor.selector];
+      : fallbackSelectors;
     const onAnchorClick = (event) => {
       if (!introTourState.active) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -417,6 +510,39 @@ function renderIntroductionStep(index) {
     };
     const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
     el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}Klicke auf den markierten Bereich, um fortzufahren.`;
+  }
+
+  if (typeof step.waitForCondition === 'function') {
+    next.classList.add('is-hidden');
+    finish.classList.toggle('is-hidden', true);
+    const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
+    const conditionHint = String(step.waitForHint || 'Warte auf die nächste Aktion, um fortzufahren.').trim();
+    el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}${conditionHint}`.trim();
+
+    let handled = false;
+    const evaluate = () => {
+      if (handled || !introTourState.active) return;
+      let fulfilled = false;
+      try {
+        fulfilled = !!step.waitForCondition();
+      } catch (_error) {
+        fulfilled = false;
+      }
+      if (!fulfilled) return;
+      handled = true;
+      if (typeof introTourState.waitConditionCleanup === 'function') {
+        introTourState.waitConditionCleanup();
+      }
+      introTourState.waitConditionCleanup = null;
+      window.setTimeout(() => {
+        renderIntroductionStep(introTourState.index + 1);
+      }, 220);
+    };
+    const timer = window.setInterval(evaluate, 300);
+    introTourState.waitConditionCleanup = () => {
+      window.clearInterval(timer);
+    };
+    evaluate();
   }
 
   if (step.autoAction && step.action && introTourState.autoActionStep !== boundedIndex) {

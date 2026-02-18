@@ -1977,6 +1977,17 @@ button.is-active,
   border-style: dashed !important;
 }
 
+.provider-stage-row-add-btn {
+  background: transparent !important;
+  border-style: dashed !important;
+  padding: 6px !important;
+}
+
+.provider-stage-row-add-btn .admin-create-dashed {
+  min-height: 40px;
+  font-size: 14px;
+}
+
 .provider-stage-summary {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -2008,6 +2019,21 @@ button.is-active,
 .provider-stage-summary-chip.is-active {
   border-color: color-mix(in srgb, var(--brand) 42%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
+.provider-editor-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.provider-editor-controls label {
+  min-width: 220px;
+}
+
+.provider-editor-modal-card {
+  width: min(780px, calc(100vw - 26px));
+  max-height: calc(100vh - 28px);
+  overflow: auto;
 }
 
 .provider-budget-row {

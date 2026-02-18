@@ -23,6 +23,7 @@ function createProviderController({
   state.assignedSystemKeys = state.assignedSystemKeys || [];
   state.systemKeysEnabled = state.systemKeysEnabled !== false;
   state.settings = state.settings || {};
+  state.providerEditorMode = state.providerEditorMode || 'modal';
 
   function emitNotice(message = '', type = 'info') {
     const text = String(message || '').trim();
@@ -78,6 +79,62 @@ function createProviderController({
     if (!node) return;
     node.textContent = text;
     node.dataset.type = type;
+  }
+
+  function getProviderEditorMode() {
+    const node = el('provider-editor-mode');
+    const selected = String(node?.value || state.providerEditorMode || 'modal').trim().toLowerCase();
+    return selected === 'inline' ? 'inline' : 'modal';
+  }
+
+  function updateProviderEditorTitle() {
+    const titleNode = el('provider-editor-title');
+    if (!titleNode) return;
+    titleNode.textContent = state.editProviderId ? 'API-Key bearbeiten' : 'API-Key hinzufügen';
+  }
+
+  function mountProviderEditor({ forceMode = '' } = {}) {
+    const form = el('provider-form');
+    const inlineHost = el('provider-form-inline-host');
+    const modalHost = el('provider-form-modal-host');
+    const modeSelect = el('provider-editor-mode');
+    const mode = forceMode || getProviderEditorMode();
+    if (!form || !inlineHost || !modalHost) return mode;
+
+    if (modeSelect && modeSelect.value !== mode) modeSelect.value = mode;
+    state.providerEditorMode = mode;
+
+    if (mode === 'inline') {
+      if (form.parentElement !== inlineHost) inlineHost.appendChild(form);
+      inlineHost.classList.remove('is-hidden');
+      form.classList.remove('is-hidden');
+      const modal = el('provider-form-modal');
+      if (modal) modal.classList.add('is-hidden');
+      return mode;
+    }
+
+    if (form.parentElement !== modalHost) modalHost.appendChild(form);
+    inlineHost.classList.add('is-hidden');
+    form.classList.remove('is-hidden');
+    return mode;
+  }
+
+  function openProviderEditor({ forceMode = '' } = {}) {
+    updateProviderEditorTitle();
+    const mode = mountProviderEditor({ forceMode });
+    if (mode === 'inline') return;
+    const modal = el('provider-form-modal');
+    if (modal) modal.classList.remove('is-hidden');
+  }
+
+  function closeProviderEditor({ keepInlineVisible = true } = {}) {
+    const modal = el('provider-form-modal');
+    if (modal) modal.classList.add('is-hidden');
+    const mode = getProviderEditorMode();
+    if (mode !== 'inline') return;
+    const inlineHost = el('provider-form-inline-host');
+    if (!inlineHost) return;
+    inlineHost.classList.toggle('is-hidden', !keepInlineVisible);
   }
 
   function renderStageSummary() {
@@ -169,6 +226,8 @@ function createProviderController({
           kind: provider.kind,
           model: provider.model,
           baseUrl: provider.baseUrl || getRecommendedBaseUrl(provider.kind),
+          keySource: provider.systemKeyId ? 'system' : 'provider',
+          systemKeyId: provider.systemKeyId || '',
         };
         const testResult = await api('/api/providers/test', {
           method: 'POST',
@@ -517,6 +576,30 @@ function createProviderController({
     el('provider-key-source').addEventListener('change', () => syncSystemKeyUi());
     el('provider-auto-base').addEventListener('change', syncProviderBaseUi);
     el('provider-pricing-mode').addEventListener('change', syncPricingUi);
+    if (el('provider-editor-mode')) {
+      const storedMode = localStorage.getItem('eduprompt_provider_editor_mode');
+      const preferredMode = storedMode === 'inline' ? 'inline' : 'modal';
+      el('provider-editor-mode').value = preferredMode;
+      state.providerEditorMode = preferredMode;
+      el('provider-editor-mode').addEventListener('change', () => {
+        const nextMode = getProviderEditorMode();
+        localStorage.setItem('eduprompt_provider_editor_mode', nextMode);
+        state.providerEditorMode = nextMode;
+        mountProviderEditor();
+      });
+    }
+    if (el('provider-editor-close')) {
+      el('provider-editor-close').addEventListener('click', () => {
+        closeProviderEditor({ keepInlineVisible: false });
+      });
+    }
+    if (el('provider-form-modal')) {
+      el('provider-form-modal').addEventListener('click', (event) => {
+        if (event.target === el('provider-form-modal')) {
+          closeProviderEditor({ keepInlineVisible: false });
+        }
+      });
+    }
     el('provider-auto-base').checked = true;
     Promise.all([
       refreshModelCatalog().catch(() => {}),
@@ -524,10 +607,13 @@ function createProviderController({
     ]).finally(() => {
       syncProviderModelUi();
       syncSystemKeyUi();
+      mountProviderEditor();
+      closeProviderEditor({ keepInlineVisible: getProviderEditorMode() === 'inline' });
     });
     syncProviderBaseUi();
     syncSystemKeyUi();
     syncPricingUi();
+    updateProviderEditorTitle();
   }
 
   function startEditProvider(id) {
@@ -553,6 +639,7 @@ function createProviderController({
     syncProviderBaseUi();
     syncSystemKeyUi({ preferredSystemKeyId: provider.systemKeyId || '' });
     syncPricingUi();
+    openProviderEditor();
   }
 
   function startDuplicateProvider(id) {
@@ -583,6 +670,7 @@ function createProviderController({
     syncSystemKeyUi({ preferredSystemKeyId: provider.systemKeyId || '' });
     syncPricingUi();
     emitNotice('Profil als Kopie geladen. Bei persönlichen Keys bitte den API-Key erneut eingeben.', 'info');
+    openProviderEditor();
   }
 
   function clearProviderForm() {
@@ -598,6 +686,7 @@ function createProviderController({
     syncSystemKeyUi();
     syncProviderBaseUi();
     syncPricingUi();
+    updateProviderEditorTitle();
   }
 
   function getDraftProviderPayload() {
@@ -615,6 +704,7 @@ function createProviderController({
       pricingMode: getSelectedPricingMode(),
       inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
       outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
+      keySource: getSelectedKeySource(),
       systemKeyId: getSelectedKeySource() === 'system'
         ? String(el('provider-system-key-id').value || '').trim()
         : '',
@@ -727,47 +817,43 @@ function createProviderController({
             ${personalProviders.length
     ? personalProviders.map(renderProviderRow).join('')
     : '<li class="provider-stage-note"><span>Keine persönlichen Keys.</span></li>'}
+            <li class="provider-stage-row provider-stage-row-addable provider-stage-row-add-btn">
+              <button type="button" class="admin-create-dashed" data-open-provider-editor>
+                <span class="material-icons-round">add_circle</span>
+                API-Key hinzufügen
+              </button>
+            </li>
           </ul>
         </div>
 
         <div class="provider-stage-group">
           <div class="provider-stage-group-head">
             <h4>Zugewiesene Keys</h4>
-            <small>${assignedProviders.length} gespeichert</small>
+            <small>${assignedProviders.length} hinzugefügt</small>
           </div>
           <ul class="provider-stage-rows">
             ${assignedProviders.length
     ? assignedProviders.map(renderProviderRow).join('')
     : '<li class="provider-stage-note"><span>Keine zugewiesenen System-Keys.</span><small>Lege einen persönlichen Provider an oder kontaktiere Admin.</small></li>'}
+            ${availableAssignedKeys.map((entry) => `
+              <li class="provider-stage-row provider-stage-row-addable">
+                <div class="provider-stage-row-left">
+                  <span class="admin-state-dot dot-active"></span>
+                  <span class="material-icons-round provider-stage-row-icon">key</span>
+                  <div class="provider-stage-row-meta">
+                    <strong>${entry.name}</strong>
+                    <small>${entry.providerKind} | ${entry.modelHint || 'Modell frei wählen'}</small>
+                    <small>noch nicht als Profil hinzugefügt</small>
+                  </div>
+                </div>
+                <div class="provider-stage-row-right">
+                  <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Profil hinzufügen</button>
+                </div>
+              </li>
+            `).join('')}
             ${assignedHint}
           </ul>
         </div>
-
-        ${availableAssignedKeys.length ? `
-          <div class="provider-stage-group">
-            <div class="provider-stage-group-head">
-              <h4>Verfügbare zugewiesene Keys</h4>
-              <small>noch nicht als Profil hinzugefügt</small>
-            </div>
-            <ul class="provider-stage-rows">
-              ${availableAssignedKeys.map((entry) => `
-                <li class="provider-stage-row provider-stage-row-addable">
-                  <div class="provider-stage-row-left">
-                    <span class="admin-state-dot dot-active"></span>
-                    <span class="material-icons-round provider-stage-row-icon">key</span>
-                    <div class="provider-stage-row-meta">
-                      <strong>${entry.name}</strong>
-                      <small>${entry.providerKind} | ${entry.modelHint || 'Modell frei wählen'}</small>
-                    </div>
-                  </div>
-                  <div class="provider-stage-row-right">
-                    <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Profil hinzufügen</button>
-                  </div>
-                </li>
-              `).join('')}
-            </ul>
-          </div>
-        ` : ''}
       </li>
     `;
 
@@ -801,6 +887,12 @@ function createProviderController({
     });
     list.querySelectorAll('[data-delete-provider]').forEach((button) => {
       button.onclick = () => deleteProvider(button.dataset.deleteProvider);
+    });
+    list.querySelectorAll('[data-open-provider-editor]').forEach((button) => {
+      button.onclick = () => {
+        clearProviderForm();
+        openProviderEditor();
+      };
     });
     list.querySelectorAll('[data-add-assigned-key]').forEach((button) => {
       button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => emitNotice(error.message, 'error'));
@@ -880,6 +972,7 @@ function createProviderController({
       pricingMode: getSelectedPricingMode(),
       inputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-input').value),
       outputPricePerMillion: parseNonNegativeNumberOrNull(el('provider-pricing-output').value),
+      keySource: getSelectedKeySource(),
       systemKeyId: getSelectedKeySource() === 'system'
         ? String(el('provider-system-key-id').value || '').trim()
         : '',
@@ -896,6 +989,8 @@ function createProviderController({
     await refreshAssignedSystemKeys();
     await syncStageAssignmentsWithProviderList({ persist: true });
     clearProviderForm();
+    closeProviderEditor({ keepInlineVisible: getProviderEditorMode() === 'inline' });
+    emitNotice('API-Key-Profil gespeichert.', 'ok');
     renderProviders();
   }
 
@@ -908,12 +1003,15 @@ function createProviderController({
         kind: activeProvider.kind || '',
         model: activeProvider.model || '',
         baseUrl: activeProvider.baseUrl || '',
+        keySource: activeProvider.systemKeyId ? 'system' : 'provider',
+        systemKeyId: activeProvider.systemKeyId || '',
       }
       : {
         providerId: draft.providerId || activeProvider?.id || '',
         kind: draft.kind || activeProvider?.kind || '',
         model: draft.model || activeProvider?.model || '',
         baseUrl: draft.baseUrl || activeProvider?.baseUrl || '',
+        keySource: draft.keySource || (activeProvider?.systemKeyId ? 'system' : 'provider'),
       };
     if (!preferActive && draft.name && draft.kind && draft.model && draft.baseUrl) {
       payload.kind = draft.kind;

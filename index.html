@@ -1209,7 +1209,30 @@
           <small id="vault-status" class="hint"></small>
         </div>
 
-        <form id="provider-form" class="panel top-space">
+        <div class="provider-editor-controls top-space">
+          <label>Editor-Modus
+            <select id="provider-editor-mode">
+              <option value="modal" selected>Modal</option>
+              <option value="inline">Inline</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="provider-form-inline-host" class="top-space is-hidden"></div>
+
+        <div id="provider-form-modal" class="modal is-hidden">
+          <div class="modal-card provider-editor-modal-card">
+            <div class="panel-title-row">
+              <h3 id="provider-editor-title">API-Key hinzufügen</h3>
+              <button id="provider-editor-close" type="button" class="text-btn">Schliessen</button>
+            </div>
+            <div id="provider-form-modal-host"></div>
+          </div>
+        </div>
+
+        <div id="provider-form-default-host" class="is-hidden"></div>
+
+        <form id="provider-form" class="panel top-space provider-editor-form is-hidden">
           <div class="grid-2">
             <label>Anzeigename
               <input id="provider-name" required placeholder="z. B. OpenAI Schule" />
