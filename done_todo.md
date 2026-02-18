@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-13
+Last updated: 2026-02-16
 Owner: Team + Codex
 
 ## Purpose
@@ -181,6 +181,18 @@ Owner: Team + Codex
 - [x] Governance backend + admin wiring in place for system keys, scoped assignments (user/role/group), and hybrid budget policies.
 - [x] Template Studio: first wizard baseline added (guided 3-step flow, existing-template vs from-scratch mode).
 - [x] UI text pass started to replace key `ae/oe/ue` labels/messages with `ä/ö/ü` where safe.
+
+## New Intake (2026-02-16)
+- [ ] First-login guided intro/tour (boolean `hasSeenIntroduction`, default false for selected advisor account).
+- [ ] Intro flow should end with API setup and offer choice: personal API key setup or assigned global/system key.
+- [ ] Mobile navbar still has layout/visibility issues in some views.
+- [ ] Mobile pages (beyond `Neu` and `Optionen`) still overflow width and can hide/displace navigation.
+- [ ] Set up parallel staging + production deployment (same VPS): parameterized compose/Traefik names, separate env files, separate hosts and DBs, promote via staging-first workflow.
+- [ ] Add backup strategy/feature definition (scope, cadence, restore flow, what data is included).
+- [ ] Clarify and implement `File Type return` requirement (define output format contract per template/generation mode).
+- [ ] Add image-description prompt workflow (text-only prompt generation for image tasks).
+- [ ] Plan future feature: optional image generation result mode (provider/model constraints, moderation, cost controls).
+- [ ] Continue API-key management UX refactor: denser nested rows, clearer action buttons, and mockup parity in light/dark themes.
 
 ## Notes for Tomorrow
 - Current UX baseline is stable and much closer to mockups; remaining open work is template content quality + dark mode finish + wizard refinement.

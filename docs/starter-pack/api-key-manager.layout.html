@@ -1,0 +1,100 @@
+<!--
+  Starter layout markup for API key manager hierarchy.
+  Replace static values with template bindings from your framework.
+-->
+
+<section class="ak-page">
+  <div class="ak-panel" style="padding:16px;">
+    <h2 style="margin:0 0 4px 0;">API Key &amp; Budget Manager</h2>
+    <p style="margin:0;color:var(--ak-muted);">Unified control for global budget, keys, assignments, and per-user quotas.</p>
+
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <input class="ak-input" style="min-width:320px;flex:1;" placeholder="Search keys, assignments, users" />
+      <select class="ak-select"><option>All statuses</option></select>
+      <select class="ak-select"><option>All levels</option></select>
+    </div>
+  </div>
+
+  <div class="ak-panel" style="margin-top:14px;padding:12px;display:grid;gap:10px;">
+    <div class="ak-row">
+      <div class="ak-row__name">
+        <span class="ak-dot ak-dot--ok"></span>
+        <strong>Global System Budget</strong>
+      </div>
+      <div class="ak-budget">
+        <span style="font-size:12px;color:var(--ak-muted)">Budget</span>
+        <input class="ak-input" type="number" placeholder="optional" />
+        <select class="ak-select"><option>USD</option></select>
+        <select class="ak-select"><option>monthly</option></select>
+      </div>
+      <div class="ak-used-total">Used/Total: $0.00 / unlimited</div>
+      <div class="ak-toggle">
+        <span style="font-size:12px;color:var(--ak-muted)">active</span>
+        <label class="ak-switch"><input type="checkbox" checked></label>
+      </div>
+    </div>
+
+    <div class="ak-row" data-collapsible-trigger="key-1">
+      <div class="ak-row__name">
+        <button type="button" data-collapse-button="key-1">▾</button>
+        <span class="ak-dot ak-dot--ok"></span>
+        <strong>Key: Production_Alpha_v2</strong>
+      </div>
+      <div class="ak-budget">
+        <span style="font-size:12px;color:var(--ak-muted)">Budget</span>
+        <input class="ak-input" type="number" placeholder="optional" />
+        <select class="ak-select"><option>USD</option></select>
+        <select class="ak-select"><option>monthly</option></select>
+      </div>
+      <div class="ak-used-total">Used/Total: $3,840 / $5,000</div>
+      <div class="ak-toggle">
+        <span style="font-size:12px;color:var(--ak-muted)">active</span>
+        <label class="ak-switch"><input type="checkbox" checked></label>
+      </div>
+    </div>
+
+    <div data-collapsible-content="key-1" style="display:grid;gap:8px;">
+      <div class="ak-row ak-row--nested-1" data-collapsible-trigger="assignment-1">
+        <div class="ak-row__name">
+          <button type="button" data-collapse-button="assignment-1">▾</button>
+          <span class="ak-dot ak-dot--warn"></span>
+          <strong>Assignment: group:teachers</strong>
+        </div>
+        <div class="ak-budget">
+          <span style="font-size:12px;color:var(--ak-muted)">Budget</span>
+          <input class="ak-input" type="number" placeholder="optional" />
+          <select class="ak-select"><option>USD</option></select>
+          <select class="ak-select"><option>monthly</option></select>
+        </div>
+        <div class="ak-used-total">Used/Total: $1,150 / $1,200</div>
+        <div class="ak-toggle">
+          <span style="font-size:12px;color:var(--ak-muted)">active</span>
+          <label class="ak-switch"><input type="checkbox" checked></label>
+        </div>
+      </div>
+
+      <div data-collapsible-content="assignment-1" style="display:grid;gap:8px;">
+        <div class="ak-row ak-row--nested-2">
+          <div class="ak-row__name">
+            <span class="ak-dot ak-dot--ok"></span>
+            <strong>Per-user cap (assignment)</strong>
+          </div>
+          <div class="ak-budget">
+            <span style="font-size:12px;color:var(--ak-muted)">Budget</span>
+            <input class="ak-input" type="number" placeholder="optional" />
+            <select class="ak-select"><option>USD</option></select>
+            <select class="ak-select"><option>monthly</option></select>
+          </div>
+          <div class="ak-used-total">Used/Total: $120 / $500</div>
+          <div class="ak-toggle">
+            <span style="font-size:12px;color:var(--ak-muted)">active</span>
+            <label class="ak-switch"><input type="checkbox" checked></label>
+          </div>
+        </div>
+        <button class="ak-add-row" type="button">+ Add assignment</button>
+      </div>
+    </div>
+
+    <button class="ak-add-row" type="button">+ Add new API key</button>
+  </div>
+</section>

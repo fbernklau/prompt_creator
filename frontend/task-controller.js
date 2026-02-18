@@ -69,6 +69,16 @@ function createTaskController({
   };
   state.subcategoryViewMode = state.subcategoryViewMode || 'grid';
 
+  const SNAPSHOT_TRANSIENT_IDS = new Set([
+    'metaprompt-preview',
+    'flow-category-select',
+    'flow-template-select',
+  ]);
+
+  function shouldIgnoreSnapshotField(id = '') {
+    return SNAPSHOT_TRANSIENT_IDS.has(String(id || '').trim());
+  }
+
   function getFlowMode() {
     return state.settings.flowMode || 'step';
   }
@@ -1464,7 +1474,7 @@ function createTaskController({
     const values = {};
     form.querySelectorAll('input, select, textarea').forEach((node) => {
       const id = node.id;
-      if (!id || id === 'metaprompt-preview') return;
+      if (!id || shouldIgnoreSnapshotField(id)) return;
       if (node.tagName === 'SELECT' && node.multiple) {
         values[id] = { kind: 'multi', value: [...node.selectedOptions].map((opt) => opt.value) };
         return;
@@ -1485,6 +1495,7 @@ function createTaskController({
   function restorePromptFormValues(snapshot = {}) {
     const values = snapshot.values || {};
     Object.entries(values).forEach(([id, meta]) => {
+      if (shouldIgnoreSnapshotField(id)) return;
       const node = el(id);
       if (!node || !meta) return;
       if (meta.kind === 'multi' && node.tagName === 'SELECT' && node.multiple) {
@@ -1506,6 +1517,7 @@ function createTaskController({
     const form = el('prompt-form');
     if (form) {
       form.querySelectorAll('select').forEach((node) => {
+        if (shouldIgnoreSnapshotField(node.id)) return;
         node.dispatchEvent(new Event('change'));
       });
     }
@@ -1627,21 +1639,43 @@ function createTaskController({
     showScreen('form');
   }
 
-  function openLibraryEntry(entry = {}) {
+  function resolveTemplateSelectionFromEntry(entry = {}) {
+    const categoryConfig = getCategoryConfig();
     const categoryName = String(entry.handlungsfeld || '').trim();
     const subcategoryName = String(entry.unterkategorie || '').trim();
-    const categoryConfig = getCategoryConfig();
-    const category = categoryConfig[categoryName];
-    if (!category || !subcategoryName) {
+    const templateId = String(entry.templateId || '').trim();
+
+    const hasDirectMapping = !!categoryName
+      && !!subcategoryName
+      && !!categoryConfig[categoryName]
+      && (categoryConfig[categoryName].unterkategorien || []).includes(subcategoryName);
+    if (hasDirectMapping) {
+      return { categoryName, subcategoryName };
+    }
+
+    if (!templateId) return null;
+    for (const [candidateCategory, cfg] of Object.entries(categoryConfig)) {
+      for (const candidateSubcategory of (cfg?.unterkategorien || [])) {
+        const template = cfg?.templates?.[candidateSubcategory];
+        const candidateId = String(template?.id || `${candidateCategory}:${candidateSubcategory}`).trim();
+        if (candidateId === templateId) {
+          return {
+            categoryName: candidateCategory,
+            subcategoryName: candidateSubcategory,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function openLibraryEntry(entry = {}) {
+    const resolvedSelection = resolveTemplateSelectionFromEntry(entry);
+    if (!resolvedSelection) {
       alert('Der gespeicherte Bibliothekseintrag kann nicht mehr auf ein vorhandenes Template gemappt werden.');
       return false;
     }
-
-    const validTemplate = (category.unterkategorien || []).includes(subcategoryName);
-    if (!validTemplate) {
-      alert('Das gespeicherte Template ist in dieser Version nicht mehr vorhanden.');
-      return false;
-    }
+    const { categoryName, subcategoryName } = resolvedSelection;
 
     openForm(categoryName, subcategoryName);
     const snapshot = entry.formSnapshot && typeof entry.formSnapshot === 'object'
@@ -1660,20 +1694,12 @@ function createTaskController({
   }
 
   function openHistoryEntry(entry = {}) {
-    const categoryName = String(entry.handlungsfeld || '').trim();
-    const subcategoryName = String(entry.unterkategorie || '').trim();
-    const categoryConfig = getCategoryConfig();
-    const category = categoryConfig[categoryName];
-    if (!category || !subcategoryName) {
+    const resolvedSelection = resolveTemplateSelectionFromEntry(entry);
+    if (!resolvedSelection) {
       alert('Der Verlaufseintrag enthält kein gültiges Template-Mapping.');
       return false;
     }
-
-    const validTemplate = (category.unterkategorien || []).includes(subcategoryName);
-    if (!validTemplate) {
-      alert('Das gespeicherte Template ist in dieser Version nicht mehr vorhanden.');
-      return false;
-    }
+    const { categoryName, subcategoryName } = resolvedSelection;
 
     openForm(categoryName, subcategoryName);
     const snapshot = entry.formSnapshot && typeof entry.formSnapshot === 'object'
