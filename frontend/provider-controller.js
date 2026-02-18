@@ -14,6 +14,7 @@ function createProviderController({
   el,
   api,
   uid,
+  notify = null,
   setVaultStatus,
   persistProviderStageSettings,
 }) {
@@ -22,6 +23,12 @@ function createProviderController({
   state.assignedSystemKeys = state.assignedSystemKeys || [];
   state.systemKeysEnabled = state.systemKeysEnabled !== false;
   state.settings = state.settings || {};
+
+  function emitNotice(message = '', type = 'info') {
+    const text = String(message || '').trim();
+    if (!text || typeof notify !== 'function') return;
+    notify(text, { type });
+  }
 
   function getProviderStage() {
     return state.dashboard?.providerStage === 'result' ? 'result' : 'metaprompt';
@@ -590,7 +597,7 @@ function createProviderController({
       button.onclick = () => deleteProvider(button.dataset.deleteProvider);
     });
     list.querySelectorAll('[data-add-assigned-key]').forEach((button) => {
-      button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => alert(error.message));
+      button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => emitNotice(error.message, 'error'));
     });
   }
 
@@ -620,6 +627,7 @@ function createProviderController({
     await refreshAssignedSystemKeys();
     await syncStageAssignmentsWithProviderList({ persist: true });
     renderProviders();
+    emitNotice('Zugewiesener System-Key wurde als Provider hinzugefügt.', 'ok');
   }
 
   async function unlockVault() {

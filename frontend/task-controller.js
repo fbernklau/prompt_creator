@@ -7,6 +7,7 @@ function createTaskController({
   getPresetOptions,
   showScreen,
   saveHistory,
+  notify = null,
 }) {
   const DEFAULT_REQUIRED_BASE_FIELDS = ['fach', 'schulstufe', 'ziel'];
   const BASE_FIELD_LABELS = {
@@ -77,6 +78,12 @@ function createTaskController({
 
   function shouldIgnoreSnapshotField(id = '') {
     return SNAPSHOT_TRANSIENT_IDS.has(String(id || '').trim());
+  }
+
+  function emitNotice(message = '', type = 'info') {
+    const text = String(message || '').trim();
+    if (!text || typeof notify !== 'function') return;
+    notify(text, { type });
   }
 
   function getFlowMode() {
@@ -410,6 +417,79 @@ function createTaskController({
     node.dataset.type = type;
   }
 
+  function escapeHtml(value = '') {
+    return String(value || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function clearFieldValidationMarks() {
+    document.querySelectorAll('#prompt-form .field-invalid').forEach((node) => {
+      node.classList.remove('field-invalid');
+    });
+  }
+
+  function markFieldInvalidByNode(node) {
+    if (!node) return;
+    node.classList.add('field-invalid');
+    const wrap = node.closest('label');
+    if (wrap) wrap.classList.add('field-invalid');
+  }
+
+  function clearGenerationValidation() {
+    const panel = el('generation-validation');
+    if (!panel) return;
+    panel.classList.add('is-hidden');
+    panel.innerHTML = '';
+    clearFieldValidationMarks();
+  }
+
+  function setGenerationValidation(items = [], title = 'Bitte Eingaben prüfen') {
+    const panel = el('generation-validation');
+    if (!panel) return;
+    const messages = Array.isArray(items)
+      ? items.map((entry) => String(entry || '').trim()).filter(Boolean)
+      : [];
+    if (!messages.length) {
+      clearGenerationValidation();
+      return;
+    }
+    panel.innerHTML = `
+      <strong>${escapeHtml(title)}</strong>
+      <ul>${messages.map((entry) => `<li>${escapeHtml(entry)}</li>`).join('')}</ul>
+    `;
+    panel.classList.remove('is-hidden');
+  }
+
+  function resolveRequiredFieldLabel(template, fieldId) {
+    const normalized = String(fieldId || '').trim();
+    if (!normalized) return 'Pflichtfeld';
+    if (BASE_FIELD_LABELS[normalized]) return BASE_FIELD_LABELS[normalized];
+    const dynamicField = (Array.isArray(template?.dynamicFields) ? template.dynamicFields : [])
+      .find((entry) => String(entry?.id || '').trim() === normalized);
+    if (dynamicField?.label) return dynamicField.label;
+    return normalized;
+  }
+
+  function resolveRequiredFieldNode(template, fieldId) {
+    const normalized = String(fieldId || '').trim();
+    if (!normalized) return null;
+    if (BASE_FIELD_LABELS[normalized]) return el(normalized);
+
+    const dynamicField = (Array.isArray(template?.dynamicFields) ? template.dynamicFields : [])
+      .find((entry) => String(entry?.id || '').trim() === normalized);
+    const dynamicNode = el(`dyn-${normalized}`);
+    if (dynamicField && dynamicNode && allowsCustomDynamicValue(dynamicField)) {
+      if (String(dynamicNode.value || '').trim() === '__custom__') {
+        return el(`dyn-${normalized}-custom`) || dynamicNode;
+      }
+    }
+    return dynamicNode || el(`dyn-extra-${normalized}`) || null;
+  }
+
   function setResultReadyBanner(text = '', stateType = 'ok') {
     const node = el('result-ready-banner');
     if (!node) return;
@@ -515,8 +595,15 @@ function createTaskController({
 
   function setGenerating(isGenerating, text = '') {
     const button = el('generate-submit');
-    button.disabled = isGenerating;
-    button.textContent = isGenerating ? 'Generiere...' : (getRunGenerationMode() === 'result' ? 'Direktes Ergebnis generieren' : 'Prompt generieren');
+    if (button) {
+      button.disabled = !!isGenerating;
+      button.classList.toggle('is-loading', !!isGenerating);
+      button.textContent = isGenerating
+        ? 'Generiere...'
+        : (getRunGenerationMode() === 'result' ? 'Direktes Ergebnis generieren' : 'Prompt generieren');
+    }
+    const runModeToggle = el('run-mode-result-toggle');
+    if (runModeToggle) runModeToggle.disabled = !!isGenerating;
     setGenerationStatus(text, isGenerating ? 'info' : 'ok');
   }
 
@@ -681,7 +768,7 @@ function createTaskController({
         event.stopPropagation();
         event.preventDefault();
         const favorite = button.dataset.favState === '1';
-        toggleTemplateFavorite(button.dataset.favTemplate, !favorite).catch((error) => alert(error.message));
+        toggleTemplateFavorite(button.dataset.favTemplate, !favorite).catch((error) => emitNotice(error.message, 'error'));
       });
     });
   }
@@ -768,13 +855,13 @@ function createTaskController({
       button.addEventListener('click', () => {
         const tag = button.dataset.tagChip || '';
         if (!tag) {
-          refreshTemplateDiscovery({ tags: [] }).catch((error) => alert(error.message));
+          refreshTemplateDiscovery({ tags: [] }).catch((error) => emitNotice(error.message, 'error'));
           return;
         }
         const nextTags = new Set(selectedTags);
         if (nextTags.has(tag)) nextTags.delete(tag);
         else nextTags.add(tag);
-        refreshTemplateDiscovery({ tags: [...nextTags] }).catch((error) => alert(error.message));
+        refreshTemplateDiscovery({ tags: [...nextTags] }).catch((error) => emitNotice(error.message, 'error'));
       });
     });
   }
@@ -863,7 +950,7 @@ function createTaskController({
   function openTemplateFromDiscovery(templateUid) {
     const entry = findTemplateInDiscovery(templateUid);
     if (!entry) {
-      alert('Template nicht gefunden. Bitte Discovery aktualisieren.');
+      emitNotice('Template nicht gefunden. Bitte Discovery aktualisieren.', 'error');
       return;
     }
     openForm(entry.categoryName, entry.subcategoryName);
@@ -928,7 +1015,7 @@ function createTaskController({
         event.stopPropagation();
         event.preventDefault();
         const favorite = button.dataset.favState === '1';
-        toggleTemplateFavorite(templateUid, !favorite).catch((error) => alert(error.message));
+        toggleTemplateFavorite(templateUid, !favorite).catch((error) => emitNotice(error.message, 'error'));
       });
     });
   }
@@ -1389,7 +1476,13 @@ function createTaskController({
   function validateTemplateRequiredValues(template, values) {
     const missing = getRequiredTemplateFields(template).filter((fieldName) => !hasNonEmptyValue(values[fieldName]));
     if (missing.length) {
-      alert(`Bitte Pflichtfelder ausfuellen: ${missing.join(', ')}`);
+      missing.forEach((fieldName) => {
+        markFieldInvalidByNode(resolveRequiredFieldNode(template, fieldName));
+      });
+      const missingLabels = missing.map((fieldName) => `${resolveRequiredFieldLabel(template, fieldName)} ist erforderlich.`);
+      setGenerationValidation(missingLabels, 'Pflichtfelder fehlen');
+      setGenerationStatus('Bitte Pflichtfelder ergänzen.', 'error');
+      emitNotice('Bitte Pflichtfelder ergänzen.', 'error');
       return false;
     }
     return true;
@@ -1425,8 +1518,13 @@ function createTaskController({
   }
 
   function collectGenerationContext({ validate = true } = {}) {
+    if (validate) clearGenerationValidation();
     if (!state.selectedCategory || !state.selectedSubcategory) {
-      if (validate) alert('Bitte zuerst Kategorie und Template auswählen.');
+      if (validate) {
+        setGenerationValidation(['Bitte zuerst Handlungsfeld und Template auswählen.'], 'Generierung nicht möglich');
+        setGenerationStatus('Bitte zuerst Kategorie und Template auswählen.', 'error');
+        emitNotice('Bitte zuerst Kategorie und Template auswählen.', 'error');
+      }
       return null;
     }
     const dynamicValues = collectDynamicValues();
@@ -1455,7 +1553,13 @@ function createTaskController({
     const usePreviewMetaprompt = readChecked('use-preview-metaprompt');
     const metapromptOverride = usePreviewMetaprompt ? readRawValue('metaprompt-preview').trim() : '';
     if (validate && usePreviewMetaprompt && !metapromptOverride) {
-      alert('Bitte zuerst die Metaprompt-Vorschau erstellen oder die Direktverwendung deaktivieren.');
+      markFieldInvalidByNode(el('metaprompt-preview'));
+      setGenerationValidation(
+        ['Metaprompt-Vorschau ist leer. Bitte zuerst aktualisieren oder die Direktverwendung deaktivieren.'],
+        'Generierung nicht möglich'
+      );
+      setGenerationStatus('Metaprompt-Vorschau fehlt.', 'error');
+      emitNotice('Metaprompt-Vorschau fehlt.', 'error');
       return null;
     }
     return {
@@ -1588,6 +1692,7 @@ function createTaskController({
     el('metaprompt-preview-status').textContent = '';
     el('use-preview-metaprompt').checked = false;
     el('generation-status').textContent = '';
+    clearGenerationValidation();
     el('result-compare-panel').classList.add('is-hidden');
     el('result-variant-status').textContent = '';
     el('btn-open-templates-from-result').classList.add('is-hidden');
@@ -1632,6 +1737,7 @@ function createTaskController({
     state.compactFlow.editingCategory = false;
     state.compactFlow.editingTemplate = false;
 
+    clearGenerationValidation();
     renderCompactFlowPanel();
     updateFormHeaderForSelection();
     renderDynamicFields();
@@ -1672,7 +1778,7 @@ function createTaskController({
   function openLibraryEntry(entry = {}) {
     const resolvedSelection = resolveTemplateSelectionFromEntry(entry);
     if (!resolvedSelection) {
-      alert('Der gespeicherte Bibliothekseintrag kann nicht mehr auf ein vorhandenes Template gemappt werden.');
+      emitNotice('Der gespeicherte Bibliothekseintrag kann nicht mehr auf ein vorhandenes Template gemappt werden.', 'error');
       return false;
     }
     const { categoryName, subcategoryName } = resolvedSelection;
@@ -1696,7 +1802,7 @@ function createTaskController({
   function openHistoryEntry(entry = {}) {
     const resolvedSelection = resolveTemplateSelectionFromEntry(entry);
     if (!resolvedSelection) {
-      alert('Der Verlaufseintrag enthält kein gültiges Template-Mapping.');
+      emitNotice('Der Verlaufseintrag enthält kein gültiges Template-Mapping.', 'error');
       return false;
     }
     const { categoryName, subcategoryName } = resolvedSelection;
@@ -1986,7 +2092,12 @@ function createTaskController({
     const activeProvider = state.providers.find((provider) => provider.id === metapromptProviderId)
       || state.providers.find((provider) => provider.id === state.activeId);
     if (!activeProvider) {
-      alert('Bitte zuerst einen aktiven Provider auswählen.');
+      setGenerationValidation(
+        ['Kein aktiver Provider ausgewählt. Bitte im Dashboard unter API-Provider einen Key aktivieren.'],
+        'Generierung nicht möglich'
+      );
+      setGenerationStatus('Bitte zuerst einen aktiven Provider auswählen.', 'error');
+      emitNotice('Bitte zuerst einen aktiven Provider auswählen.', 'error');
       return;
     }
     state.activeId = activeProvider.id;
@@ -2003,6 +2114,7 @@ function createTaskController({
     let streamHandoffDraft = '';
     let streamResultDraft = '';
 
+    clearGenerationValidation();
     setGenerating(true, `Schritt 1/${runMode === 'result' ? '5' : '4'}: Metaprompt wird vorbereitet...`);
     showScreen('result');
     resetResultProgress(runMode);
@@ -2228,6 +2340,24 @@ function createTaskController({
   }
 
   function bindEvents() {
+    const promptForm = el('prompt-form');
+    if (promptForm) {
+      promptForm.addEventListener('input', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        target.classList.remove('field-invalid');
+        const wrap = target.closest('label');
+        if (wrap) wrap.classList.remove('field-invalid');
+      });
+      promptForm.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        target.classList.remove('field-invalid');
+        const wrap = target.closest('label');
+        if (wrap) wrap.classList.remove('field-invalid');
+      });
+    }
+
     const flowCategorySelect = el('flow-category-select');
     const flowTemplateSelect = el('flow-template-select');
     const flowEditCategory = el('flow-edit-category');
@@ -2270,7 +2400,7 @@ function createTaskController({
 
     el('btn-preview-metaprompt').addEventListener('click', () => previewMetaprompt().catch((error) => {
       setPreviewStatus(`Fehler: ${error.message}`, 'error');
-      alert(error.message);
+      emitNotice(error.message, 'error');
     }));
     el('copy-metaprompt-preview').addEventListener('click', copyMetapromptPreview);
 
@@ -2283,11 +2413,11 @@ function createTaskController({
 
     el('home-template-search-btn').addEventListener('click', () => {
       const search = el('home-template-search').value.trim();
-      refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
+      refreshTemplateDiscovery({ search }).catch((error) => emitNotice(error.message, 'error'));
     });
     el('home-template-reset-btn').addEventListener('click', () => {
       el('home-template-search').value = '';
-      refreshTemplateDiscovery({ search: '', tags: [] }).catch((error) => alert(error.message));
+      refreshTemplateDiscovery({ search: '', tags: [] }).catch((error) => emitNotice(error.message, 'error'));
     });
     el('home-template-search').addEventListener('focus', () => {
       state.templateDiscovery.tagPickerOpen = true;
@@ -2303,7 +2433,7 @@ function createTaskController({
       if (event.key !== 'Enter') return;
       event.preventDefault();
       const search = el('home-template-search').value.trim();
-      refreshTemplateDiscovery({ search }).catch((error) => alert(error.message));
+      refreshTemplateDiscovery({ search }).catch((error) => emitNotice(error.message, 'error'));
     });
     if (el('subcat-view-grid')) {
       el('subcat-view-grid').addEventListener('click', () => setSubcategoryViewMode('grid'));

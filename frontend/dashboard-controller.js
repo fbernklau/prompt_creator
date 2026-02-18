@@ -2,6 +2,7 @@ function createDashboardController({
   state,
   el,
   api,
+  notify = null,
   showScreen,
 }) {
   let openHistoryHandler = null;
@@ -17,6 +18,12 @@ function createDashboardController({
     activeTab: 'providers',
     providerStage: 'metaprompt',
   };
+
+  function emitNotice(message = '', type = 'info') {
+    const text = String(message || '').trim();
+    if (!text || typeof notify !== 'function') return;
+    notify(text, { type });
+  }
 
   function renderSummary() {
     const summary = state.usage.summary || {};
@@ -101,7 +108,7 @@ function createDashboardController({
           `;
         })
         .join('')
-      : '<li><span>Noch keine Verlaufseinträge.</span></li>';
+      : '<li><span>Noch keine Verlaufseinträge. Generiere zuerst einen Prompt und speichere ihn im Verlauf.</span></li>';
   }
 
   async function refreshHistory() {
@@ -289,7 +296,7 @@ function createDashboardController({
       button.addEventListener('click', () => {
         const budgetId = Number(button.dataset.deleteOwnBudget);
         if (!Number.isInteger(budgetId)) return;
-        deleteOwnBudgetPolicy(budgetId).catch((error) => alert(error.message));
+        deleteOwnBudgetPolicy(budgetId).catch((error) => emitNotice(error.message, 'error'));
       });
     });
     panel.querySelectorAll('[data-save-usage-key-budget]').forEach((button) => {
@@ -297,7 +304,7 @@ function createDashboardController({
         const keyFingerprint = String(button.dataset.usageKeyFingerprint || '').trim();
         const rowId = String(button.dataset.saveUsageKeyBudget || '').trim();
         if (!keyFingerprint || !rowId) return;
-        saveOwnKeyBudgetPolicy(rowId, keyFingerprint).catch((error) => alert(error.message));
+        saveOwnKeyBudgetPolicy(rowId, keyFingerprint).catch((error) => emitNotice(error.message, 'error'));
       });
     });
   }
@@ -337,7 +344,7 @@ function createDashboardController({
   async function saveOwnGlobalBudgetPolicy() {
     const limitUsd = Number(String(el('usage-budget-global-limit').value || '').trim().replace(',', '.'));
     if (!Number.isFinite(limitUsd) || limitUsd < 0) {
-      alert('Bitte ein gültiges Limit in USD angeben.');
+      emitNotice('Bitte ein gültiges Limit in USD angeben.', 'error');
       return;
     }
     const payload = {
@@ -367,7 +374,7 @@ function createDashboardController({
 
     const limitUsd = Number(String(limitNode.value || '').trim().replace(',', '.'));
     if (!Number.isFinite(limitUsd) || limitUsd < 0) {
-      alert('Bitte ein gültiges Limit in USD angeben.');
+      emitNotice('Bitte ein gültiges Limit in USD angeben.', 'error');
       return;
     }
     await api('/api/usage/budgets', {
@@ -460,7 +467,7 @@ function createDashboardController({
     const entry = (Array.isArray(state.history) ? state.history : []).find((item) => String(item.id || '') === entryId);
     if (!entry) return;
     if (typeof openHistoryHandler !== 'function') {
-      alert('Wiederverwenden ist aktuell nicht verfügbar.');
+      emitNotice('Wiederverwenden ist aktuell nicht verfügbar.', 'error');
       return;
     }
     const opened = openHistoryHandler(entry);
@@ -470,12 +477,12 @@ function createDashboardController({
   }
 
   function bindEvents() {
-    el('btn-dashboard').addEventListener('click', () => openDashboard('usage').catch((error) => alert(error.message)));
+    el('btn-dashboard').addEventListener('click', () => openDashboard('usage').catch((error) => emitNotice(error.message, 'error')));
     el('btn-back-home-from-dashboard').addEventListener('click', () => showScreen('home'));
     document.querySelectorAll('[data-dashboard-tab]').forEach((button) => {
       button.addEventListener('click', () => {
         setDashboardTab(button.dataset.dashboardTab, { refreshUsage: button.dataset.dashboardTab === 'usage' })
-          .catch((error) => alert(error.message));
+          .catch((error) => emitNotice(error.message, 'error'));
       });
     });
     document.querySelectorAll('[data-provider-stage]').forEach((button) => {
@@ -485,10 +492,10 @@ function createDashboardController({
         emitProviderStageChange();
       });
     });
-    el('usage-refresh').addEventListener('click', () => refreshSummary().catch((error) => alert(error.message)));
-    el('usage-window-days').addEventListener('change', () => refreshSummary().catch((error) => alert(error.message)));
+    el('usage-refresh').addEventListener('click', () => refreshSummary().catch((error) => emitNotice(error.message, 'error')));
+    el('usage-window-days').addEventListener('change', () => refreshSummary().catch((error) => emitNotice(error.message, 'error')));
     if (el('usage-budget-global-save')) {
-      el('usage-budget-global-save').addEventListener('click', () => saveOwnGlobalBudgetPolicy().catch((error) => alert(error.message)));
+      el('usage-budget-global-save').addEventListener('click', () => saveOwnGlobalBudgetPolicy().catch((error) => emitNotice(error.message, 'error')));
     }
     if (el('history-list')) {
       el('history-list').addEventListener('click', handleHistoryReuse);

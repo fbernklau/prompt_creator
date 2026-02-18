@@ -2,6 +2,7 @@ function createLibraryController({
   state,
   el,
   api,
+  notify = null,
   getCategoryConfig,
   showScreen,
   onOpenTemplateFromLibrary = null,
@@ -20,6 +21,12 @@ function createLibraryController({
     status: '',
     view: 'page',
   };
+
+  function emitNotice(message = '', type = 'info') {
+    const text = String(message || '').trim();
+    if (!text || typeof notify !== 'function') return;
+    notify(text, { type });
+  }
 
   function escapeHtml(value = '') {
     return String(value || '')
@@ -121,22 +128,22 @@ function createLibraryController({
     categorySelect.addEventListener('change', () => {
       renderSubcategoryFilterOptions();
       renderTemplateFilterOptions();
-      refreshLibrary().catch((error) => alert(error.message));
+      refreshLibrary().catch((error) => emitNotice(error.message, 'error'));
     });
     el('lib-filter-subcategory').addEventListener('change', () => {
       renderTemplateFilterOptions();
-      refreshLibrary().catch((error) => alert(error.message));
+      refreshLibrary().catch((error) => emitNotice(error.message, 'error'));
     });
     el('lib-filter-template').addEventListener('change', () => {
-      refreshLibrary().catch((error) => alert(error.message));
+      refreshLibrary().catch((error) => emitNotice(error.message, 'error'));
     });
     el('lib-filter-mode').addEventListener('change', () => {
-      refreshLibrary().catch((error) => alert(error.message));
+      refreshLibrary().catch((error) => emitNotice(error.message, 'error'));
     });
     el('lib-filter-search').addEventListener('input', () => {
       if (searchDebounceTimer) window.clearTimeout(searchDebounceTimer);
       searchDebounceTimer = window.setTimeout(() => {
-        refreshLibrary().catch((error) => alert(error.message));
+        refreshLibrary().catch((error) => emitNotice(error.message, 'error'));
       }, 220);
     });
   }
@@ -308,7 +315,7 @@ function createLibraryController({
     const modalClose = el('library-entry-modal-close');
 
     const clickHandler = (event) => {
-      handleDetailAction(event).catch((error) => alert(error.message));
+      handleDetailAction(event).catch((error) => emitNotice(error.message, 'error'));
     };
 
     if (pageHost) pageHost.addEventListener('click', clickHandler);
@@ -323,7 +330,7 @@ function createLibraryController({
   async function openLibraryTemplate(libraryId) {
     const entry = await api(`/api/library/${encodeURIComponent(libraryId)}/open`);
     if (typeof openLibraryHandler !== 'function') {
-      alert('Wiederverwenden ist aktuell nicht verfügbar.');
+      emitNotice('Wiederverwenden ist aktuell nicht verfügbar.', 'error');
       return;
     }
     const opened = openLibraryHandler(entry);
@@ -433,7 +440,19 @@ function createLibraryController({
     const list = el('library-list');
     const items = getActiveItems();
     if (!items.length) {
-      list.innerHTML = '<div class="panel tw-library-empty"><span class="hint">Keine Einträge gefunden.</span></div>';
+      list.innerHTML = `
+        <div class="empty-state-card">
+          <strong>Noch keine Einträge gefunden.</strong>
+          <small class="hint">Speichere einen generierten Prompt in der Bibliothek, um ihn hier wiederzuverwenden.</small>
+          <span class="inline-actions">
+            <button type="button" class="secondary small" data-library-empty-action="new-task">Neue Aufgabe starten</button>
+          </span>
+        </div>
+      `;
+      const openButton = list.querySelector('[data-library-empty-action="new-task"]');
+      if (openButton && typeof showScreen === 'function') {
+        openButton.addEventListener('click', () => showScreen('home'));
+      }
       return;
     }
 
@@ -564,15 +583,22 @@ function createLibraryController({
       hasResult: Boolean(state.generatedResult),
     };
 
-    await api('/api/library', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    el('save-library-status').textContent = 'Gespeichert.';
-    setTimeout(() => {
-      el('save-library-status').textContent = '';
-    }, 1400);
+    const statusNode = el('save-library-status');
+    if (statusNode) statusNode.textContent = 'Speichere...';
+    try {
+      await api('/api/library', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (statusNode) statusNode.textContent = 'Gespeichert.';
+      emitNotice('Bibliothekseintrag gespeichert.', 'ok');
+      setTimeout(() => {
+        if (statusNode?.textContent === 'Gespeichert.') statusNode.textContent = '';
+      }, 1600);
+    } catch (error) {
+      if (statusNode) statusNode.textContent = `Fehler: ${error.message}`;
+      throw error;
+    }
   }
 
   function shouldTreatAsCardOpen(event) {

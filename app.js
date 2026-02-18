@@ -35,6 +35,42 @@ const state = {
   editProviderId: null,
 };
 
+function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
+  const text = String(message || '').trim();
+  if (!text) return;
+  const stack = el('app-toast-stack');
+  if (!stack) {
+    if (type === 'error') console.error(text);
+    else console.log(text);
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.className = 'app-toast';
+  toast.dataset.type = type;
+
+  const messageNode = document.createElement('span');
+  messageNode.textContent = text;
+  toast.appendChild(messageNode);
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'app-toast-close';
+  closeButton.setAttribute('aria-label', 'Toast schließen');
+  closeButton.textContent = '×';
+  closeButton.addEventListener('click', () => toast.remove());
+  toast.appendChild(closeButton);
+
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, Math.max(1200, Number(timeoutMs) || 3200));
+}
+
+function notifyError(error, prefix = '') {
+  const message = String(error?.message || error || 'Unbekannter Fehler').trim();
+  notify(prefix ? `${prefix}: ${message}` : message, { type: 'error' });
+}
+
 function getCategoryConfig() {
   return categoryConfig;
 }
@@ -57,6 +93,7 @@ const providerController = createProviderController({
   el,
   api,
   uid,
+  notify,
   setVaultStatus: uiShell.setVaultStatus,
   persistProviderStageSettings: async (partial) => {
     await queueSettingsSave(partial, { refreshCatalog: false, showStatus: false });
@@ -86,6 +123,7 @@ const dashboardController = createDashboardController({
   state,
   el,
   api,
+  notify,
   showScreen: uiShell.showScreen,
 });
 const taskController = createTaskController({
@@ -97,12 +135,14 @@ const taskController = createTaskController({
   getPresetOptions,
   showScreen: uiShell.showScreen,
   saveHistory: historyController.saveHistory,
+  notify,
 });
 dashboardController.setOpenHistoryHandler((entry) => taskController.openHistoryEntry(entry));
 const libraryController = createLibraryController({
   state,
   el,
   api,
+  notify,
   getCategoryConfig,
   showScreen: uiShell.showScreen,
   onOpenTemplateFromLibrary: (entry) => taskController.openLibraryEntry(entry),
@@ -176,7 +216,7 @@ function queueSettingsSave(partial, { refreshCatalog = false, showStatus = true 
       }
     })
     .catch((error) => {
-      alert(error.message);
+      notifyError(error);
     });
   return settingsSaveChain;
 }
@@ -211,7 +251,7 @@ function bindEvents() {
     await providerController.refreshModelCatalogAndSync().catch(() => {});
     await dashboardController.openDashboard('providers');
   });
-  el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => alert(error.message)));
+  el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
   if (el('btn-logout')) {
     el('btn-logout').addEventListener('click', () => {
       if (!state.logoutUrl) return;
@@ -240,7 +280,7 @@ function bindEvents() {
       await dashboardController.openDashboard('providers');
     });
   }
-  if (el('mb-options')) el('mb-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => alert(error.message)));
+  if (el('mb-options')) el('mb-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
 
   el('btn-new-task').addEventListener('click', taskController.resetTaskState);
   el('btn-restart-from-result').addEventListener('click', taskController.resetTaskState);
@@ -264,15 +304,15 @@ function bindEvents() {
 
   el('unlock-vault').addEventListener('click', providerController.unlockVault);
   el('lock-vault').addEventListener('click', providerController.lockVault);
-  el('provider-form').addEventListener('submit', (event) => providerController.handleProviderSubmit(event).catch((error) => alert(error.message)));
-  el('provider-test').addEventListener('click', () => providerController.testProviderConnection().catch((error) => alert(error.message)));
+  el('provider-form').addEventListener('submit', (event) => providerController.handleProviderSubmit(event).catch((error) => notifyError(error)));
+  el('provider-test').addEventListener('click', () => providerController.testProviderConnection().catch((error) => notifyError(error)));
   el('provider-reset').addEventListener('click', providerController.clearProviderForm);
 
-  el('prompt-form').addEventListener('submit', (event) => taskController.generatePrompt(event).catch((error) => alert(error.message)));
+  el('prompt-form').addEventListener('submit', (event) => taskController.generatePrompt(event).catch((error) => notifyError(error)));
 
   el('export-txt').addEventListener('click', () => taskController.exportPrompt('txt'));
   el('export-md').addEventListener('click', () => taskController.exportPrompt('md'));
-  el('save-library').addEventListener('click', () => libraryController.saveCurrentPromptToLibrary().catch((error) => alert(error.message)));
+  el('save-library').addEventListener('click', () => libraryController.saveCurrentPromptToLibrary().catch((error) => notifyError(error)));
   el('btn-open-templates-from-result').addEventListener('click', () => {
     el('btn-templates').click();
   });
@@ -289,8 +329,8 @@ function bindEvents() {
     el('lib-tab-own').classList.remove('is-active');
     await libraryController.refreshLibrary();
   });
-  el('lib-refresh').addEventListener('click', () => libraryController.refreshLibrary().catch((error) => alert(error.message)));
-  el('library-list').addEventListener('click', (event) => libraryController.handleLibraryAction(event).catch((error) => alert(error.message)));
+  el('lib-refresh').addEventListener('click', () => libraryController.refreshLibrary().catch((error) => notifyError(error)));
+  el('library-list').addEventListener('click', (event) => libraryController.handleLibraryAction(event).catch((error) => notifyError(error)));
 
   const collectFullSettingsPayload = () => {
     const theme = document.querySelector('input[name="theme"]:checked')?.value || 'system';
@@ -366,7 +406,7 @@ function bindEvents() {
   });
 
   el('wizard-open-provider').addEventListener('click', () => {
-    dashboardController.openDashboard('providers').catch((error) => alert(error.message));
+    dashboardController.openDashboard('providers').catch((error) => notifyError(error));
     el('wizard-status').textContent = 'Dashboard geöffnet. Bitte Modell, Key und Base URL setzen.';
   });
   el('wizard-test-provider').addEventListener('click', async () => {
@@ -419,7 +459,7 @@ async function init() {
       showSetupWizard();
     }
   } catch (error) {
-    alert(`Fehler beim Laden der Anwendungsdaten: ${error.message}`);
+    notifyError(error, 'Fehler beim Laden der Anwendungsdaten');
   }
 }
 

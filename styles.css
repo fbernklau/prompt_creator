@@ -194,6 +194,25 @@ button.cta {
   box-shadow: 0 8px 18px rgba(67, 80, 212, 0.24);
 }
 
+button.cta.is-loading {
+  position: relative;
+  padding-left: 44px;
+}
+
+button.cta.is-loading::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: spin 0.9s linear infinite;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -351,6 +370,105 @@ button.cta {
   margin: 0 auto;
   padding: 24px var(--shell-pad) 64px;
   min-width: 0;
+}
+
+.form-validation {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.form-validation strong {
+  font-size: 13px;
+}
+
+.form-validation ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+
+#prompt-form .field-invalid {
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+#prompt-form label.field-invalid {
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+}
+
+.app-toast-stack {
+  position: fixed;
+  top: 76px;
+  right: 14px;
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  padding: 10px 12px;
+  font-size: 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.app-toast[data-type='ok'] {
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.app-toast[data-type='error'] {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+}
+
+.app-toast[data-type='info'] {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  background: color-mix(in srgb, var(--brand) 7%, var(--surface));
+}
+
+.app-toast-close {
+  margin-left: auto;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.empty-state-card {
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .screen {
@@ -2102,6 +2220,12 @@ button.is-active,
 }
 
 @media (max-width: 759px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   .topbar-inner {
     width: 100%;
     flex-wrap: nowrap;
@@ -2129,6 +2253,9 @@ button.is-active,
   }
 
   .main-shell {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
     padding-bottom: calc(78px + env(safe-area-inset-bottom));
   }
 
@@ -2169,6 +2296,33 @@ button.is-active,
   #result,
   #result-direct-output {
     min-height: 320px;
+  }
+
+  .screen,
+  .panel,
+  .dashboard-tab-panel,
+  .library-item,
+  .provider-stage-row,
+  .provider-stage-group,
+  .history-list li {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .provider-stage-row-meta small,
+  .history-list li small,
+  .library-meta {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .app-toast-stack {
+    top: auto;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
+    width: auto;
   }
 }
 
