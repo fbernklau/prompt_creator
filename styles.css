@@ -465,6 +465,18 @@ button.cta.is-loading::before {
   gap: 8px;
 }
 
+.tw-home-search-empty-state {
+  margin-top: 2px;
+}
+
+.admin-empty-state-card {
+  margin: 8px 0;
+}
+
+.admin-empty-inline {
+  margin: 0;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -1923,6 +1935,13 @@ button.is-active,
 .provider-stage-note {
   color: var(--text-soft);
   font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+.provider-stage-note small {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .provider-stage-row-addable {
@@ -2039,6 +2058,19 @@ button.is-active,
   background: var(--surface);
   box-shadow: var(--shadow-mid);
   padding: 16px;
+}
+
+.intro-tour-card {
+  width: min(620px, calc(100vw - 26px));
+}
+
+.tour-highlight {
+  position: relative;
+  z-index: 12;
+  outline: 2px solid color-mix(in srgb, var(--brand) 70%, transparent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--brand) 20%, transparent);
+  border-radius: 12px;
 }
 
 .wizard-list {

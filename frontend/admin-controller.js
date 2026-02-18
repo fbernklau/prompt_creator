@@ -446,6 +446,9 @@ function createAdminController({
     const searchQuery = String(adminState.systemKeySearchQuery || '').trim();
     const statusFilter = String(adminState.systemKeyStatusFilter || 'all').trim();
     const levelFilter = String(adminState.systemKeyLevelFilter || 'all').trim();
+    const hasKeyFilters = Boolean(searchQuery)
+      || statusFilter !== 'all'
+      || levelFilter !== 'all';
 
     const globalUsageUsd = Number(adminState.systemKeyGlobalBudgetUsage?.spendUsd || 0);
     const globalLimitUsd = adminState.systemKeyGlobalBudgetLimitUsd;
@@ -749,7 +752,15 @@ function createAdminController({
                             </div>
                           `;
                         }).join('')
-                        : '<p class="hint">Keine Zuweisungen vorhanden.</p>'
+                        : `
+                          <div class="empty-state-card admin-empty-state-card">
+                            <strong>Keine Zuweisungen vorhanden.</strong>
+                            <small class="hint">Füge eine User-, Rollen- oder Gruppenzuweisung hinzu, um den Key freizugeben.</small>
+                            <span class="inline-actions">
+                              <button type="button" class="secondary small" data-focus-assignment-add="${escapeHtml(keyId)}">Erste Zuweisung hinzufügen</button>
+                            </span>
+                          </div>
+                        `
                       }
 
                       <div class="admin-add-row admin-level-2">
@@ -770,7 +781,15 @@ function createAdminController({
                 </div>
               `;
             }).join('')
-            : '<p class="hint admin-empty-state">Keine Treffer für die aktuellen Filter.</p>'
+            : `
+              <div class="empty-state-card admin-empty-state-card">
+                <strong>${hasKeyFilters ? 'Keine Treffer für die aktuellen Filter.' : 'Noch keine System-Keys vorhanden.'}</strong>
+                <small class="hint">${hasKeyFilters ? 'Setze die Filter zurück oder lege einen neuen Key an.' : 'Lege den ersten systemweiten Key an, um Zuweisungen und Budgets zu steuern.'}</small>
+                <span class="inline-actions">
+                  <button type="button" class="secondary small" data-admin-empty-key-action="${hasKeyFilters ? 'reset' : 'create'}">${hasKeyFilters ? 'Filter zurücksetzen' : 'Ersten Key anlegen'}</button>
+                </span>
+              </div>
+            `
           }
         </div>
       </div>
@@ -821,6 +840,54 @@ function createAdminController({
         else expanded.add(assignmentRef);
         adminState.expandedAssignmentIds = Array.from(expanded);
         renderSystemKeyList();
+      });
+    });
+
+    container.querySelectorAll('[data-focus-assignment-add]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const keyId = String(button.dataset.focusAssignmentAdd || '').trim();
+        if (!keyId) return;
+        const expanded = new Set(adminState.expandedSystemKeyIds || []);
+        expanded.add(keyId);
+        adminState.expandedSystemKeyIds = Array.from(expanded);
+        renderSystemKeyList();
+        window.setTimeout(() => {
+          const target = container.querySelector(`[data-system-key-assign-type="${keyId}"]`);
+          if (!target) return;
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          target.focus();
+        }, 0);
+      });
+    });
+
+    container.querySelectorAll('[data-admin-empty-key-action]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const action = String(button.dataset.adminEmptyKeyAction || '').trim();
+        if (action === 'reset') {
+          adminState.systemKeySearchQuery = '';
+          adminState.systemKeyStatusFilter = 'all';
+          adminState.systemKeyLevelFilter = 'all';
+          renderSystemKeyList();
+          return;
+        }
+        if (action !== 'create') return;
+        adminState.showSystemKeyCreateForm = true;
+        clearSystemKeyForm();
+        const systemKeyCreateForm = el('admin-system-key-create-form');
+        if (systemKeyCreateForm) systemKeyCreateForm.classList.remove('is-hidden');
+        const systemKeyCreateActions = el('admin-system-key-create-actions');
+        if (systemKeyCreateActions) systemKeyCreateActions.classList.remove('is-hidden');
+        const systemKeyCreateToggle = el('admin-system-key-create-toggle');
+        if (systemKeyCreateToggle) {
+          const iconNode = systemKeyCreateToggle.querySelector('.material-icons-round');
+          const labelNode = systemKeyCreateToggle.querySelector('.admin-create-label');
+          if (iconNode) iconNode.textContent = 'remove_circle_outline';
+          if (labelNode) labelNode.textContent = 'Create form schließen';
+        }
+        window.setTimeout(() => {
+          const input = el('admin-system-key-id');
+          if (input) input.focus();
+        }, 0);
       });
     });
 
@@ -1117,7 +1184,19 @@ function createAdminController({
                       </td>
                     </tr>
                   `).join('')
-    : '<tr><td colspan="7">Noch keine Modelle für diesen Provider.</td></tr>'}
+    : `
+                <tr>
+                  <td colspan="7">
+                    <div class="empty-state-card admin-empty-state-card admin-empty-inline">
+                      <strong>Noch keine Modelle für diesen Provider.</strong>
+                      <small class="hint">Lege den ersten Modelleintrag an, damit Nutzer Preise direkt sehen können.</small>
+                      <span class="inline-actions">
+                        <button type="button" class="secondary small" data-admin-model-empty-create>Erstes Modell anlegen</button>
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              `}
             </tbody>
           </table>
         </div>
@@ -1133,6 +1212,15 @@ function createAdminController({
         setStatus('Neues Modell erfassen.', { pricing: true });
       };
     }
+
+    container.querySelectorAll('[data-admin-model-empty-create]').forEach((button) => {
+      button.addEventListener('click', () => {
+        adminState.selectedPricingId = null;
+        el('admin-pricing-provider-kind').value = provider;
+        el('admin-pricing-model').focus();
+        setStatus('Neues Modell erfassen.', { pricing: true });
+      });
+    });
 
     container.querySelectorAll('[data-pricing-row-active]').forEach((input) => {
       input.addEventListener('change', () => {

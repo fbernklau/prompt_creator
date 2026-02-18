@@ -79,6 +79,15 @@ function sanitizeSettings(input = {}) {
   if (typeof input.libraryDetailView === 'string' && ['page', 'modal'].includes(input.libraryDetailView)) {
     output.libraryDetailView = input.libraryDetailView;
   }
+  if (typeof input.hasSeenIntroduction === 'boolean') {
+    output.hasSeenIntroduction = input.hasSeenIntroduction;
+  }
+  if (input.introTourVersion !== undefined && input.introTourVersion !== null && input.introTourVersion !== '') {
+    const parsed = Number(input.introTourVersion);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      output.introTourVersion = parsed;
+    }
+  }
   return output;
 }
 

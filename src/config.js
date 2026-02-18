@@ -27,6 +27,8 @@ const config = {
     metapromptProviderId: '',
     resultProviderId: '',
     libraryDetailView: 'page',
+    hasSeenIntroduction: false,
+    introTourVersion: 0,
   },
 };
 

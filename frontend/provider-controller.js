@@ -539,7 +539,7 @@ function createProviderController({
           <ul class="provider-stage-rows">
             ${assignedProviders.length
     ? assignedProviders.map(renderProviderRow).join('')
-    : '<li class="provider-stage-note"><span>Noch keine zugewiesenen Keys als Provider gespeichert.</span></li>'}
+    : '<li class="provider-stage-note"><span>Keine zugewiesenen System-Keys.</span><small>Lege einen persönlichen Provider an oder kontaktiere Admin.</small></li>'}
             ${assignedHint}
           </ul>
         </div>

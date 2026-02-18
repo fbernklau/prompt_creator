@@ -16,6 +16,8 @@ const SETTINGS_DEFAULTS = {
   resultModeEnabled: false,
   metapromptProviderId: '',
   resultProviderId: '',
+  hasSeenIntroduction: false,
+  introTourVersion: 0,
 };
 
 const PROVIDER_BASE_URLS = {

@@ -35,6 +35,13 @@ const state = {
   editProviderId: null,
 };
 
+const INTRO_TOUR_VERSION = 1;
+const introTourState = {
+  active: false,
+  index: 0,
+  highlightedSelector: '',
+};
+
 function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
   const text = String(message || '').trim();
   if (!text) return;
@@ -161,6 +168,171 @@ function shouldShowSetupWizard() {
   const setupDone = localStorage.getItem('eduprompt_setup_done') === '1';
   if (!setupDone) return true;
   return state.providers.length === 0;
+}
+
+function shouldShowIntroductionTour() {
+  if (sessionStorage.getItem('eduprompt_intro_skip_session') === '1') return false;
+  const hasSeen = state.settings?.hasSeenIntroduction === true;
+  const version = Number(state.settings?.introTourVersion || 0);
+  return !hasSeen || version < INTRO_TOUR_VERSION;
+}
+
+function clearIntroductionHighlight() {
+  if (!introTourState.highlightedSelector) return;
+  const node = document.querySelector(introTourState.highlightedSelector);
+  if (node) node.classList.remove('tour-highlight');
+  introTourState.highlightedSelector = '';
+}
+
+function resolveIntroductionAnchor(step) {
+  if (!step) return null;
+  const selectors = Array.isArray(step.anchors)
+    ? step.anchors
+    : [step.anchor].filter(Boolean);
+  for (const selector of selectors) {
+    const node = document.querySelector(selector);
+    if (!node) continue;
+    if (node.closest('.is-hidden')) continue;
+    return { node, selector };
+  }
+  return null;
+}
+
+function getIntroductionSteps() {
+  return [
+    {
+      title: 'Willkommen',
+      text: 'Kurze Tour: so findest du Templates, richtest Provider ein und arbeitest sicher mit der Bibliothek.',
+      anchor: '#screen-home .tw-home-hero',
+      anchorHint: 'Startpunkt: Home-Übersicht.',
+    },
+    {
+      title: 'Template Suche',
+      text: 'Suche nach Template-Namen oder kombiniere Tags. Ergebnisse erscheinen direkt unter dem Suchfeld.',
+      anchor: '#screen-home .tw-home-search-card',
+      anchorHint: 'Hier startest du typischerweise jeden Lauf.',
+    },
+    {
+      title: 'Handlungsfelder',
+      text: 'Wähle zuerst ein Handlungsfeld. Danach öffnest du ein passendes Template und füllst die Pflichtfelder.',
+      anchor: '#category-grid',
+      anchorHint: 'Diese Karten öffnen die Kategorie- und Template-Auswahl.',
+    },
+    {
+      title: 'API-Provider Setup',
+      text: 'Lege einen persönlichen Provider an oder verwende einen zugewiesenen System-Key. Beides wird in deinem Dashboard verwaltet.',
+      anchors: ['#dashboard-provider-host', '#btn-provider'],
+      anchorHint: 'Tipp: Mit „API-Provider öffnen“ springst du direkt zur Konfiguration.',
+      actionLabel: 'API-Provider öffnen',
+      action: async () => {
+        await providerController.refreshModelCatalogAndSync().catch(() => {});
+        await dashboardController.openDashboard('providers');
+      },
+    },
+    {
+      title: 'Optionen',
+      text: 'Hier stellst du Theme, Flow-Modus und Generierungsmodus ein. Für den Start reicht meist Prompt-only.',
+      anchors: ['#dashboard-options-host', '#btn-options'],
+      anchorHint: 'Diese Einstellungen kannst du jederzeit ändern.',
+      actionLabel: 'Optionen öffnen',
+      action: async () => {
+        await dashboardController.openDashboard('options');
+      },
+    },
+    {
+      title: 'Bibliothek & Verlauf',
+      text: 'Speichere gute Prompts in der Bibliothek und öffne sie später wieder mit vorausgefüllten Feldern.',
+      anchor: '#btn-library',
+      anchorHint: 'Nach der ersten Generierung lohnt sich der Blick in Bibliothek und Verlauf.',
+      actionLabel: 'Bibliothek öffnen',
+      action: async () => {
+        uiShell.showScreen('library');
+        await libraryController.refreshLibrary();
+      },
+    },
+  ];
+}
+
+function renderIntroductionStep(index) {
+  const steps = getIntroductionSteps();
+  const total = steps.length;
+  if (!total) return;
+  const boundedIndex = Math.max(0, Math.min(index, total - 1));
+  const step = steps[boundedIndex];
+  introTourState.index = boundedIndex;
+
+  el('intro-tour-progress').textContent = `Schritt ${boundedIndex + 1} von ${total}`;
+  el('intro-tour-title').textContent = step.title;
+  el('intro-tour-text').textContent = step.text;
+  el('intro-tour-anchor').textContent = step.anchorHint || '';
+
+  const prev = el('intro-tour-prev');
+  const next = el('intro-tour-next');
+  const finish = el('intro-tour-finish');
+  const action = el('intro-tour-open');
+  prev.disabled = boundedIndex === 0;
+  next.classList.toggle('is-hidden', boundedIndex >= total - 1);
+  finish.classList.toggle('is-hidden', boundedIndex < total - 1);
+  action.classList.toggle('is-hidden', !step.action);
+  action.textContent = step.actionLabel || 'Bereich öffnen';
+
+  clearIntroductionHighlight();
+  const anchor = resolveIntroductionAnchor(step);
+  if (!anchor?.node) return;
+  anchor.node.classList.add('tour-highlight');
+  introTourState.highlightedSelector = anchor.selector;
+  anchor.node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function showIntroductionTour() {
+  hideSetupWizard();
+  introTourState.active = true;
+  el('intro-tour-modal').classList.remove('is-hidden');
+  renderIntroductionStep(0);
+}
+
+async function finishIntroductionTour({ markSeen = true, skipSession = false } = {}) {
+  clearIntroductionHighlight();
+  introTourState.active = false;
+  el('intro-tour-modal').classList.add('is-hidden');
+  if (skipSession) {
+    sessionStorage.setItem('eduprompt_intro_skip_session', '1');
+  } else {
+    sessionStorage.removeItem('eduprompt_intro_skip_session');
+  }
+
+  if (markSeen) {
+    await queueSettingsSave(
+      { hasSeenIntroduction: true, introTourVersion: INTRO_TOUR_VERSION },
+      { refreshCatalog: false, showStatus: false }
+    );
+  }
+
+  if (shouldShowSetupWizard()) {
+    showSetupWizard();
+  }
+}
+
+async function runIntroductionStepAction() {
+  const steps = getIntroductionSteps();
+  const step = steps[introTourState.index];
+  if (!step?.action) return;
+  try {
+    await step.action();
+    renderIntroductionStep(introTourState.index);
+  } catch (error) {
+    notifyError(error, 'Tour-Aktion fehlgeschlagen');
+  }
+}
+
+async function runStartupOnboarding() {
+  if (shouldShowIntroductionTour()) {
+    showIntroductionTour();
+    return;
+  }
+  if (shouldShowSetupWizard()) {
+    showSetupWizard();
+  }
 }
 
 async function loadServerData() {
@@ -396,13 +568,29 @@ function bindEvents() {
     await settingsController.saveSettings({ flowMode: 'step' }, false);
     taskController.syncFlowModeUi();
     el('flow-choice-modal').classList.add('is-hidden');
-    if (shouldShowSetupWizard()) showSetupWizard();
+    await runStartupOnboarding();
   });
   el('choose-flow-single').addEventListener('click', async () => {
     await settingsController.saveSettings({ flowMode: 'single' }, false);
     taskController.syncFlowModeUi();
     el('flow-choice-modal').classList.add('is-hidden');
-    if (shouldShowSetupWizard()) showSetupWizard();
+    await runStartupOnboarding();
+  });
+
+  el('intro-tour-prev').addEventListener('click', () => {
+    if (!introTourState.active) return;
+    renderIntroductionStep(introTourState.index - 1);
+  });
+  el('intro-tour-next').addEventListener('click', () => {
+    if (!introTourState.active) return;
+    renderIntroductionStep(introTourState.index + 1);
+  });
+  el('intro-tour-open').addEventListener('click', () => runIntroductionStepAction());
+  el('intro-tour-finish').addEventListener('click', () => {
+    finishIntroductionTour({ markSeen: true }).catch((error) => notifyError(error));
+  });
+  el('intro-tour-skip').addEventListener('click', () => {
+    finishIntroductionTour({ markSeen: true, skipSession: true }).catch((error) => notifyError(error));
   });
 
   el('wizard-open-provider').addEventListener('click', () => {
@@ -455,8 +643,8 @@ async function init() {
 
     if (!state.settings.flowMode) {
       el('flow-choice-modal').classList.remove('is-hidden');
-    } else if (shouldShowSetupWizard()) {
-      showSetupWizard();
+    } else {
+      await runStartupOnboarding();
     }
   } catch (error) {
     notifyError(error, 'Fehler beim Laden der Anwendungsdaten');

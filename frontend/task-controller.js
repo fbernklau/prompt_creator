@@ -779,10 +779,36 @@ function createTaskController({
     const status = el('home-search-results-status');
     if (!section || !list || !status) return;
 
-    if (!active || !templates.length) {
+    if (!active) {
       section.classList.add('is-hidden');
       list.innerHTML = '';
       status.textContent = '';
+      return;
+    }
+
+    if (!templates.length) {
+      const hasSearch = Boolean(state.templateDiscovery.search);
+      const searchLabel = hasSearch
+        ? `Keine Treffer für "${state.templateDiscovery.search}".`
+        : 'Keine Treffer für die aktuelle Filterauswahl.';
+      status.textContent = searchLabel;
+      list.innerHTML = `
+        <div class="empty-state-card tw-home-search-empty-state">
+          <strong>${searchLabel}</strong>
+          <small class="hint">Passe Suche oder Tags an, oder starte mit allen Templates neu.</small>
+          <span class="inline-actions">
+            <button type="button" class="secondary small" data-home-search-reset-inline>Filter zurücksetzen</button>
+          </span>
+        </div>
+      `;
+      const resetInlineButton = list.querySelector('[data-home-search-reset-inline]');
+      if (resetInlineButton) {
+        resetInlineButton.addEventListener('click', () => {
+          el('home-template-search').value = '';
+          refreshTemplateDiscovery({ search: '', tags: [] }).catch((error) => emitNotice(error.message, 'error'));
+        });
+      }
+      section.classList.remove('is-hidden');
       return;
     }
 
