@@ -1703,6 +1703,7 @@ function createTaskController({
     state.generatedMeta = '';
     state.lastPromptContext = null;
     el('prompt-form').reset();
+    if (el('rueckfragen')) el('rueckfragen').checked = false;
     el('result').value = '';
     if (el('result-direct-output')) el('result-direct-output').value = '';
     el('result-meta').textContent = '';

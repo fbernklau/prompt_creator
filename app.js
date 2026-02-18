@@ -331,6 +331,8 @@ function getIntroductionSteps() {
       anchorHint: 'Falls nur eine Stage funktioniert, kann die andere auf den funktionierenden Key umgestellt werden.',
       autoAction: true,
       action: async () => {
+        introTourContext.providerCheckSummary = 'Statuscheck läuft …';
+        notify('Statusprüfung gestartet …', { type: 'info' });
         await providerController.refreshModelCatalogAndSync().catch(() => {});
         await dashboardController.openDashboard('providers');
         try {
@@ -357,8 +359,10 @@ function getIntroductionSteps() {
             }
           }
           introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}.${switchText}`;
+          notify(introTourContext.providerCheckSummary, { type: (metaprompt?.ok || result?.ok) ? 'ok' : 'error' });
         } catch (error) {
           introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
+          notify(introTourContext.providerCheckSummary, { type: 'error' });
         }
       },
       actionLabel: 'Status prüfen',
@@ -388,14 +392,17 @@ function getIntroductionSteps() {
     },
     {
       title: 'Pflichtfelder & Ergebnis-Modus',
-      text: 'Fülle alle Pflichtfelder aus und aktiviere „Direktes Ergebnis“ für den Tourlauf. Das Generieren kann je nach Modell etwas dauern.',
+      text: 'Fülle alle Pflichtfelder aus und aktiviere „Direktes Ergebnis“ für den Tourlauf. Lass „Klärende Rückfragen“ deaktiviert, sonst kann das direkte Ergebnis unvollständig oder blockiert sein. Das Generieren kann je nach Modell etwas dauern.',
       anchors: ['#screen-form #form-required-panel', '#run-mode-result-toggle'],
       anchorHint: 'Pflichtfelder + Toggle müssen gesetzt sein.',
       waitForCondition: () => {
         const runModeToggle = el('run-mode-result-toggle');
-        return Boolean(runModeToggle?.checked) && isTemplateFormReadyForGeneration();
+        const clarifyingQuestionsToggle = el('rueckfragen');
+        return Boolean(runModeToggle?.checked)
+          && !Boolean(clarifyingQuestionsToggle?.checked)
+          && isTemplateFormReadyForGeneration();
       },
-      waitForHint: 'Sobald alles vollständig ist, geht es automatisch weiter.',
+      waitForHint: 'Sobald Pflichtfelder vollständig sind, Direktes Ergebnis aktiv ist und „Klärende Rückfragen“ aus ist, geht es automatisch weiter.',
     },
     {
       title: 'Generierung starten',
@@ -591,9 +598,22 @@ async function runIntroductionStepAction({ rerender = true } = {}) {
   const steps = getIntroductionSteps();
   const step = steps[introTourState.index];
   if (!step?.action) return;
-  await step.action();
-  if (rerender) {
-    renderIntroductionStep(introTourState.index);
+  const actionButton = el('intro-tour-open');
+  const previousLabel = actionButton?.textContent || '';
+  if (actionButton && !actionButton.classList.contains('is-hidden')) {
+    actionButton.disabled = true;
+    actionButton.textContent = 'Bitte warten …';
+  }
+  try {
+    await step.action();
+    if (rerender) {
+      renderIntroductionStep(introTourState.index);
+    }
+  } finally {
+    if (actionButton && !actionButton.classList.contains('is-hidden')) {
+      actionButton.disabled = false;
+      actionButton.textContent = previousLabel || step.actionLabel || 'Bereich öffnen';
+    }
   }
 }
 

@@ -192,6 +192,7 @@ function createProviderController({
   }
 
   async function checkStageConnectivity({ autoSwitchOnSingleSuccess = false } = {}) {
+    setProviderStageHealth('Verbindung wird geprüft …', 'info');
     await syncStageAssignmentsWithProviderList({ persist: false });
     const stages = ['metaprompt', 'result'];
     const results = [];

@@ -2169,6 +2169,22 @@ button.is-active,
   outline-offset: 3px;
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--brand) 20%, transparent);
   border-radius: 12px;
+  animation: tour-highlight-pulse 1.9s ease-in-out infinite;
+}
+
+@keyframes tour-highlight-pulse {
+  0% {
+    outline-color: color-mix(in srgb, var(--brand) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent);
+  }
+  50% {
+    outline-color: color-mix(in srgb, var(--brand) 92%, transparent);
+    box-shadow: 0 0 0 11px color-mix(in srgb, var(--brand) 30%, transparent);
+  }
+  100% {
+    outline-color: color-mix(in srgb, var(--brand) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 14%, transparent);
+  }
 }
 
 .wizard-list {
