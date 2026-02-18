@@ -44,6 +44,7 @@ const introTourState = {
   highlightedNode: null,
   anchorClickCleanup: null,
   waitConditionCleanup: null,
+  spotlightCleanup: null,
   autoActionStep: -1,
 };
 const introTourContext = {
@@ -214,11 +215,74 @@ function clearIntroductionHighlight() {
     introTourState.waitConditionCleanup();
   }
   introTourState.waitConditionCleanup = null;
+  if (typeof introTourState.spotlightCleanup === 'function') {
+    introTourState.spotlightCleanup();
+  }
+  introTourState.spotlightCleanup = null;
+  const spotlight = el('intro-tour-spotlight');
+  if (spotlight) {
+    spotlight.classList.add('is-hidden');
+    spotlight.style.left = '';
+    spotlight.style.top = '';
+    spotlight.style.width = '';
+    spotlight.style.height = '';
+  }
+  const modal = el('intro-tour-modal');
+  if (modal) {
+    modal.classList.add('tour-no-spotlight');
+  }
   if (!introTourState.highlightedSelector) return;
   const node = introTourState.highlightedNode || document.querySelector(introTourState.highlightedSelector);
   if (node) node.classList.remove('tour-highlight');
   introTourState.highlightedSelector = '';
   introTourState.highlightedNode = null;
+}
+
+function applyIntroductionSpotlight(targetNode) {
+  const spotlight = el('intro-tour-spotlight');
+  const modal = el('intro-tour-modal');
+  if (!spotlight || !modal || !targetNode) return;
+
+  const padding = 8;
+  const minSize = 24;
+  const update = () => {
+    if (!introTourState.active) return;
+    if (!document.contains(targetNode) || targetNode.closest('.is-hidden')) {
+      spotlight.classList.add('is-hidden');
+      modal.classList.add('tour-no-spotlight');
+      return;
+    }
+    const rect = targetNode.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      spotlight.classList.add('is-hidden');
+      modal.classList.add('tour-no-spotlight');
+      return;
+    }
+
+    const left = Math.max(4, rect.left - padding);
+    const top = Math.max(4, rect.top - padding);
+    const right = Math.min(window.innerWidth - 4, rect.right + padding);
+    const bottom = Math.min(window.innerHeight - 4, rect.bottom + padding);
+    const width = Math.max(minSize, right - left);
+    const height = Math.max(minSize, bottom - top);
+
+    spotlight.style.left = `${left}px`;
+    spotlight.style.top = `${top}px`;
+    spotlight.style.width = `${width}px`;
+    spotlight.style.height = `${height}px`;
+    spotlight.classList.remove('is-hidden');
+    modal.classList.remove('tour-no-spotlight');
+  };
+
+  const onViewportChange = () => update();
+  window.addEventListener('scroll', onViewportChange, true);
+  window.addEventListener('resize', onViewportChange);
+  introTourState.spotlightCleanup = () => {
+    window.removeEventListener('scroll', onViewportChange, true);
+    window.removeEventListener('resize', onViewportChange);
+  };
+
+  update();
 }
 
 function isScreenVisible(screenId) {
@@ -489,7 +553,13 @@ function renderIntroductionStep(index) {
     anchor.node.classList.add('tour-highlight');
     introTourState.highlightedSelector = anchor.selector;
     introTourState.highlightedNode = anchor.node;
+    applyIntroductionSpotlight(anchor.node);
     anchor.node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  } else {
+    const modal = el('intro-tour-modal');
+    if (modal) {
+      modal.classList.add('tour-no-spotlight');
+    }
   }
 
   if (step.waitForAnchorClick) {
@@ -568,6 +638,7 @@ function showIntroductionTour() {
   introTourState.autoActionStep = -1;
   introTourState.active = true;
   el('intro-tour-modal').classList.remove('is-hidden');
+  el('intro-tour-modal').classList.add('tour-no-spotlight');
   renderIntroductionStep(0);
 }
 
