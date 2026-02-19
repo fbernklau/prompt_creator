@@ -86,6 +86,60 @@ function createTaskController({
     notify(text, { type });
   }
 
+  function normalizeUiText(value = '') {
+    let text = String(value ?? '');
+    if (!text) return text;
+    const replacements = [
+      [/\bArbeitsauftraege\b/g, 'Arbeitsaufträge'],
+      [/\bFoerderplaene\b/g, 'Förderpläne'],
+      [/\bFoerdermassnahmen\b/g, 'Fördermaßnahmen'],
+      [/\bRueckmeldung\b/g, 'Rückmeldung'],
+      [/\bRueckfragen\b/g, 'Rückfragen'],
+      [/\brueckfragen\b/g, 'rückfragen'],
+      [/\bPruefungs\b/g, 'Prüfungs'],
+      [/\bPruefung\b/g, 'Prüfung'],
+      [/\bLoesung\b/g, 'Lösung'],
+      [/\bloesung\b/g, 'lösung'],
+      [/\bAusfaelle\b/g, 'Ausfälle'],
+      [/\bGespraeche\b/g, 'Gespräche'],
+      [/\bAblaeufe\b/g, 'Abläufe'],
+      [/\bPrioritaeten\b/g, 'Prioritäten'],
+      [/\bEngpaesse\b/g, 'Engpässe'],
+      [/\bTonalitaet\b/g, 'Tonalität'],
+      [/\bHeterogenitaet\b/g, 'Heterogenität'],
+      [/\bWaehlen\b/g, 'Wählen'],
+      [/\bwaehlen\b/g, 'wählen'],
+      [/\bWaehle\b/g, 'Wähle'],
+      [/\bwaehle\b/g, 'wähle'],
+      [/\bKoennen\b/g, 'Können'],
+      [/\bkoennen\b/g, 'können'],
+      [/\bMoeglich\b/g, 'Möglich'],
+      [/\bmoeglich\b/g, 'möglich'],
+      [/\bFuer\b/g, 'Für'],
+      [/\bfuer\b/g, 'für'],
+      [/\bUeber\b/g, 'Über'],
+      [/\bueber\b/g, 'über'],
+      [/\bbuendelt\b/g, 'bündelt'],
+      [/\bgewuenscht\b/g, 'gewünscht'],
+      [/\bbenoetigte\b/g, 'benötigte'],
+    ];
+    replacements.forEach(([pattern, replacement]) => {
+      text = text.replace(pattern, replacement);
+    });
+    return text;
+  }
+
+  function dedupeDisplayOptions(values = []) {
+    const seen = new Set();
+    return (Array.isArray(values) ? values : []).filter((entry) => {
+      const raw = String(entry ?? '').trim();
+      const displayKey = normalizeUiText(raw).toLowerCase();
+      if (seen.has(displayKey)) return false;
+      seen.add(displayKey);
+      return true;
+    });
+  }
+
   function getFlowMode() {
     return state.settings.flowMode || 'step';
   }
@@ -237,7 +291,7 @@ function createTaskController({
     const customInput = el(customId);
     const customWrap = customInput?.closest('label') || null;
     if (!select) return;
-    const options = Array.isArray(values) ? [...values] : [];
+    const options = dedupeDisplayOptions(Array.isArray(values) ? [...values] : []);
     if (!options.includes('__custom__')) options.push('__custom__');
     if (includeRange && !options.includes('__range__')) {
       const customIndex = options.indexOf('__custom__');
@@ -250,7 +304,7 @@ function createTaskController({
         if (!value) return '<option value="">Bitte wählen...</option>';
         if (value === '__range__') return '<option value="__range__">Von - bis</option>';
         if (value === '__custom__') return '<option value="__custom__">Custom...</option>';
-        return `<option value="${value}">${value}</option>`;
+        return `<option value="${value}">${normalizeUiText(value)}</option>`;
       })
       .join('');
 
@@ -706,8 +760,8 @@ function createTaskController({
             </span>
             <span class="tw-home-category-kicker">${cfg.short}</span>
           </div>
-          <strong class="tw-home-category-title group-hover:text-primary transition-colors">${cfg.title}</strong>
-          <span class="tw-home-category-desc">${cfg.description}</span>
+          <strong class="tw-home-category-title group-hover:text-primary transition-colors">${normalizeUiText(cfg.title)}</strong>
+          <span class="tw-home-category-desc">${normalizeUiText(cfg.description)}</span>
         </button>
       `;
       })
@@ -985,8 +1039,8 @@ function createTaskController({
   function renderSubcategoryList(categoryName) {
     const categoryConfig = getCategoryConfig();
     const cfg = categoryConfig[categoryName];
-    el('selected-category-title').textContent = cfg.title;
-    el('selected-category-desc').textContent = cfg.description;
+    el('selected-category-title').textContent = normalizeUiText(cfg.title);
+    el('selected-category-desc').textContent = normalizeUiText(cfg.description);
     el('subcategory-list').innerHTML = cfg.unterkategorien
       .map(
         (subcategory) => {
@@ -1006,8 +1060,8 @@ function createTaskController({
                 </span>
                 <button type="button" class="tw-subcat-fav" data-fav-template="${discoveryEntry?.templateUid || ''}" data-fav-state="${favorite ? '1' : '0'}">${favorite ? '★' : '☆'}</button>
               </div>
-              <strong class="tw-subcat-card-title">${subcategory}</strong>
-              <span class="tw-subcat-card-desc">${template?.description || cfg.description}</span>
+              <strong class="tw-subcat-card-title">${normalizeUiText(subcategory)}</strong>
+              <span class="tw-subcat-card-desc">${normalizeUiText(template?.description || cfg.description)}</span>
               <div class="tw-subcat-card-cta">
                 Konfigurieren
                 <span class="material-icons-round">chevron_right</span>
@@ -1073,12 +1127,12 @@ function createTaskController({
   function updateFormHeaderForSelection() {
     const categoryConfig = getCategoryConfig();
     const cfg = categoryConfig[state.selectedCategory];
-    el('form-category-title').textContent = cfg?.title || '';
-    el('form-subcategory-title').textContent = state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template wählen' : '');
+    el('form-category-title').textContent = normalizeUiText(cfg?.title || '');
+    el('form-subcategory-title').textContent = normalizeUiText(state.selectedSubcategory || (isCompactFlowMode() ? 'Bitte Template wählen' : ''));
     const template = state.selectedCategory && state.selectedSubcategory
       ? getTemplateConfig(state.selectedCategory, state.selectedSubcategory)
       : null;
-    const description = (template?.longDescription || template?.description || '').trim();
+    const description = normalizeUiText((template?.longDescription || template?.description || '').trim());
     const descriptionNode = el('form-template-description');
     if (descriptionNode) descriptionNode.textContent = description;
   }
@@ -1113,7 +1167,7 @@ function createTaskController({
     const categories = Object.entries(categoryConfig);
     categorySelect.innerHTML = [
       '<option value="">Bitte Handlungsfeld wählen...</option>',
-      ...categories.map(([categoryName, cfg]) => `<option value="${categoryName}">${cfg.title}</option>`),
+      ...categories.map(([categoryName, cfg]) => `<option value="${categoryName}">${normalizeUiText(cfg.title)}</option>`),
     ].join('');
     categorySelect.value = state.selectedCategory || '';
 
@@ -1123,7 +1177,7 @@ function createTaskController({
       templateStep.classList.remove('is-hidden');
       templateSelect.innerHTML = [
         '<option value="">Bitte Template wählen...</option>',
-        ...(category.unterkategorien || []).map((entry) => `<option value="${entry}">${entry}</option>`),
+        ...(category.unterkategorien || []).map((entry) => `<option value="${entry}">${normalizeUiText(entry)}</option>`),
       ].join('');
       templateSelect.value = state.selectedSubcategory || '';
     } else {
@@ -1137,7 +1191,7 @@ function createTaskController({
     editCategoryBtn.classList.toggle('is-hidden', !categoryCollapsed);
     categorySummary.classList.toggle('is-hidden', !categoryCollapsed);
     categorySummary.textContent = categoryCollapsed
-      ? `Ausgewählt: ${categoryConfig[state.selectedCategory]?.title || state.selectedCategory}`
+      ? `Ausgewählt: ${normalizeUiText(categoryConfig[state.selectedCategory]?.title || state.selectedCategory)}`
       : '';
 
     const templateSelected = !!state.selectedSubcategory;
@@ -1145,7 +1199,7 @@ function createTaskController({
     setCompactStepCollapsed(templateStep, templateCollapsed);
     editTemplateBtn.classList.toggle('is-hidden', !templateCollapsed);
     templateSummary.classList.toggle('is-hidden', !templateCollapsed);
-    templateSummary.textContent = templateCollapsed ? `Ausgewählt: ${state.selectedSubcategory}` : '';
+    templateSummary.textContent = templateCollapsed ? `Ausgewählt: ${normalizeUiText(state.selectedSubcategory)}` : '';
 
     const formReady = templateSelected;
     setFormSectionsVisibility(formReady);
@@ -1215,7 +1269,7 @@ function createTaskController({
     if (requiredContainer) requiredContainer.innerHTML = '';
     if (optionalContainer) optionalContainer.innerHTML = '';
 
-    const templateTitle = state.selectedSubcategory || 'Template';
+    const templateTitle = normalizeUiText(state.selectedSubcategory || 'Template');
     const requiredTitle = el('required-panel-title');
     const optionalTitle = el('optional-panel-title');
     if (requiredTitle) requiredTitle.textContent = `${templateTitle} - Pflichtfelder`;
@@ -1227,7 +1281,7 @@ function createTaskController({
     fields.forEach((field) => {
       const wrap = document.createElement('label');
       wrap.className = field.type === 'checkbox' ? 'checkbox span-2' : '';
-      if (field.type !== 'checkbox') wrap.textContent = field.label;
+      if (field.type !== 'checkbox') wrap.textContent = normalizeUiText(field.label);
       const allowCustom = allowsCustomDynamicValue(field);
       const placeholderSupported = supportsPlaceholderMode(field);
       let customInput = null;
@@ -1235,48 +1289,48 @@ function createTaskController({
       let input;
       if (field.type === 'select') {
         input = document.createElement('select');
-        const options = Array.isArray(field.options) ? [...field.options] : [];
+        const options = dedupeDisplayOptions(Array.isArray(field.options) ? [...field.options] : []);
         if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
-        const selectPlaceholder = String(field.placeholder || '').trim() || 'Bitte wählen...';
+        const selectPlaceholder = normalizeUiText(String(field.placeholder || '').trim() || 'Bitte wählen...');
         input.innerHTML = `<option value="">${selectPlaceholder}</option>${options
           .map((opt) => {
             if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
-            return `<option value="${opt}">${opt}</option>`;
+            return `<option value="${opt}">${normalizeUiText(opt)}</option>`;
           })
           .join('')}`;
       } else if (field.type === 'textarea') {
         input = document.createElement('textarea');
         input.rows = 2;
-        input.placeholder = field.placeholder || '';
+        input.placeholder = normalizeUiText(field.placeholder || '');
       } else if (field.type === 'checkbox') {
         input = document.createElement('input');
         input.type = 'checkbox';
         const span = document.createElement('span');
-        span.textContent = field.label;
+        span.textContent = normalizeUiText(field.label);
         wrap.appendChild(input);
         wrap.appendChild(span);
       } else if (field.type === 'multiselect') {
         input = document.createElement('select');
         input.multiple = true;
-        const options = Array.isArray(field.options) ? [...field.options] : [];
+        const options = dedupeDisplayOptions(Array.isArray(field.options) ? [...field.options] : []);
         if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
         input.innerHTML = options
           .map((opt) => {
             if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
-            return `<option value="${opt}">${opt}</option>`;
+            return `<option value="${opt}">${normalizeUiText(opt)}</option>`;
           })
           .join('');
       } else {
         input = document.createElement('input');
         input.type = 'text';
-        input.placeholder = field.placeholder || '';
+        input.placeholder = normalizeUiText(field.placeholder || '');
       }
 
       input.id = `dyn-${field.id}`;
       if (field.required) input.required = true;
       if (field.type !== 'checkbox') wrap.appendChild(input);
 
-      const hoverHelpBase = String(field.hoverHelp || field.helpText || dynamicFieldDefaultHelp(field) || '').trim();
+      const hoverHelpBase = normalizeUiText(String(field.hoverHelp || field.helpText || dynamicFieldDefaultHelp(field) || '').trim());
       const optionHelpMap = field.optionHelp && typeof field.optionHelp === 'object'
         ? field.optionHelp
         : null;
@@ -1285,11 +1339,11 @@ function createTaskController({
         if (optionHelpMap && (field.type === 'select' || field.type === 'multiselect')) {
           if (field.type === 'select') {
             const selected = String(input.value || '').trim();
-            if (selected && optionHelpMap[selected]) hoverText = String(optionHelpMap[selected] || '').trim() || hoverText;
+            if (selected && optionHelpMap[selected]) hoverText = normalizeUiText(String(optionHelpMap[selected] || '').trim()) || hoverText;
           } else {
             const selectedValues = [...input.selectedOptions].map((option) => String(option.value || '').trim()).filter(Boolean);
             const selectedHelp = selectedValues
-              .map((value) => String(optionHelpMap[value] || '').trim())
+              .map((value) => normalizeUiText(String(optionHelpMap[value] || '').trim()))
               .filter(Boolean)
               .join(' | ');
             if (selectedHelp) hoverText = selectedHelp;
@@ -1311,19 +1365,19 @@ function createTaskController({
       if (field.type !== 'checkbox') {
         const hint = document.createElement('small');
         hint.className = 'hint';
-        const explanation = (field.helpText || '').trim() || dynamicFieldDefaultHelp(field);
+        const explanation = normalizeUiText((field.helpText || '').trim() || dynamicFieldDefaultHelp(field));
         let optionHint = '';
         if (Array.isArray(field.options) && field.options.length) {
           if (field.optionHelp && typeof field.optionHelp === 'object') {
             optionHint = 'Optionen im Dropdown (Kurzinfo per Hover).';
           } else if (field.options.length <= 5) {
-            optionHint = `Optionen: ${field.options.join(', ')}`;
+            optionHint = `Optionen: ${field.options.map((entry) => normalizeUiText(entry)).join(', ')}`;
           } else {
             optionHint = 'Mehrere Optionen im Dropdown verfügbar.';
           }
         }
         const requiredHint = field.required ? 'Pflichtfeld.' : 'Optional.';
-        const placeholderHint = field.placeholder ? ` Beispiel: ${field.placeholder}` : '';
+        const placeholderHint = field.placeholder ? ` Beispiel: ${normalizeUiText(field.placeholder)}` : '';
         const customHint = allowCustom
           ? (field.type === 'multiselect'
             ? ' Eigene Werte (kommagetrennt) sind zusätzlich möglich.'
@@ -1340,7 +1394,8 @@ function createTaskController({
         customInput.disabled = true;
         customInput.classList.add('is-hidden');
         customInput.placeholder = field.customPlaceholder
-          || (field.type === 'select'
+          ? normalizeUiText(field.customPlaceholder)
+          : (field.type === 'select'
             ? 'Eigener Wert'
             : (field.type === 'multiselect'
             ? 'Weitere Werte (kommagetrennt, optional)'
@@ -2065,8 +2120,8 @@ function createTaskController({
     if (el('result-direct-meta')) el('result-direct-meta').textContent = resultMeta;
     setUsageSummary('result-direct', generation?.usageStages?.result || null);
     setCostSummary('result-direct', generation?.costStages?.result || null);
-    if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = context.baseFields.handlungsfeld || '-';
-    if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = context.baseFields.unterkategorie || '-';
+    if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = normalizeUiText(context.baseFields.handlungsfeld || '-');
+    if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = normalizeUiText(context.baseFields.unterkategorie || '-');
     if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
     if (el('result-detail-schulstufe')) el('result-detail-schulstufe').textContent = context.baseFields.schulstufe || '-';
     renderResultMetadataPanel(generation);
@@ -2079,7 +2134,7 @@ function createTaskController({
     } else {
       setResultReadyBanner('Dein KI-Prompt ist bereit.', 'ok');
     }
-    el('library-title').value = `${context.baseFields.unterkategorie} - ${context.baseFields.fach}`;
+    el('library-title').value = `${normalizeUiText(context.baseFields.unterkategorie)} - ${context.baseFields.fach}`;
     el('save-library-status').textContent = '';
     el('result-compare-panel').classList.add('is-hidden');
     el('result-compare-current').value = state.generatedPrompt || '';

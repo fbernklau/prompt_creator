@@ -4354,6 +4354,39 @@ button.is-active,
   color: #e8f0ff;
 }
 
+:is(body[data-theme='dark'], html.dark body) #screen-admin input:not([type='checkbox']):not([type='radio']),
+:is(body[data-theme='dark'], html.dark body) #screen-admin select,
+:is(body[data-theme='dark'], html.dark body) #screen-admin textarea,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard input:not([type='checkbox']):not([type='radio']),
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard select,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard textarea {
+  background: #0f1b33;
+  border-color: #31486f;
+  color: #e8f0ff;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-admin input:not([type='checkbox']):not([type='radio']):disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-admin select:disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-admin textarea:disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard input:not([type='checkbox']):not([type='radio']):disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard select:disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard textarea:disabled {
+  background: #15243e;
+  border-color: #36527f;
+  color: #c8d7f3;
+  -webkit-text-fill-color: #c8d7f3;
+  opacity: 1;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form select option,
+:is(body[data-theme='dark'], html.dark body) #screen-result select option,
+:is(body[data-theme='dark'], html.dark body) #screen-library select option,
+:is(body[data-theme='dark'], html.dark body) #screen-admin select option,
+:is(body[data-theme='dark'], html.dark body) #screen-dashboard select option {
+  background: #0f1b33;
+  color: #e8f0ff;
+}
+
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-tabs {
   background: #13213a;
   border: 1px solid #2e4168;
@@ -4368,6 +4401,18 @@ button.is-active,
   color: #e8f0ff;
   border-color: #31486f;
   box-shadow: none;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea {
+  background: #111d34;
+  border-color: #2d426f;
+  color: #ebf2ff;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea:disabled,
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea[readonly] {
+  background: #0f1c33;
+  color: #c2d2ef;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-form-preview-card {

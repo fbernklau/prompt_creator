@@ -524,16 +524,21 @@ function mergeDynamicFieldsWithFallback(dynamicFields = [], fallbackFields = [])
   return dynamicFields.map((field) => {
     const fallback = fallbackById.get(String(field?.id || '').trim());
     if (!fallback) return field;
+    const ownOptions = Array.isArray(field.options)
+      ? field.options.map((entry) => asText(entry).trim()).filter(Boolean)
+      : undefined;
     const fallbackOptions = Array.isArray(fallback.options)
       ? fallback.options.map((entry) => asText(entry).trim()).filter(Boolean)
       : undefined;
-    const hasOwnOptions = Array.isArray(field.options) && field.options.length > 0;
+    const mergedOptions = Array.isArray(ownOptions) || Array.isArray(fallbackOptions)
+      ? unique([...(ownOptions || []), ...(fallbackOptions || [])])
+      : undefined;
     return {
       ...field,
       placeholder: asText(field.placeholder || fallback.placeholder || ''),
       helpText: asText(field.helpText || fallback.helpText || ''),
       customPlaceholder: asText(field.customPlaceholder || fallback.customPlaceholder || ''),
-      options: hasOwnOptions ? field.options : fallbackOptions,
+      options: mergedOptions,
     };
   });
 }
