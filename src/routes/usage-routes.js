@@ -3,6 +3,7 @@ const { pool } = require('../db/pool');
 const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
+const { sanitizeExternalErrorMessage } = require('../security/error-redaction');
 
 function asNumber(value, fallback = 0) {
   const normalized = Number(value);
@@ -113,7 +114,7 @@ function createUsageRouter() {
     const recentErrorByProvider = new Map();
     for (const row of recentErrorResult.rows) {
       recentErrorByProvider.set(String(row.provider_id || ''), {
-        errorType: row.error_type || null,
+        errorType: row.error_type ? sanitizeExternalErrorMessage(row.error_type, { fallback: 'Externer API-Fehler.' }) : null,
         at: row.created_at || null,
       });
     }

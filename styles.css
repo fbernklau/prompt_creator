@@ -4307,6 +4307,9 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form input:not([type='checkbox']):not([type='radio']),
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form select,
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form textarea,
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result input:not([type='checkbox']):not([type='radio']),
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result select,
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result textarea,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library #lib-filter-search,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library select,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-prompt-box,
@@ -4325,6 +4328,46 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea[data-detail-description][readonly] {
   background: #0f1c33;
   color: #b5c5e6;
+}
+
+:is(body[data-theme='dark'], html.dark body) #dashboard-provider-host .panel,
+:is(body[data-theme='dark'], html.dark body) #dashboard-options-host .panel {
+  background: #182640;
+  border-color: #2e4168;
+}
+
+:is(body[data-theme='dark'], html.dark body) #dashboard-provider-host input:not([type='checkbox']):not([type='radio']),
+:is(body[data-theme='dark'], html.dark body) #dashboard-provider-host select,
+:is(body[data-theme='dark'], html.dark body) #dashboard-provider-host textarea,
+:is(body[data-theme='dark'], html.dark body) #dashboard-options-host input:not([type='checkbox']):not([type='radio']),
+:is(body[data-theme='dark'], html.dark body) #dashboard-options-host select,
+:is(body[data-theme='dark'], html.dark body) #dashboard-options-host textarea {
+  background: #0f1b33;
+  border-color: #31486f;
+  color: #e8f0ff;
+}
+
+:is(body[data-theme='dark'], html.dark body) #dashboard-provider-host button.secondary,
+:is(body[data-theme='dark'], html.dark body) #dashboard-options-host button.secondary {
+  background: #16243d;
+  border-color: #314a79;
+  color: #e8f0ff;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-tabs {
+  background: #13213a;
+  border: 1px solid #2e4168;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-tabs .secondary {
+  color: #9fb2d9;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-tabs .secondary.is-active {
+  background: #0f1b33;
+  color: #e8f0ff;
+  border-color: #31486f;
+  box-shadow: none;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-form-preview-card {

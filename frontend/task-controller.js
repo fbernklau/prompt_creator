@@ -2289,7 +2289,7 @@ function createTaskController({
       });
       if (streamError) throw streamError;
       if (!streamDonePayload) {
-        throw new Error('Streaming-Antwort unvollstaendig. Bitte erneut versuchen.');
+        throw new Error('Streaming-Antwort unvollständig. Bitte erneut versuchen.');
       }
 
       stage = 'postprocess';

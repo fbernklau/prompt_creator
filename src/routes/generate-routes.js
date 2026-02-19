@@ -8,6 +8,7 @@ const { asyncHandler } = require('../utils/api-helpers');
 const { buildMetapromptFromTemplate } = require('../services/template-engine');
 const { callProviderDetailed, callProviderDetailedStream, isOverloadedProviderError } = require('../services/provider-clients');
 const { decryptApiKey, hasServerEncryptedKey } = require('../security/key-encryption');
+const { sanitizeExternalErrorMessage } = require('../security/error-redaction');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const {
   getTemplateForGeneration,
@@ -819,7 +820,7 @@ function buildRepairMetaprompt(rawOutput) {
 Regeln:
 - Gib nur JSON aus, kein Markdown.
 - "handoff_prompt" muss mit "Du bist" beginnen.
-- Liefere keinen fachlichen Ergebnistext, sondern nur einen ausfuehrbaren Handoff-Prompt fuer eine zweite KI.
+- Liefere keinen fachlichen Ergebnistext, sondern nur einen ausführbaren Handoff-Prompt für eine zweite KI.
 
 Antwort zum Konvertieren:
 ${original}`;
@@ -867,8 +868,8 @@ const PRIVACY_SAFE_MARKERS = [
 
 const PRIVACY_POLICY_BLOCK = `Datenschutzvorgaben (verbindlich):
 - Fordere keine personenbezogenen oder sensiblen Daten an.
-- Nutze bei Personenbezug ausschliesslich Platzhalter wie [VORNAME], [NACHNAME], [KLASSE], [SCHULE], [DATUM].
-- Falls personenbezogene Angaben vorliegen, ersetze sie durch Platzhalter und verarbeite sie nicht woertlich.`;
+- Nutze bei Personenbezug ausschließlich Platzhalter wie [VORNAME], [NACHNAME], [KLASSE], [SCHULE], [DATUM].
+- Falls personenbezogene Angaben vorliegen, ersetze sie durch Platzhalter und verarbeite sie nicht wörtlich.`;
 
 function normalizeForMatch(value = '') {
   return String(value || '')
@@ -952,7 +953,7 @@ Regeln:
 - Erhalte Ziel, Struktur und fachlichen Kontext.
 - Entferne jede Aufforderung zur Eingabe personenbezogener oder sensibler Daten.
 - Ersetze personenbezogene Angaben konsequent durch Platzhalter (z. B. [VORNAME], [KLASSE], [SCHULE], [DATUM]).
-- Falls Rueckfragen noetig sind, frage nur nach anonymem didaktischem Kontext.
+- Falls Rückfragen nötig sind, frage nur nach anonymem didaktischem Kontext.
 - Der Prompt muss mit "Du bist" beginnen.
 - Gib nur JSON aus.
 
@@ -961,7 +962,7 @@ Verbindliches Ausgabeformat:
   "handoff_prompt": "Du bist ..."
 }
 
-Zu ueberarbeitender Prompt:
+Zu überarbeitender Prompt:
 ${original}`;
 }
 
@@ -1194,7 +1195,7 @@ async function resolveProviderCredential(req, provider) {
     }
     systemKey = await findAssignedSystemKey(req, provider);
     if (!systemKey || !hasServerEncryptedKey(systemKey.key_meta)) {
-      throw httpError(400, 'Der zugewiesene System-Key ist nicht aktiv oder nicht mehr verfuegbar.');
+      throw httpError(400, 'Der zugewiesene System-Key ist nicht aktiv oder nicht mehr verfügbar.');
     }
     apiKey = decryptApiKey(systemKey.key_meta, config.keyEncryptionSecret);
     keySource = `system:${systemKey.system_key_id}`;
@@ -1219,7 +1220,7 @@ async function resolveProviderCredential(req, provider) {
     }
   }
   if (!apiKey) {
-    throw httpError(400, 'Kein gueltiger API-Key verfuegbar. Bitte Provider-Key neu speichern oder Testzugang nutzen.');
+    throw httpError(400, 'Kein gültiger API-Key verfügbar. Bitte Provider-Key neu speichern oder Testzugang nutzen.');
   }
 
   const baseUrl = provider.base_url || systemKey?.base_url || getRecommendedBaseUrl(provider.kind);
@@ -1257,10 +1258,10 @@ function writeStreamEvent(res, event, payload = {}) {
   res.write(`${line}\n`);
 }
 
-const RESULT_EXECUTION_SYSTEM_INSTRUCTION = `Du bist ein fachlich-didaktischer Assistent fuer Lehrkraefte.
-Fuehre den erhaltenen Prompt direkt aus und liefere ausschliesslich das angeforderte Endergebnis.
-Stelle keine Rueckfragen und keine Meta-Erklaerungen, ausser der Prompt fordert dies explizit.
-Achte auf korrekte Orthografie und saubere Leerzeichen zwischen Woertern.`;
+const RESULT_EXECUTION_SYSTEM_INSTRUCTION = `Du bist ein fachlich-didaktischer Assistent für Lehrkräfte.
+Führe den erhaltenen Prompt direkt aus und liefere ausschließlich das angeforderte Endergebnis.
+Stelle keine Rückfragen und keine Meta-Erklärungen, außer der Prompt fordert dies explizit.
+Achte auf korrekte Orthografie und saubere Leerzeichen zwischen Wörtern.`;
 
 function normalizeGenerationMode(value) {
   return String(value || '').trim().toLowerCase() === 'result' ? 'result' : 'prompt';
@@ -1420,7 +1421,7 @@ function createGenerateRouter() {
         handoffPrompt = parseHandoffPrompt(repairedRaw);
       }
       if (!handoffPrompt) {
-        throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
+        throw httpError(502, 'Provider lieferte kein gültiges Handoff-Prompt-Format. Bitte erneut versuchen.');
       }
       if (hasPrivacyRisk(handoffPrompt)) {
         try {
@@ -1628,8 +1629,11 @@ function createGenerateRouter() {
       });
     } catch (error) {
       let finalError = error;
+      const safeErrorMessage = sanitizeExternalErrorMessage(error?.message || '', { fallback: 'Generierung fehlgeschlagen.' });
       if (isOverloadedProviderError(error)) {
-        finalError = httpError(503, 'Das gewaehlte Modell ist derzeit ueberlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell waehlen.');
+        finalError = httpError(503, 'Das gewählte Modell ist derzeit überlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell wählen.');
+      } else {
+        finalError = httpError(Number(error?.status) || 502, safeErrorMessage);
       }
       try {
         await logGenerationEvent({
@@ -1640,7 +1644,7 @@ function createGenerateRouter() {
           templateId: context?.resolvedTemplate?.templateUid || templateId || null,
           success: false,
           latencyMs: Date.now() - startedAt,
-          errorType: finalError?.message || 'generation_failed',
+          errorType: finalError?.message || safeErrorMessage || 'generation_failed',
           effectiveKeyType: metapromptCredential?.effectiveKeyType,
           effectiveKeyId: metapromptCredential?.effectiveKeyId,
           keyFingerprint: metapromptKeyFingerprint,
@@ -1656,7 +1660,7 @@ function createGenerateRouter() {
             templateId: context?.resolvedTemplate?.templateUid || templateId || null,
             success: false,
             latencyMs: Date.now() - startedAt,
-            errorType: finalError?.message || 'generation_failed',
+            errorType: finalError?.message || safeErrorMessage || 'generation_failed',
             effectiveKeyType: resultCredential?.effectiveKeyType,
             effectiveKeyId: resultCredential?.effectiveKeyId,
             keyFingerprint: resultKeyFingerprint,
@@ -1857,7 +1861,7 @@ function createGenerateRouter() {
         handoffPrompt = parseHandoffPrompt(repairedRaw);
       }
       if (!handoffPrompt) {
-        throw httpError(502, 'Provider lieferte kein gueltiges Handoff-Prompt-Format. Bitte erneut versuchen.');
+        throw httpError(502, 'Provider lieferte kein gültiges Handoff-Prompt-Format. Bitte erneut versuchen.');
       }
       if (hasPrivacyRisk(handoffPrompt)) {
         try {
@@ -2093,8 +2097,11 @@ function createGenerateRouter() {
       return res.end();
     } catch (error) {
       let finalError = error;
+      const safeErrorMessage = sanitizeExternalErrorMessage(error?.message || '', { fallback: 'Generierung fehlgeschlagen.' });
       if (isOverloadedProviderError(error)) {
-        finalError = httpError(503, 'Das gewaehlte Modell ist derzeit ueberlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell waehlen.');
+        finalError = httpError(503, 'Das gewählte Modell ist derzeit überlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell wählen.');
+      } else {
+        finalError = httpError(Number(error?.status) || 502, safeErrorMessage);
       }
       if (metapromptProvider && context) {
         try {
@@ -2106,7 +2113,7 @@ function createGenerateRouter() {
             templateId: context.resolvedTemplate.templateUid,
             success: false,
             latencyMs: Date.now() - startedAt,
-            errorType: finalError?.message || 'generation_failed',
+            errorType: finalError?.message || safeErrorMessage || 'generation_failed',
             effectiveKeyType: metapromptCredential?.effectiveKeyType,
             effectiveKeyId: metapromptCredential?.effectiveKeyId,
             keyFingerprint: metapromptKeyFingerprint,
@@ -2122,7 +2129,7 @@ function createGenerateRouter() {
               templateId: context.resolvedTemplate.templateUid,
               success: false,
               latencyMs: Date.now() - startedAt,
-              errorType: finalError?.message || 'generation_failed',
+              errorType: finalError?.message || safeErrorMessage || 'generation_failed',
               effectiveKeyType: resultCredential?.effectiveKeyType,
               effectiveKeyId: resultCredential?.effectiveKeyId,
               keyFingerprint: resultKeyFingerprint,
@@ -2136,7 +2143,7 @@ function createGenerateRouter() {
       }
       writeStreamEvent(res, 'error', {
         stage,
-        message: finalError?.message || 'Unbekannter Fehler bei der Generierung.',
+        message: finalError?.message || safeErrorMessage || 'Unbekannter Fehler bei der Generierung.',
         status: Number(finalError?.status) || 500,
       });
       return res.end();

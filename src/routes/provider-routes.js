@@ -6,6 +6,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { accessMiddleware, requirePermission } = require('../middleware/rbac');
 const { asyncHandler } = require('../utils/api-helpers');
 const { encryptApiKey, hasServerEncryptedKey, decryptApiKey } = require('../security/key-encryption');
+const { sanitizeExternalErrorMessage } = require('../security/error-redaction');
 const { getRecommendedBaseUrl } = require('../services/provider-defaults');
 const { callProvider } = require('../services/provider-clients');
 
@@ -331,7 +332,7 @@ function createProviderRouter() {
     const hasAnyKey = hasServerEncryptedKey(encryptedKey);
     const canUseShared = resolvedProviderKind === 'google' && isSharedGoogleAllowed(req);
     if (!resolvedSystemKeyId && !hasAnyKey && !canUseShared) {
-      return res.status(400).json({ error: 'Bitte API-Key eingeben (oder fuer Testkonto Shared Google Key verwenden).' });
+      return res.status(400).json({ error: 'Bitte API-Key eingeben (oder für Testkonto Shared Google Key verwenden).' });
     }
 
     await pool.query(
@@ -390,7 +391,7 @@ function createProviderRouter() {
     const model = String(req.body?.model || existing?.model || '').trim();
     const baseUrl = String(req.body?.baseUrl || existing?.base_url || getRecommendedBaseUrl(kind) || '').trim();
     if (!kind || !model || !baseUrl) {
-      return res.status(400).json({ error: 'kind, model und baseUrl sind fuer den Verbindungstest erforderlich.' });
+      return res.status(400).json({ error: 'kind, model und baseUrl sind für den Verbindungstest erforderlich.' });
     }
 
     const requestedSystemKeyId = typeof req.body?.systemKeyId === 'string' ? req.body.systemKeyId.trim() : '';
@@ -449,7 +450,7 @@ function createProviderRouter() {
       keySource = 'shared_google_test';
     }
     if (!apiKey) {
-      return res.status(400).json({ error: 'Kein API-Key fuer Verbindungstest verfuegbar.' });
+      return res.status(400).json({ error: 'Kein API-Key für Verbindungstest verfügbar.' });
     }
 
     const startedAt = Date.now();
@@ -464,7 +465,8 @@ function createProviderRouter() {
         timeoutMs: Math.min(config.providerRequestTimeoutMs, 30000),
       });
     } catch (error) {
-      return res.status(502).json({ error: `Provider-Test fehlgeschlagen: ${error.message}` });
+      const safeMessage = sanitizeExternalErrorMessage(error?.message || '', { fallback: 'Provider-Test fehlgeschlagen.' });
+      return res.status(502).json({ error: `Provider-Test fehlgeschlagen: ${safeMessage}` });
     }
     const latencyMs = Date.now() - startedAt;
 

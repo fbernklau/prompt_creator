@@ -50,6 +50,7 @@ const introTourState = {
 };
 const introTourContext = {
   providerCheckSummary: '',
+  providerCheckCompleted: false,
 };
 
 function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
@@ -376,6 +377,7 @@ function getIntroductionSteps() {
           { refreshCatalog: false, showStatus: false }
         );
         introTourContext.providerCheckSummary = '';
+        introTourContext.providerCheckCompleted = false;
       },
       actionLabel: 'Optionen anzeigen',
     },
@@ -411,20 +413,17 @@ function getIntroductionSteps() {
     },
     {
       title: 'Option: Standardverhalten',
-      text: 'Hier steuerst du sinnvolle Defaults (z. B. Metadata beim Kopieren oder Community-Sichtbarkeit).',
+      text: 'Hier steuerst du sinnvolle Defaults (z. B. Metadaten beim Kopieren oder Community-Sichtbarkeit).',
       anchor: '#option-panel-defaults',
       anchorHint: 'Diese Werte kannst du jederzeit anpassen.',
     },
     {
       title: 'API-Provider Überblick',
       text: 'Hier siehst du persönliche und zugewiesene Keys. Pro Stage (Metaprompt/Result) muss genau ein aktiver Key gesetzt sein.',
-      anchors: ['#dashboard-provider-host', '#btn-provider'],
-      anchorHint: 'Wir wechseln jetzt in den API-Provider-Bereich.',
-      action: async () => {
-        await providerController.refreshModelCatalogAndSync().catch(() => {});
-        await dashboardController.openDashboard('providers');
-      },
-      actionLabel: 'API-Provider öffnen',
+      anchors: ['#btn-provider', '#mb-provider'],
+      anchorHint: 'Klicke auf „API-Provider“, um fortzufahren.',
+      waitForAnchorClick: true,
+      anchorsAdvanceSelectors: ['#btn-provider', '#mb-provider'],
     },
     {
       title: 'Aktive Stages',
@@ -437,81 +436,28 @@ function getIntroductionSteps() {
       text: () => {
         const checkText = introTourContext.providerCheckSummary
           ? ` ${introTourContext.providerCheckSummary}`
-          : ' Wir prüfen jetzt automatisch die aktiven Stage-Zuordnungen.';
+          : ' Führe jetzt „API-Key Status prüfen“ im markierten Bereich aus.';
         return `Statusprüfung zeigt dir direkt, welcher Key je Stage funktioniert.${checkText}`;
       },
       anchor: '#provider-check-stages',
-      anchorHint: 'Wenn nur eine Stage funktioniert, wird automatisch auf den funktionierenden Key umgestellt.',
-      autoAction: true,
-      action: async () => {
-        introTourContext.providerCheckSummary = 'Statuscheck läuft …';
-        notify('Statusprüfung gestartet …', { type: 'info' });
-        await providerController.refreshModelCatalogAndSync().catch(() => {});
-        await dashboardController.openDashboard('providers');
-        try {
-          const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
-          let metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
-          let result = check.results.find((entry) => entry.stage === 'result');
-          let metaText = metaprompt?.ok
-            ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
-            : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
-          let resultText = result?.ok
-            ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
-            : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
-          let switchText = '';
-          const oneWorksOneFails = !!(metaprompt?.ok !== result?.ok);
-          if (oneWorksOneFails) {
-            const working = metaprompt?.ok ? metaprompt : result;
-            const failing = metaprompt?.ok ? result : metaprompt;
-            if (working?.providerId && failing?.stage) {
-              await providerController.selectProviderForStage(failing.stage, working.providerId);
-              switchText = ` ${failing?.stage === 'result' ? 'Result' : 'Metaprompt'} wurde automatisch auf den funktionierenden Key umgestellt.`;
-              const recheck = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
-              metaprompt = recheck.results.find((entry) => entry.stage === 'metaprompt');
-              result = recheck.results.find((entry) => entry.stage === 'result');
-              metaText = metaprompt?.ok
-                ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
-                : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
-              resultText = result?.ok
-                ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
-                : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
-            }
-          }
-          const noWorkingKey = !metaprompt?.ok && !result?.ok;
-          if (noWorkingKey) {
-            introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}. Kein funktionierender Key gefunden. Nutze „API-Key hinzufügen“, um einen persönlichen Key anzulegen.`;
-          } else {
-            introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}.${switchText}`;
-          }
-          notify(introTourContext.providerCheckSummary, { type: (metaprompt?.ok || result?.ok) ? 'ok' : 'error' });
-        } catch (error) {
-          introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
-          notify(introTourContext.providerCheckSummary, { type: 'error' });
-        }
-      },
-      actionLabel: 'Status prüfen',
+      anchorHint: 'Nutze den Button „API-Key Status prüfen“. Danach ist „Weiter“ aktiv.',
+      requireConditionForNext: () => introTourContext.providerCheckCompleted === true,
+      requireConditionHint: 'Bitte erst den Status prüfen.',
+      requireConditionReadyHint: 'Status geprüft. Du kannst jetzt mit „Weiter“ fortfahren.',
     },
     {
       title: 'API-Key anlegen (falls nötig)',
-      text: 'Wenn kein funktionierender Key vorhanden ist, lege hier einen persönlichen Key an. Danach geht die Tour automatisch weiter.',
+      text: () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false };
+        if (summary.hasReadyProvider) {
+          return 'Es ist bereits mindestens ein nutzbarer Key vorhanden. Falls das später nicht der Fall ist, kannst du hier jederzeit einen persönlichen API-Key anlegen.';
+        }
+        return 'Wenn kein funktionierender Key vorhanden ist, legst du hier einen persönlichen API-Key an.';
+      },
       anchors: ['#provider-list [data-open-provider-editor]', '#provider-form-modal', '#provider-form'],
-      anchorHint: 'Öffne „API-Key hinzufügen“, speichere das Profil und prüfe den Status erneut.',
-      action: async () => {
-        const summary = providerController.getProviderAvailabilitySummary
-          ? providerController.getProviderAvailabilitySummary()
-          : { hasReadyProvider: false };
-        if (summary.hasReadyProvider) return;
-        const addButton = document.querySelector('#provider-list [data-open-provider-editor]');
-        if (addButton instanceof HTMLElement) addButton.click();
-      },
-      actionLabel: 'API-Key hinzufügen',
-      waitForCondition: () => {
-        const summary = providerController.getProviderAvailabilitySummary
-          ? providerController.getProviderAvailabilitySummary()
-          : { hasReadyProvider: false };
-        return summary.hasReadyProvider;
-      },
-      waitForHint: 'Sobald ein nutzbarer Key hinterlegt ist, geht es weiter.',
+      anchorHint: 'Falls nötig: „API-Key hinzufügen“ öffnen, speichern und erneut prüfen.',
     },
     {
       title: 'Zurück zur Hauptseite',
@@ -713,6 +659,33 @@ function renderIntroductionStep(index) {
     el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}Klicke auf den markierten Bereich, um fortzufahren.`;
   }
 
+  if (typeof step.requireConditionForNext === 'function') {
+    const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
+    const waitingHint = String(step.requireConditionHint || 'Bitte zuerst die markierte Aktion abschließen.').trim();
+    const readyHint = String(step.requireConditionReadyHint || 'Aktion abgeschlossen. Du kannst jetzt fortfahren.').trim();
+
+    const evaluate = () => {
+      if (!introTourState.active) return;
+      let fulfilled = false;
+      try {
+        fulfilled = !!step.requireConditionForNext();
+      } catch (_error) {
+        fulfilled = false;
+      }
+      next.disabled = !fulfilled;
+      finish.disabled = !fulfilled;
+      el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}${fulfilled ? readyHint : waitingHint}`.trim();
+    };
+
+    const timer = window.setInterval(evaluate, 280);
+    introTourState.waitConditionCleanup = () => {
+      window.clearInterval(timer);
+      next.disabled = false;
+      finish.disabled = false;
+    };
+    evaluate();
+  }
+
   if (typeof step.waitForCondition === 'function') {
     next.classList.add('is-hidden');
     finish.classList.toggle('is-hidden', true);
@@ -759,6 +732,7 @@ function renderIntroductionStep(index) {
 function showIntroductionTour() {
   hideSetupWizard();
   introTourContext.providerCheckSummary = '';
+  introTourContext.providerCheckCompleted = false;
   introTourState.autoActionStep = -1;
   introTourState.active = true;
   el('intro-tour-modal').classList.remove('is-hidden');
@@ -913,11 +887,34 @@ function bindEvents() {
   });
   if (el('provider-check-stages')) {
     el('provider-check-stages').addEventListener('click', async () => {
+      introTourContext.providerCheckCompleted = false;
+      introTourContext.providerCheckSummary = 'Statusprüfung läuft …';
+      if (introTourState.active) renderIntroductionStep(introTourState.index);
       try {
-        await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
-        notify('Stage-Status wurde aktualisiert.', { type: 'ok' });
+        const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+        const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
+        const result = check.results.find((entry) => entry.stage === 'result');
+        const metaText = metaprompt?.ok
+          ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
+          : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
+        const resultText = result?.ok
+          ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
+          : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
+        introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}`;
+        introTourContext.providerCheckCompleted = true;
+        if (metaprompt?.ok && result?.ok) {
+          notify('Verbindung geprüft: Metaprompt und Result sind bereit.', { type: 'ok' });
+        } else if (metaprompt?.ok || result?.ok) {
+          notify('Verbindung teilweise bereit. Eine Stage ist aktuell nicht verfügbar.', { type: 'warn' });
+        } else {
+          notify('Verbindung fehlgeschlagen. Bitte Key/Modell prüfen.', { type: 'error' });
+        }
       } catch (error) {
+        introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
+        introTourContext.providerCheckCompleted = true;
         notifyError(error, 'Stage-Status konnte nicht geprüft werden');
+      } finally {
+        if (introTourState.active) renderIntroductionStep(introTourState.index);
       }
     });
   }

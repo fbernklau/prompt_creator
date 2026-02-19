@@ -37,7 +37,7 @@ const CATEGORY_META_MAP = {
   'Schulentwicklung & Teamarbeit': {
     title: 'Schulentwicklung & Teamarbeit',
     short: 'SC',
-    description: 'Konzepte fuer die Teamarbeit und strategische Schulentwicklung.',
+    description: 'Konzepte für die Teamarbeit und strategische Schulentwicklung.',
   },
   'Leistungsbeurteilung & Feedback': {
     title: 'Leistungsbeurteilung & Feedback',
@@ -47,12 +47,12 @@ const CATEGORY_META_MAP = {
   'Barrierefreiheit & Inklusion': {
     title: 'Inklusion',
     short: 'BA',
-    description: 'Barrierefreiheit und Unterstuetzung fuer heterogene Lerngruppen.',
+    description: 'Barrierefreiheit und Unterstützung für heterogene Lerngruppen.',
   },
   'Individualisierung & Differenzierung': {
     title: 'Individualisierung & Differenzierung',
     short: 'IN',
-    description: 'Differenzierte Aufgabenstellungen fuer unterschiedliche Lernniveaus.',
+    description: 'Differenzierte Aufgabenstellungen für unterschiedliche Lernniveaus.',
   },
 };
 
@@ -259,7 +259,7 @@ function ensureTemplateMutationAllowed(row, { userId, access }) {
   if (row.scope === 'official' && hasPermission(access, 'templates.official_manage')) return;
   if (row.scope === 'community' && hasPermission(access, 'templates.community_manage')) return;
   if (row.review_state === 'submitted' && hasPermission(access, 'templates.review')) return;
-  throw httpError(403, 'Keine Berechtigung fuer Template-Aenderung.');
+  throw httpError(403, 'Keine Berechtigung für Template-Änderung.');
 }
 
 function ensureNodeMutationAllowed(row, { userId, access }) {
@@ -267,7 +267,7 @@ function ensureNodeMutationAllowed(row, { userId, access }) {
   const owner = row.owner_user_id ? String(row.owner_user_id) : null;
   if (owner && owner === String(userId) && hasPermission(access, 'templates.nodes.manage_own')) return;
   if ((row.scope === 'official' || row.scope === 'community') && hasPermission(access, 'templates.nodes.official_manage')) return;
-  throw httpError(403, 'Keine Berechtigung fuer Taxonomie-Aenderung.');
+  throw httpError(403, 'Keine Berechtigung für Taxonomie-Änderung.');
 }
 
 async function getNodeById(nodeId) {
@@ -372,11 +372,11 @@ function normalizeDynamicFields(values) {
 
 function defaultHelpTextForField(field = {}) {
   const fieldType = String(field.type || 'text').toLowerCase();
-  if (fieldType === 'textarea') return 'Nutze Stichpunkte oder kurze Saetze mit konkretem Kontext.';
-  if (fieldType === 'select') return 'Waehle eine Option oder nutze einen eigenen Wert.';
-  if (fieldType === 'multiselect') return 'Mehrfachauswahl moeglich; eigene Werte sind zusaetzlich moeglich.';
-  if (fieldType === 'checkbox') return 'Aktiviere diese Option, wenn sie fuer den Prompt relevant ist.';
-  return 'Kurze, konkrete Angabe fuer den Prompt-Kontext.';
+  if (fieldType === 'textarea') return 'Nutze Stichpunkte oder kurze Sätze mit konkretem Kontext.';
+  if (fieldType === 'select') return 'Wähle eine Option oder nutze einen eigenen Wert.';
+  if (fieldType === 'multiselect') return 'Mehrfachauswahl möglich; eigene Werte sind zusätzlich möglich.';
+  if (fieldType === 'checkbox') return 'Aktiviere diese Option, wenn sie für den Prompt relevant ist.';
+  return 'Kurze, konkrete Angabe für den Prompt-Kontext.';
 }
 
 function hasContextField(dynamicFields = []) {
@@ -394,8 +394,8 @@ function ensureContextField(dynamicFields = [], templateTitle = '') {
     required: false,
     placeholder: 'Besondere Details, Randbedingungen oder No-Gos',
     helpText: templateTitle
-      ? `Optional: Zusaetzliche Infos fuer ${templateTitle}.`
-      : 'Optional: Zusaetzliche Infos, Randbedingungen oder No-Gos.',
+      ? `Optional: Zusätzliche Infos für ${templateTitle}.`
+      : 'Optional: Zusätzliche Infos, Randbedingungen oder No-Gos.',
     allowCustom: false,
     customPlaceholder: '',
     options: undefined,
@@ -798,13 +798,13 @@ function buildNodeVisibilityScope({ requestedScope, userId, access }) {
   const scope = normalizeScope(requestedScope, 'personal');
   if (scope === 'personal') {
     if (!hasPermission(access, 'templates.nodes.manage_own')) {
-      throw httpError(403, 'Keine Berechtigung fuer eigene Taxonomie.');
+      throw httpError(403, 'Keine Berechtigung für eigene Taxonomie.');
     }
     return { scope: 'personal', ownerUserId: userId, reviewState: 'draft' };
   }
 
   if (!hasPermission(access, 'templates.nodes.official_manage') && !hasPermission(access, 'templates.official_manage')) {
-    throw httpError(403, 'Keine Berechtigung fuer globale Taxonomie.');
+    throw httpError(403, 'Keine Berechtigung für globale Taxonomie.');
   }
   return { scope, ownerUserId: null, reviewState: 'approved' };
 }
@@ -815,7 +815,7 @@ async function createTemplateNode({ userId, access, payload = {} }) {
 
   const nodeType = normalizeNodeType(payload.nodeType, payload.parentId ? 'subcategory' : 'category');
   const parentId = payload.parentId ? Number(payload.parentId) : null;
-  if (payload.parentId && !Number.isInteger(parentId)) throw httpError(400, 'Ungueltige parentId.');
+  if (payload.parentId && !Number.isInteger(parentId)) throw httpError(400, 'Ungültige parentId.');
   if (!payload.parentId && nodeType !== 'category') throw httpError(400, 'Root-Nodes muessen vom Typ category sein.');
 
   const visibility = buildNodeVisibilityScope({ requestedScope: payload.scope, userId, access });
@@ -824,7 +824,7 @@ async function createTemplateNode({ userId, access, payload = {} }) {
     const parent = await getNodeById(parentId);
     if (!parent || parent.is_archived) throw httpError(404, 'Parent-Node nicht gefunden.');
     if (visibility.scope === 'personal' && parent.scope === 'personal' && parent.owner_user_id !== String(userId)) {
-      throw httpError(403, 'Personal Parent gehoert nicht zum Benutzer.');
+      throw httpError(403, 'Personal Parent gehört nicht zum Benutzer.');
     }
   }
 
@@ -864,7 +864,7 @@ async function createTemplateNode({ userId, access, payload = {} }) {
 
 async function updateTemplateNode({ userId, access, nodeId, payload = {} }) {
   const id = Number(nodeId);
-  if (!Number.isInteger(id)) throw httpError(400, 'Ungueltige nodeId.');
+  if (!Number.isInteger(id)) throw httpError(400, 'Ungültige nodeId.');
   const node = await getNodeById(id);
   if (!node || node.is_archived) throw httpError(404, 'Node nicht gefunden.');
   ensureNodeMutationAllowed(node, { userId, access });
@@ -883,7 +883,7 @@ async function updateTemplateNode({ userId, access, nodeId, payload = {} }) {
     fields.push(`description = $${idx++}`);
     values.push(payload.description.trim());
   }
-  if (!fields.length) throw httpError(400, 'Keine gueltigen Felder fuer Update.');
+  if (!fields.length) throw httpError(400, 'Keine gültigen Felder für Update.');
   fields.push('updated_at = NOW()');
 
   values.push(id);
@@ -902,7 +902,7 @@ function resolveTemplateScope({ requestedScope, userId, access }) {
   const scope = normalizeScope(requestedScope, 'personal');
   if (scope === 'personal') {
     if (!hasPermission(access, 'templates.manage_own')) {
-      throw httpError(403, 'Keine Berechtigung fuer persoenliche Templates.');
+      throw httpError(403, 'Keine Berechtigung für persönliche Templates.');
     }
     return {
       scope: 'personal',
@@ -913,7 +913,7 @@ function resolveTemplateScope({ requestedScope, userId, access }) {
 
   if (scope === 'official') {
     if (!hasPermission(access, 'templates.official_manage')) {
-      throw httpError(403, 'Keine Berechtigung fuer offizielle Templates.');
+      throw httpError(403, 'Keine Berechtigung für offizielle Templates.');
     }
     return {
       scope: 'official',
@@ -923,7 +923,7 @@ function resolveTemplateScope({ requestedScope, userId, access }) {
   }
 
   if (!hasPermission(access, 'templates.community_manage') && !hasPermission(access, 'templates.official_manage')) {
-    throw httpError(403, 'Keine Berechtigung fuer Community-Templates.');
+    throw httpError(403, 'Keine Berechtigung für Community-Templates.');
   }
   return {
     scope: 'community',
@@ -963,7 +963,7 @@ async function createTemplateRecord({ userId, access, payload = {} }) {
 
   const scopeInfo = resolveTemplateScope({ requestedScope: payload.scope, userId, access });
   if (scopeInfo.scope === 'personal' && node.scope === 'personal' && node.owner_user_id !== String(userId)) {
-    throw httpError(403, 'Personal node gehoert nicht zum Benutzer.');
+    throw httpError(403, 'Personal node gehört nicht zum Benutzer.');
   }
 
   await ensureTagCatalogEntries({
@@ -1075,7 +1075,7 @@ async function updateTemplateRecord({ userId, access, templateUid, payload = {} 
   }
   if (payload.nodeId) {
     const nodeId = Number(payload.nodeId);
-    if (!Number.isInteger(nodeId)) throw httpError(400, 'Ungueltige nodeId.');
+    if (!Number.isInteger(nodeId)) throw httpError(400, 'Ungültige nodeId.');
     metadataFields.push(`node_id = $${idx++}`);
     metadataValues.push(nodeId);
   }
@@ -1134,12 +1134,12 @@ async function updateTemplateRecord({ userId, access, templateUid, payload = {} 
 
 async function submitTemplateForReview({ userId, access, templateUid, note = '' }) {
   if (!hasPermission(access, 'templates.submit_review')) {
-    throw httpError(403, 'Keine Berechtigung fuer Review-Submit.');
+    throw httpError(403, 'Keine Berechtigung für Review-Submit.');
   }
   const template = await getTemplateRecordByUid(templateUid);
   if (!template) throw httpError(404, 'Template nicht gefunden.');
-  if (template.owner_user_id !== String(userId)) throw httpError(403, 'Nur eigene Templates koennen eingereicht werden.');
-  if (template.scope !== 'personal') throw httpError(400, 'Nur persoenliche Templates koennen eingereicht werden.');
+  if (template.owner_user_id !== String(userId)) throw httpError(403, 'Nur eigene Templates können eingereicht werden.');
+  if (template.scope !== 'personal') throw httpError(400, 'Nur persönliche Templates können eingereicht werden.');
   if (template.review_state === 'submitted') throw httpError(400, 'Template ist bereits eingereicht.');
 
   await pool.query(
@@ -1203,7 +1203,7 @@ async function ensureScopePathFromNode(nodeId, targetScope) {
 
 async function reviewTemplateSubmission({ userId, access, templateUid, decision, note = '', targetScope = 'community' }) {
   if (!hasPermission(access, 'templates.review')) {
-    throw httpError(403, 'Keine Berechtigung fuer Review.');
+    throw httpError(403, 'Keine Berechtigung für Review.');
   }
 
   const template = await getTemplateRecordByUid(templateUid);
@@ -1237,7 +1237,7 @@ async function reviewTemplateSubmission({ userId, access, templateUid, decision,
     throw httpError(403, 'Nur Curators/Admins duerfen offiziell freigeben.');
   }
   if (normalizedTargetScope === 'community' && !hasPermission(access, 'templates.review')) {
-    throw httpError(403, 'Keine Berechtigung fuer Community-Freigabe.');
+    throw httpError(403, 'Keine Berechtigung für Community-Freigabe.');
   }
 
   const promotedNodeId = await ensureScopePathFromNode(template.node_id, normalizedTargetScope);
@@ -1258,7 +1258,7 @@ async function reviewTemplateSubmission({ userId, access, templateUid, decision,
 
 async function cloneTemplateAsPersonal({ userId, access, templateUid, overrides = {}, titleSuffix = ' (Persoenliche Variante)' }) {
   if (!hasPermission(access, 'templates.manage_own')) {
-    throw httpError(403, 'Keine Berechtigung fuer persoenliche Varianten.');
+    throw httpError(403, 'Keine Berechtigung für persönliche Varianten.');
   }
   const source = await getTemplateWithVersionByUid(templateUid);
   if (!source) throw httpError(404, 'Quelltemplate nicht gefunden.');
@@ -1360,10 +1360,10 @@ async function createOrUpdateTag({ userId, access, key, displayName, description
   if (!normalizedKey) throw httpError(400, 'tag key ist erforderlich.');
   const wantsOfficial = Boolean(official);
   if (wantsOfficial && !hasPermission(access, 'tags.moderate')) {
-    throw httpError(403, 'Keine Berechtigung fuer offizielle Tags.');
+    throw httpError(403, 'Keine Berechtigung für offizielle Tags.');
   }
   if (!wantsOfficial && !hasPermission(access, 'tags.manage_own') && !hasPermission(access, 'tags.moderate')) {
-    throw httpError(403, 'Keine Berechtigung fuer Tags.');
+    throw httpError(403, 'Keine Berechtigung für Tags.');
   }
 
   await pool.query(

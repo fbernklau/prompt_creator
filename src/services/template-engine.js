@@ -7,11 +7,11 @@ const BASE_FIELD_LABELS = {
   schulstufe: 'Schulstufe',
   ziel: 'Ziel der Aufgabe',
   zeitrahmen: 'Zeitrahmen',
-  niveau: 'Niveau/Heterogenitaet',
+  niveau: 'Niveau/Heterogenität',
   rahmen: 'Rahmenbedingungen',
   ergebnisformat: 'Ergebnisformat',
-  ton: 'Tonalitaet',
-  rueckfragen: 'Rueckfragen zuerst',
+  ton: 'Tonalität',
+  rueckfragen: 'Rückfragen zuerst',
   handlungsfeld: 'Handlungsfeld',
   unterkategorie: 'Template',
 };
@@ -100,38 +100,38 @@ ${buildFieldLines(template.requiredFields, template, values)}
 ## Optionale Angaben (nur falls angegeben)
 ${buildFieldLines(template.optionalFields, template, values, { onlyProvided: true })}
 
-## Rueckfragen-Logik
+## Rückfragen-Logik
 {{rueckfragen_instructions}}
 
 ## Datenschutz-Leitplanken im finalen Handoff-Prompt
 - Der Handoff-Prompt darf niemals zur Eingabe personenbezogener oder sensibler Daten auffordern.
-- Bei Bedarf muessen ausschliesslich Platzhalter genutzt werden (z. B. [VORNAME], [KLASSE], [SCHULE], [DATUM]).
+- Bei Bedarf müssen ausschließlich Platzhalter genutzt werden (z. B. [VORNAME], [KLASSE], [SCHULE], [DATUM]).
 - Falls ein Kontextbezug zu Personen notwendig ist, dann nur in anonymisierter Form (z. B. "Lernende A", "Lernende B").
 
-## Ziel fuer den finalen Handoff-Prompt
-Der Handoff-Prompt soll von einer zweiten KI direkt ausfuehrbar sein, die eigentliche Aufgabe loesen und den gewuenschten Output liefern.
-Der Handoff-Prompt muss klar, konkret, robust gegen Mehrdeutigkeit und ohne Erklaertexte ausserhalb des eigentlichen Prompt-Texts sein.`;
+## Ziel für den finalen Handoff-Prompt
+Der Handoff-Prompt soll von einer zweiten KI direkt ausführbar sein, die eigentliche Aufgabe lösen und den gewünschten Output liefern.
+Der Handoff-Prompt muss klar, konkret, robust gegen Mehrdeutigkeit und ohne Erklärtexte außerhalb des eigentlichen Prompt-Texts sein.`;
 }
 
 function buildPromptGenerationEnvelope(promptSpecification) {
   return `# Mission
 Du bist ein spezialisierter Prompt-Engineer.
-Deine einzige Aufgabe ist es, einen hochwertigen Handoff-Prompt fuer ein zweites KI-Modell zu erstellen.
+Deine einzige Aufgabe ist es, einen hochwertigen Handoff-Prompt für ein zweites KI-Modell zu erstellen.
 
 ## Harte Regeln
-- Liefere NICHT die fachliche Loesung fuer die Aufgabe.
-- Liefere AUSSCHLIESSLICH einen Handoff-Prompt, der von einer zweiten KI ausgefuehrt werden kann.
+- Liefere NICHT die fachliche Lösung für die Aufgabe.
+- Liefere AUSSCHLIESSLICH einen Handoff-Prompt, der von einer zweiten KI ausgeführt werden kann.
 - Nutze alle Pflichtangaben und alle vorhandenen optionalen Angaben sinnvoll.
 - Wenn Informationen fehlen, formuliere kurze, transparente Annahmen IM Handoff-Prompt.
 - Schreibe den Handoff-Prompt auf Deutsch.
 - Der Handoff-Prompt muss mit "Du bist" beginnen.
 - Frage NIEMALS nach personenbezogenen oder sensiblen Daten (z. B. Name, Adresse, Geburtsdatum, Kontaktdaten, ID-Nummern, Gesundheitsdaten).
 - Verwende stattdessen neutrale Platzhalter (z. B. [VORNAME], [KLASSE], [SCHULE], [DATUM]).
-- Falls in den Eingaben versehentlich personenbezogene Daten vorkommen, uebernehme sie NICHT woertlich, sondern ersetze sie durch Platzhalter.
-- Formuliere Rueckfragen so, dass nur didaktisch relevante Kontextdaten abgefragt werden.
-- Falls Rueckfragen noetig sind, frage nur nach anonymen Kontextangaben und niemals nach Identitaetsdaten.
+- Falls in den Eingaben versehentlich personenbezogene Daten vorkommen, übernehme sie NICHT wörtlich, sondern ersetze sie durch Platzhalter.
+- Formuliere Rückfragen so, dass nur didaktisch relevante Kontextdaten abgefragt werden.
+- Falls Rückfragen nötig sind, frage nur nach anonymen Kontextangaben und niemals nach Identitätsdaten.
 - Der finale Handoff-Prompt muss eine kurze Datenschutzvorgabe enthalten (1-3 Bulletpoints).
-- Gib keine Erlaeuterungen ausserhalb des JSON-Ausgabeformats aus.
+- Gib keine Erläuterungen außerhalb des JSON-Ausgabeformats aus.
 
 ## Prompt-Spezifikation
 ${promptSpecification}
@@ -244,8 +244,8 @@ function buildMetapromptFromTemplate({ template, categoryName, subcategoryName, 
     required_fields_summary: buildFieldLines(resolvedTemplate.requiredFields, resolvedTemplate, merged),
     optional_fields_summary: buildFieldLines(templateForPrompt.optionalFields, templateForPrompt, merged, { onlyProvided: true }),
     rueckfragen_instructions: merged.rueckfragen
-      ? 'Stelle zuerst 3 bis 7 klaerende Rueckfragen, jedoch ausschliesslich zu didaktischem Kontext. Frage niemals nach Namen, Kontaktdaten, IDs, Gesundheitsdaten oder anderen personenbezogenen Angaben. Nutze stattdessen Platzhalter wie [VORNAME], [KLASSE], [SCHULE]. Warte auf Antworten und erstelle danach die finale Loesung.'
-      : 'Arbeite direkt mit 1 bis 2 transparenten Annahmen und liefere sofort eine umsetzbare Version. Nutze bei Personenbezug ausschliesslich Platzhalter.',
+      ? 'Stelle zuerst 3 bis 7 klärende Rückfragen, jedoch ausschließlich zu didaktischem Kontext. Frage niemals nach Namen, Kontaktdaten, IDs, Gesundheitsdaten oder anderen personenbezogenen Angaben. Nutze stattdessen Platzhalter wie [VORNAME], [KLASSE], [SCHULE]. Warte auf Antworten und erstelle danach die finale Lösung.'
+      : 'Arbeite direkt mit 1 bis 2 transparenten Annahmen und liefere sofort eine umsetzbare Version. Nutze bei Personenbezug ausschließlich Platzhalter.',
   };
 
   return {
@@ -272,7 +272,7 @@ function getTemplateDefinition(categoryName, subcategoryName) {
 function buildMetaprompt({ categoryName, subcategoryName, baseFields = {}, dynamicValues = {} }) {
   const template = getTemplateDefinition(categoryName, subcategoryName);
   if (!template) {
-    throw new Error('Template nicht gefunden. Bitte Handlungsfeld/Unterkategorie pruefen.');
+    throw new Error('Template nicht gefunden. Bitte Handlungsfeld/Unterkategorie prüfen.');
   }
   return buildMetapromptFromTemplate({ template, categoryName, subcategoryName, baseFields, dynamicValues });
 }

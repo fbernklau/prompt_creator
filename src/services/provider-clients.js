@@ -1,8 +1,10 @@
+const { sanitizeExternalErrorMessage } = require('../security/error-redaction');
+
 function trimTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
 
-const PROMPT_ONLY_SYSTEM_INSTRUCTION = 'Du bist ein Prompt-Engineer. Gib ausschliesslich einen Handoff-Prompt aus und niemals die fachliche Endloesung. Achte auf saubere Orthografie und korrekte Leerzeichen zwischen Woertern.';
+const PROMPT_ONLY_SYSTEM_INSTRUCTION = 'Du bist ein Prompt-Engineer. Gib ausschließlich einen Handoff-Prompt aus und niemals die fachliche Endlösung. Achte auf saubere Orthografie und korrekte Leerzeichen zwischen Wörtern.';
 const MAX_PROVIDER_ATTEMPTS = 3;
 const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504, 529]);
 
@@ -45,13 +47,36 @@ async function parseJson(response) {
 }
 
 function parseProviderError(kind, payload, status) {
+  const providerLabel = kind === 'openai'
+    ? 'OpenAI'
+    : kind === 'anthropic'
+      ? 'Anthropic'
+      : kind === 'google'
+        ? 'Google'
+        : kind;
+  if (status === 401 || status === 403) {
+    return `${providerLabel}: API-Key ungültig oder nicht autorisiert.`;
+  }
+  if (status === 429) {
+    return `${providerLabel}: Rate-Limit erreicht oder Modell überlastet.`;
+  }
+  if (status === 404) {
+    return `${providerLabel}: Modell oder Endpoint nicht gefunden.`;
+  }
+
+  const raw = kind === 'google'
+    ? payload?.error?.message
+    : payload?.error?.message || payload?.message;
+  const safe = sanitizeExternalErrorMessage(raw, { fallback: '' });
+  if (safe) return `${providerLabel}: ${safe}`;
+
   if (kind === 'google') {
-    return payload?.error?.message || `Google API error (${status})`;
+    return `Google: API-Fehler (${status})`;
   }
   if (kind === 'anthropic') {
-    return payload?.error?.message || `Anthropic API error (${status})`;
+    return `Anthropic: API-Fehler (${status})`;
   }
-  return payload?.error?.message || payload?.message || `${kind} API error (${status})`;
+  return `${providerLabel}: API-Fehler (${status})`;
 }
 
 function extractOpenAiLikeText(payload) {
@@ -691,7 +716,7 @@ async function callProviderOnce({
   if (kind === 'google') {
     return callGoogle({ baseUrl, model, apiKey, metaprompt, timeoutMs, systemInstruction });
   }
-  throw new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+  throw new Error(`Provider '${kind}' wird aktuell nicht unterstützt.`);
 }
 
 async function callProviderOnceStream({
@@ -760,7 +785,7 @@ async function callProviderDetailed({
       await wait(backoffMs);
     }
   }
-  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstützt.`);
 }
 
 async function callProviderDetailedStream({
@@ -806,7 +831,7 @@ async function callProviderDetailedStream({
     }
   }
 
-  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstuetzt.`);
+  throw lastError || new Error(`Provider '${kind}' wird aktuell nicht unterstützt.`);
 }
 
 module.exports = {

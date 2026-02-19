@@ -393,7 +393,7 @@ function createProviderController({
         hint.textContent = 'Katalog aktiv: Modell vorhanden, aber noch ohne gepflegte Preiswerte.';
       }
     } else {
-      hint.textContent = 'Katalog aktiv: Fuer dieses Modell ist aktuell kein Preis hinterlegt.';
+      hint.textContent = 'Katalog aktiv: Für dieses Modell ist aktuell kein Preis hinterlegt.';
     }
   }
 
