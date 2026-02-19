@@ -3622,6 +3622,40 @@ button.is-active,
   font-size: 12px;
 }
 
+#screen-form.tw-form .field-option-help {
+  margin-top: 4px;
+  border: 1px dashed #c7d4ef;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #f5f8ff;
+}
+
+#screen-form.tw-form .field-option-help > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #496089;
+  list-style: none;
+}
+
+#screen-form.tw-form .field-option-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+#screen-form.tw-form .field-option-help-list {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: #4d6188;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#screen-form.tw-form .field-option-help-list strong {
+  color: #1b2b4f;
+}
+
 #screen-result.tw-result .tw-result-grid {
   display: grid;
   gap: 14px;
@@ -4084,7 +4118,9 @@ button.is-active,
   margin-top: 2px;
 }
 
-#screen-library.tw-library .tw-library-detail-card {
+#screen-library.tw-library .tw-library-detail-card,
+#screen-library-entry.tw-library .tw-library-detail-card,
+#library-entry-modal .tw-library-detail-card {
   border: 1px solid #d7dfec;
   border-radius: 14px;
   background: #fff;
@@ -4092,23 +4128,31 @@ button.is-active,
   padding: 14px;
 }
 
-#screen-library.tw-library .tw-library-detail-head {
+#screen-library.tw-library .tw-library-detail-head,
+#screen-library-entry.tw-library .tw-library-detail-head,
+#library-entry-modal .tw-library-detail-head {
   display: grid;
   gap: 6px;
 }
 
-#screen-library.tw-library .tw-library-detail-head h3 {
+#screen-library.tw-library .tw-library-detail-head h3,
+#screen-library-entry.tw-library .tw-library-detail-head h3,
+#library-entry-modal .tw-library-detail-head h3 {
   margin: 0;
   font-size: 1.22rem;
   letter-spacing: -0.015em;
 }
 
-#screen-library.tw-library .tw-library-detail-card textarea[data-detail-description] {
+#screen-library.tw-library .tw-library-detail-card textarea[data-detail-description],
+#screen-library-entry.tw-library .tw-library-detail-card textarea[data-detail-description],
+#library-entry-modal .tw-library-detail-card textarea[data-detail-description] {
   min-height: 92px;
   resize: vertical;
 }
 
-#screen-library.tw-library .tw-library-detail-card textarea[data-detail-description][readonly] {
+#screen-library.tw-library .tw-library-detail-card textarea[data-detail-description][readonly],
+#screen-library-entry.tw-library .tw-library-detail-card textarea[data-detail-description][readonly],
+#library-entry-modal .tw-library-detail-card textarea[data-detail-description][readonly] {
   background: #f8fafc;
   color: #475569;
   cursor: default;
@@ -4265,7 +4309,9 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-prompt-panel,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-toolbar,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-card,
-:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-card {
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-card,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library .tw-library-detail-card,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal .tw-library-detail-card {
   background: #182641;
   border-color: #30446f;
 }
@@ -4285,7 +4331,9 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .tw-result-detail-item strong,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-card-title,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-rating-value,
-:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-head h3 {
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-head h3,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library .tw-library-detail-head h3,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal .tw-library-detail-head h3 {
   color: #e5ecfb;
 }
 
@@ -4296,7 +4344,9 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-card-description,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-author,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-usage-summary,
-:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-head .hint {
+:is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .tw-library-detail-head .hint,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library .tw-library-detail-head .hint,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal .tw-library-detail-head .hint {
   color: #9fb2d9;
 }
 
@@ -4312,8 +4362,14 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result textarea,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library #lib-filter-search,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library select,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library select,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library textarea,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal select,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal textarea,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-prompt-box,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library .library-text,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library .library-text,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal .library-text,
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea[data-detail-description] {
   background: #111d34;
   border-color: #2d426f;
@@ -4326,6 +4382,12 @@ button.is-active,
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-library.tw-library textarea[data-detail-description][readonly] {
+  background: #0f1c33;
+  color: #b5c5e6;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry.tw-library textarea[data-detail-description][readonly],
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal textarea[data-detail-description][readonly] {
   background: #0f1c33;
   color: #b5c5e6;
 }
@@ -4381,6 +4443,8 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-form select option,
 :is(body[data-theme='dark'], html.dark body) #screen-result select option,
 :is(body[data-theme='dark'], html.dark body) #screen-library select option,
+:is(body[data-theme='dark'], html.dark body) #screen-library-entry select option,
+:is(body[data-theme='dark'], html.dark body) #library-entry-modal select option,
 :is(body[data-theme='dark'], html.dark body) #screen-admin select option,
 :is(body[data-theme='dark'], html.dark body) #screen-dashboard select option {
   background: #0f1b33;
@@ -4431,6 +4495,23 @@ button.is-active,
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-run-mode-option {
   color: #e1eafe;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .field-option-help {
+  background: #10213c;
+  border-color: #365486;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .field-option-help > summary {
+  color: #a8badf;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .field-option-help-list {
+  color: #b8c8e8;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .field-option-help-list strong {
+  color: #e7eefb;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-form-preview-head h3 .material-icons-round {

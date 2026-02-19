@@ -94,7 +94,10 @@ function extractAnthropicText(payload) {
 
 function extractGoogleText(payload) {
   const parts = payload?.candidates?.[0]?.content?.parts || [];
-  return parts.map((part) => part?.text || '').filter(Boolean).join('\n').trim();
+  return parts
+    .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+    .filter((entry) => entry.length > 0)
+    .join('');
 }
 
 function asNonNegativeInt(value) {

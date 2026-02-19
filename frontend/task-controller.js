@@ -91,6 +91,7 @@ function createTaskController({
     if (!text) return text;
     const replacements = [
       [/\bArbeitsauftraege\b/g, 'Arbeitsaufträge'],
+      [/\bArbeitsaufgabe\b/g, 'Arbeitsaufgabe'],
       [/\bFoerderplaene\b/g, 'Förderpläne'],
       [/\bFoerdermassnahmen\b/g, 'Fördermaßnahmen'],
       [/\bRueckmeldung\b/g, 'Rückmeldung'],
@@ -119,6 +120,12 @@ function createTaskController({
       [/\bfuer\b/g, 'für'],
       [/\bUeber\b/g, 'Über'],
       [/\bueber\b/g, 'über'],
+      [/\bUebung\b/g, 'Übung'],
+      [/\buebung\b/g, 'übung'],
+      [/\bProblemlosen\b/g, 'Problemlösen'],
+      [/\bproblemlosen\b/g, 'problemlösen'],
+      [/\bAuftraege\b/g, 'Aufträge'],
+      [/\bauftraege\b/g, 'aufträge'],
       [/\bbuendelt\b/g, 'bündelt'],
       [/\bgewuenscht\b/g, 'gewünscht'],
       [/\bbenoetigte\b/g, 'benötigte'],
@@ -129,15 +136,38 @@ function createTaskController({
     return text;
   }
 
+  function normalizeOptionDisplayKey(value = '') {
+    const normalized = normalizeUiText(String(value ?? '')).trim().toLowerCase();
+    return normalized
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function dedupeDisplayOptions(values = []) {
     const seen = new Set();
     return (Array.isArray(values) ? values : []).filter((entry) => {
       const raw = String(entry ?? '').trim();
-      const displayKey = normalizeUiText(raw).toLowerCase();
+      const displayKey = normalizeOptionDisplayKey(raw);
       if (seen.has(displayKey)) return false;
       seen.add(displayKey);
       return true;
     });
+  }
+
+  function lookupOptionHelp(optionHelpMap = null, selectedValue = '') {
+    if (!optionHelpMap || typeof optionHelpMap !== 'object') return '';
+    const selected = String(selectedValue || '').trim();
+    if (!selected) return '';
+    if (Object.prototype.hasOwnProperty.call(optionHelpMap, selected)) {
+      return String(optionHelpMap[selected] || '');
+    }
+    const selectedKey = normalizeOptionDisplayKey(selected);
+    const entry = Object.entries(optionHelpMap).find(([key]) => normalizeOptionDisplayKey(key) === selectedKey);
+    return entry ? String(entry[1] || '') : '';
   }
 
   function getFlowMode() {
@@ -1339,11 +1369,12 @@ function createTaskController({
         if (optionHelpMap && (field.type === 'select' || field.type === 'multiselect')) {
           if (field.type === 'select') {
             const selected = String(input.value || '').trim();
-            if (selected && optionHelpMap[selected]) hoverText = normalizeUiText(String(optionHelpMap[selected] || '').trim()) || hoverText;
+            const selectedHelp = lookupOptionHelp(optionHelpMap, selected);
+            if (selectedHelp) hoverText = normalizeUiText(String(selectedHelp || '').trim()) || hoverText;
           } else {
             const selectedValues = [...input.selectedOptions].map((option) => String(option.value || '').trim()).filter(Boolean);
             const selectedHelp = selectedValues
-              .map((value) => normalizeUiText(String(optionHelpMap[value] || '').trim()))
+              .map((value) => normalizeUiText(String(lookupOptionHelp(optionHelpMap, value) || '').trim()))
               .filter(Boolean)
               .join(' | ');
             if (selectedHelp) hoverText = selectedHelp;
@@ -1369,7 +1400,7 @@ function createTaskController({
         let optionHint = '';
         if (Array.isArray(field.options) && field.options.length) {
           if (field.optionHelp && typeof field.optionHelp === 'object') {
-            optionHint = 'Optionen im Dropdown (Kurzinfo per Hover).';
+            optionHint = 'Optionen im Dropdown (Kurzinfos über "Optionen erklärt").';
           } else if (field.options.length <= 5) {
             optionHint = `Optionen: ${field.options.map((entry) => normalizeUiText(entry)).join(', ')}`;
           } else {
@@ -1385,6 +1416,46 @@ function createTaskController({
           : '';
         hint.textContent = `${requiredHint} ${explanation}${optionHint ? ` ${optionHint}` : ''}${placeholderHint}${customHint}`;
         wrap.appendChild(hint);
+
+        if (optionHelpMap && (field.type === 'select' || field.type === 'multiselect')) {
+          const details = document.createElement('details');
+          details.className = 'field-option-help';
+          const summary = document.createElement('summary');
+          summary.textContent = 'Optionen erklärt';
+          details.appendChild(summary);
+          const list = document.createElement('ul');
+          list.className = 'field-option-help-list';
+
+          const orderedKeys = [];
+          const optionValues = Array.isArray(field.options) ? field.options : [];
+          optionValues.forEach((optionValue) => {
+            const optionRaw = String(optionValue || '').trim();
+            if (!optionRaw || optionRaw === '__custom__') return;
+            if (!orderedKeys.some((existing) => normalizeOptionDisplayKey(existing) === normalizeOptionDisplayKey(optionRaw))) {
+              orderedKeys.push(optionRaw);
+            }
+          });
+          Object.keys(optionHelpMap).forEach((rawKey) => {
+            const key = String(rawKey || '').trim();
+            if (!key) return;
+            if (!orderedKeys.some((existing) => normalizeOptionDisplayKey(existing) === normalizeOptionDisplayKey(key))) {
+              orderedKeys.push(key);
+            }
+          });
+
+          orderedKeys.forEach((entryKey) => {
+            const text = lookupOptionHelp(optionHelpMap, entryKey);
+            if (!text) return;
+            const item = document.createElement('li');
+            item.innerHTML = `<strong>${escapeHtml(normalizeUiText(entryKey))}:</strong> ${escapeHtml(normalizeUiText(String(text || '')))}`;
+            list.appendChild(item);
+          });
+
+          if (list.childElementCount > 0) {
+            details.appendChild(list);
+            wrap.appendChild(details);
+          }
+        }
       }
 
       if (allowCustom && field.type !== 'checkbox') {
