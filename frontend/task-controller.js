@@ -1237,7 +1237,8 @@ function createTaskController({
         input = document.createElement('select');
         const options = Array.isArray(field.options) ? [...field.options] : [];
         if (allowCustom && !options.includes('__custom__')) options.push('__custom__');
-        input.innerHTML = `<option value="">Bitte wählen...</option>${options
+        const selectPlaceholder = String(field.placeholder || '').trim() || 'Bitte wählen...';
+        input.innerHTML = `<option value="">${selectPlaceholder}</option>${options
           .map((opt) => {
             if (opt === '__custom__') return '<option value="__custom__">Custom...</option>';
             return `<option value="${opt}">${opt}</option>`;

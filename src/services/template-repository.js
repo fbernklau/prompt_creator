@@ -445,6 +445,99 @@ function normalizeBaseFieldList(values = [], fallback = []) {
   return normalized.length ? normalized : [...fallback];
 }
 
+function normalizeLookupKey(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildDefaultDynamicFieldLookup() {
+  const byTemplateId = new Map();
+  const byCategorySubcategory = new Map();
+  const catalog = getTemplateCatalog();
+  const categories = catalog?.categories && typeof catalog.categories === 'object'
+    ? catalog.categories
+    : {};
+
+  Object.entries(categories).forEach(([categoryName, category]) => {
+    const categoryKey = normalizeLookupKey(mapCategoryDisplayName(categoryName));
+    const templates = category?.templates && typeof category.templates === 'object'
+      ? category.templates
+      : {};
+    Object.entries(templates).forEach(([subcategoryName, template]) => {
+      const normalizedFields = normalizeDynamicFields(Array.isArray(template?.dynamicFields) ? template.dynamicFields : []);
+      if (!normalizedFields.length) return;
+      const templateId = normalizeLookupKey(template?.id);
+      if (templateId) byTemplateId.set(templateId, normalizedFields);
+      byCategorySubcategory.set(
+        `${categoryKey}::${normalizeLookupKey(subcategoryName)}`,
+        normalizedFields
+      );
+    });
+  });
+
+  return { byTemplateId, byCategorySubcategory };
+}
+
+const DEFAULT_DYNAMIC_FIELD_LOOKUP = buildDefaultDynamicFieldLookup();
+
+function resolveFallbackDynamicFields({
+  templateUid,
+  categoryName,
+  title,
+  subcategoryName,
+  taxonomyPath = [],
+}) {
+  const byTemplateId = DEFAULT_DYNAMIC_FIELD_LOOKUP.byTemplateId;
+  const byCategorySubcategory = DEFAULT_DYNAMIC_FIELD_LOOKUP.byCategorySubcategory;
+
+  const uidKey = normalizeLookupKey(templateUid);
+  if (uidKey && byTemplateId.has(uidKey)) {
+    return byTemplateId.get(uidKey);
+  }
+
+  const categoryKey = normalizeLookupKey(mapCategoryDisplayName(categoryName));
+  const candidateNames = unique([
+    subcategoryName,
+    title,
+    ...(Array.isArray(taxonomyPath) ? taxonomyPath.slice(1) : []),
+  ]);
+
+  for (const candidate of candidateNames) {
+    const lookupKey = `${categoryKey}::${normalizeLookupKey(candidate)}`;
+    if (byCategorySubcategory.has(lookupKey)) {
+      return byCategorySubcategory.get(lookupKey);
+    }
+  }
+
+  return [];
+}
+
+function mergeDynamicFieldsWithFallback(dynamicFields = [], fallbackFields = []) {
+  if (!Array.isArray(dynamicFields) || !dynamicFields.length) return dynamicFields;
+  if (!Array.isArray(fallbackFields) || !fallbackFields.length) return dynamicFields;
+
+  const fallbackById = new Map(
+    fallbackFields
+      .map((field) => [String(field?.id || '').trim(), field])
+      .filter(([id]) => !!id)
+  );
+
+  return dynamicFields.map((field) => {
+    const fallback = fallbackById.get(String(field?.id || '').trim());
+    if (!fallback) return field;
+    const fallbackOptions = Array.isArray(fallback.options)
+      ? fallback.options.map((entry) => asText(entry).trim()).filter(Boolean)
+      : undefined;
+    const hasOwnOptions = Array.isArray(field.options) && field.options.length > 0;
+    return {
+      ...field,
+      placeholder: asText(field.placeholder || fallback.placeholder || ''),
+      helpText: asText(field.helpText || fallback.helpText || ''),
+      customPlaceholder: asText(field.customPlaceholder || fallback.customPlaceholder || ''),
+      options: hasOwnOptions ? field.options : fallbackOptions,
+    };
+  });
+}
+
 function buildTemplateViewRow(row, pathRows = [], {
   favoriteSet = new Set(),
   recentUsageMap = new Map(),
@@ -466,14 +559,22 @@ function buildTemplateViewRow(row, pathRows = [], {
   const subPath = taxonomyPath.slice(1);
   const lastPath = subPath[subPath.length - 1];
   const title = asText(row.title || row.node_name || 'Template').trim() || 'Template';
-  const dynamicFields = enrichDynamicFields(rawDynamicFields, {
-    templateUid: row.template_uid,
-    templateTitle: title,
-  });
   const subcategoryName = unique([
     ...subPath,
     ...(lastPath && lastPath === title ? [] : [title]),
   ]).join(' / ') || title;
+  const fallbackDynamicFields = resolveFallbackDynamicFields({
+    templateUid: row.template_uid,
+    categoryName: rootCategory,
+    title,
+    subcategoryName,
+    taxonomyPath,
+  });
+  const mergedDynamicFields = mergeDynamicFieldsWithFallback(rawDynamicFields, fallbackDynamicFields);
+  const dynamicFields = enrichDynamicFields(mergedDynamicFields, {
+    templateUid: row.template_uid,
+    templateTitle: title,
+  });
   const usageMeta = recentUsageMap.get(String(row.template_uid || '').trim()) || null;
   const recentUsedAt = usageMeta?.recentUsedAt || null;
   const recentUsageCount = usageMeta?.recentUsageCount || 0;
