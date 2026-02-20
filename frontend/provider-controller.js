@@ -69,6 +69,12 @@ function createProviderController({
     return (Array.isArray(state.providers) ? state.providers : []).find((entry) => entry.id === normalized) || null;
   }
 
+  function getProviderBySystemKeyId(systemKeyId = '') {
+    const normalized = String(systemKeyId || '').trim();
+    if (!normalized) return null;
+    return (Array.isArray(state.providers) ? state.providers : []).find((entry) => String(entry.systemKeyId || '').trim() === normalized) || null;
+  }
+
   function formatProviderSummaryLabel(provider, { emptyLabel = 'nicht gesetzt' } = {}) {
     if (!provider) return emptyLabel;
     return `${provider.name} (${provider.kind}, ${provider.model})`;
@@ -920,14 +926,26 @@ function createProviderController({
     }
   }
 
-  async function addAssignedKeyAsProvider(systemKeyId) {
+  async function addAssignedKeyAsProvider(systemKeyId, { silent = false, assignStages = false } = {}) {
     const entry = (state.assignedSystemKeys || []).find((row) => row.systemKeyId === systemKeyId);
     if (!entry) throw new Error('System-Key nicht verfügbar.');
+    const existing = getProviderBySystemKeyId(entry.systemKeyId);
+    if (existing) {
+      if (assignStages) {
+        await selectProviderForStage('metaprompt', existing.id, { silent: true });
+        await selectProviderForStage('result', existing.id, { silent: true });
+      }
+      if (!silent) emitNotice('Zugewiesener System-Key ist bereits als Profil vorhanden.', 'info');
+      renderProviders();
+      return { providerId: existing.id, created: false };
+    }
+
     const catalogModels = getCatalogModels(entry.providerKind);
     const fallbackModel = String(entry.modelHint || '').trim() || catalogModels[0] || `${entry.providerKind}-model`;
     const recommended = getRecommendedBaseUrl(entry.providerKind);
+    const providerId = uid();
     const payload = {
-      id: uid(),
+      id: providerId,
       name: `${entry.name} (${entry.systemKeyId})`,
       kind: entry.providerKind,
       model: fallbackModel,
@@ -945,8 +963,58 @@ function createProviderController({
     state.providers = await api('/api/providers');
     await refreshAssignedSystemKeys();
     await syncStageAssignmentsWithProviderList({ persist: true });
+    if (assignStages) {
+      await selectProviderForStage('metaprompt', providerId, { silent: true });
+      await selectProviderForStage('result', providerId, { silent: true });
+    }
     renderProviders();
-    emitNotice('Zugewiesener System-Key wurde als Provider hinzugefügt.', 'ok');
+    if (!silent) emitNotice('Zugewiesener System-Key wurde als Provider hinzugefügt.', 'ok');
+    return { providerId, created: true };
+  }
+
+  async function removeSystemKeyProfiles({ silent = false } = {}) {
+    const systemProviders = (Array.isArray(state.providers) ? state.providers : [])
+      .filter((provider) => Boolean(provider?.systemKeyId));
+    if (!systemProviders.length) return { removed: 0 };
+    for (const provider of systemProviders) {
+      await api(`/api/providers/${encodeURIComponent(provider.id)}`, { method: 'DELETE' });
+    }
+    state.providers = await api('/api/providers');
+    await refreshAssignedSystemKeys();
+    await syncStageAssignmentsWithProviderList({ persist: true });
+    renderProviders();
+    if (!silent) emitNotice(`System-Key-Profile entfernt: ${systemProviders.length}`, 'ok');
+    return { removed: systemProviders.length };
+  }
+
+  async function ensureAssignedSystemKeyProvider({ activateStages = true, onlyWhenNoReady = true, silent = false } = {}) {
+    await refreshAssignedSystemKeys();
+    if (state.systemKeysEnabled === false) {
+      return { added: false, reason: 'system_keys_disabled' };
+    }
+    const assignedKeys = Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [];
+    if (!assignedKeys.length) {
+      return { added: false, reason: 'no_assigned_keys' };
+    }
+    const summary = getProviderAvailabilitySummary();
+    if (onlyWhenNoReady && summary.hasReadyProvider) {
+      return { added: false, reason: 'already_ready' };
+    }
+
+    const preferred = assignedKeys[0];
+    const existing = getProviderBySystemKeyId(preferred.systemKeyId);
+    const result = existing
+      ? { providerId: existing.id, created: false }
+      : await addAssignedKeyAsProvider(preferred.systemKeyId, { silent: true, assignStages: false });
+    if (activateStages && result?.providerId) {
+      await selectProviderForStage('metaprompt', result.providerId, { silent: true });
+      await selectProviderForStage('result', result.providerId, { silent: true });
+      renderProviders();
+    }
+    if (!silent && result?.providerId) {
+      emitNotice('Zugewiesener System-Key wurde automatisch als aktives Profil gesetzt.', 'ok');
+    }
+    return { added: true, providerId: result.providerId, created: Boolean(result.created) };
   }
 
   async function unlockVault() {
@@ -1061,6 +1129,9 @@ function createProviderController({
     testProviderConnection,
     checkStageConnectivity,
     selectProviderForStage,
+    addAssignedKeyAsProvider,
+    removeSystemKeyProfiles,
+    ensureAssignedSystemKeyProvider,
     getProviderAvailabilitySummary,
   };
 }

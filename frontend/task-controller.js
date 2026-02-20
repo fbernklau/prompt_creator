@@ -76,6 +76,10 @@ function createTaskController({
       questions: [],
       answers: {},
       qaHistory: [],
+      rawTranscript: {
+        initialOutput: '',
+        rounds: [],
+      },
     };
   }
   state.resultFollowup = state.resultFollowup && typeof state.resultFollowup === 'object'
@@ -803,6 +807,10 @@ function createTaskController({
       questions: [],
       answers: {},
       qaHistory: [],
+      rawTranscript: {
+        initialOutput: '',
+        rounds: [],
+      },
     };
     const panel = el('result-followup-panel');
     if (panel) panel.classList.add('is-hidden');
@@ -818,9 +826,63 @@ function createTaskController({
     return `result-followup-answer-${index + 1}`;
   }
 
+  function parseFollowupQuestionsFromJson(rawText = '') {
+    const text = String(rawText || '').trim();
+    if (!text) return [];
+    const candidates = [text];
+    if (text.startsWith('```')) {
+      candidates.push(text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim());
+    }
+    const stripped = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    const firstBrace = stripped.indexOf('{');
+    const lastBrace = stripped.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      candidates.push(stripped.slice(firstBrace, lastBrace + 1));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+        const mapped = questions
+          .map((entry, index) => {
+            if (typeof entry === 'string') {
+              const question = String(entry || '').replace(/\s+/g, ' ').trim();
+              if (!question) return null;
+              return { id: `q${index + 1}`, question, placeholder: `Antwort zu Frage ${index + 1}` };
+            }
+            if (!entry || typeof entry !== 'object') return null;
+            const question = String(entry.question || entry.text || entry.prompt || '').replace(/\s+/g, ' ').trim();
+            if (!question) return null;
+            return {
+              id: String(entry.id || `q${index + 1}`).trim() || `q${index + 1}`,
+              question,
+              placeholder: String(entry.placeholder || `Antwort zu Frage ${index + 1}`).trim(),
+            };
+          })
+          .filter(Boolean);
+        if (mapped.length) return mapped.slice(0, 7);
+      } catch (_error) {
+        // fallback to plain-text parsing below
+      }
+    }
+    return [];
+  }
+
+  function formatFollowupQuestionsAsPlainText(questions = []) {
+    const normalized = Array.isArray(questions) ? questions : [];
+    if (!normalized.length) return '';
+    return normalized
+      .map((entry, index) => `${index + 1}. ${String(entry?.question || '').trim()}`)
+      .filter(Boolean)
+      .join('\n');
+  }
+
   function parseFollowupQuestionsFromText(rawText = '') {
     const text = String(rawText || '').trim();
     if (!text) return [];
+    const jsonParsed = parseFollowupQuestionsFromJson(text);
+    if (jsonParsed.length) return jsonParsed;
     const markerPattern = /^\s*(?:[-*•]\s+|(?:\d{1,2}|[A-Za-z])[.):-]\s+)(.+)$/u;
     const lines = text.split(/\r?\n/).map((line) => String(line || '').trim()).filter(Boolean);
     const chunks = [];
@@ -906,6 +968,24 @@ function createTaskController({
     state.resultFollowup.qaHistory = merged;
   }
 
+  function appendFollowupRawRound(action = 'ask', payload = {}, round = 0) {
+    const followup = state.resultFollowup || {};
+    const rawOutput = String(payload?.rawOutput || payload?.resultOutput || '').trim();
+    if (!rawOutput) return;
+    if (!followup.rawTranscript || typeof followup.rawTranscript !== 'object') {
+      followup.rawTranscript = { initialOutput: '', rounds: [] };
+    }
+    if (!Array.isArray(followup.rawTranscript.rounds)) {
+      followup.rawTranscript.rounds = [];
+    }
+    followup.rawTranscript.rounds.push({
+      action: String(action || 'ask').trim().toLowerCase() === 'final' ? 'final' : 'ask',
+      round: Number(round) || 0,
+      rawOutput,
+      capturedAt: new Date().toISOString(),
+    });
+  }
+
   function renderResultFollowupPanel() {
     const panel = el('result-followup-panel');
     const roundNode = el('result-followup-round');
@@ -978,6 +1058,10 @@ function createTaskController({
     ).trim();
     const parsedInitialQuestions = parseFollowupQuestionsFromText(String(generation?.resultOutput || ''));
     const initialRound = parsedInitialQuestions.length ? 1 : 0;
+    const rawInitialOutput = String(generation?.resultOutput || '').trim();
+    const initialDisplayOutput = parsedInitialQuestions.length
+      ? formatFollowupQuestionsAsPlainText(parsedInitialQuestions)
+      : rawInitialOutput;
     state.resultFollowup = {
       enabled: true,
       maxRounds: 2,
@@ -985,11 +1069,19 @@ function createTaskController({
       providerId: resultProviderId,
       templateId: String(generation?.templateId || '').trim(),
       handoffPrompt: String(generation?.handoffPrompt || generation?.output || '').trim(),
-      latestResultOutput: String(generation?.resultOutput || '').trim(),
+      latestResultOutput: initialDisplayOutput,
       questions: parsedInitialQuestions,
       answers: {},
       qaHistory: [],
+      rawTranscript: {
+        initialOutput: rawInitialOutput,
+        rounds: [],
+      },
     };
+    if (parsedInitialQuestions.length) {
+      if (el('result-direct-output')) el('result-direct-output').value = initialDisplayOutput;
+      state.generatedResult = initialDisplayOutput;
+    }
     if (el('result-followup-status')) {
       el('result-followup-status').textContent = parsedInitialQuestions.length
         ? 'Rückfragen erkannt. Bitte beantworte sie oder fordere eine weitere Runde an.'
@@ -1038,6 +1130,7 @@ function createTaskController({
 
       if (normalizedAction === 'final') {
         const output = String(payload?.resultOutput || '').trim();
+        appendFollowupRawRound('final', payload, Number(followup.round) || 0);
         if (output) {
           state.generatedResult = output;
           state.resultFollowup.latestResultOutput = output;
@@ -1051,6 +1144,7 @@ function createTaskController({
         }
       } else {
         const questions = Array.isArray(payload?.questions) ? payload.questions : [];
+        appendFollowupRawRound('ask', payload, Number(followup.round) || 0);
         state.resultFollowup.round = Number(payload?.round) || (Number(followup.round) + 1);
         state.resultFollowup.maxRounds = Number(payload?.maxRounds) || followup.maxRounds || 2;
         state.resultFollowup.questions = questions.map((entry, index) => ({
@@ -1059,6 +1153,12 @@ function createTaskController({
           placeholder: String(entry?.placeholder || 'Kurze Antwort eingeben').trim(),
         })).filter((entry) => entry.question);
         state.resultFollowup.answers = {};
+        const prettyQuestionText = formatFollowupQuestionsAsPlainText(state.resultFollowup.questions);
+        if (prettyQuestionText) {
+          state.resultFollowup.latestResultOutput = prettyQuestionText;
+          state.generatedResult = prettyQuestionText;
+          if (el('result-direct-output')) el('result-direct-output').value = prettyQuestionText;
+        }
         if (statusNode) {
           const baseNote = String(payload?.note || '').trim();
           const usageNote = formatFollowupCostSummary(payload?.cost, payload?.usage);
@@ -1459,6 +1559,27 @@ function createTaskController({
     if (listNode) listNode.classList.toggle('is-list', mode === 'list');
     if (gridButton) gridButton.classList.toggle('is-active', mode === 'grid');
     if (listButton) listButton.classList.toggle('is-active', mode === 'list');
+  }
+
+  function getResultFollowupRawTranscript() {
+    const transcript = state.resultFollowup?.rawTranscript;
+    if (!transcript || typeof transcript !== 'object') return null;
+    const initialOutput = String(transcript.initialOutput || '').trim();
+    const rounds = Array.isArray(transcript.rounds)
+      ? transcript.rounds
+        .map((entry) => ({
+          action: String(entry?.action || 'ask').trim().toLowerCase() === 'final' ? 'final' : 'ask',
+          round: Number(entry?.round) || 0,
+          rawOutput: String(entry?.rawOutput || '').trim(),
+          capturedAt: String(entry?.capturedAt || '').trim(),
+        }))
+        .filter((entry) => entry.rawOutput)
+      : [];
+    if (!initialOutput && !rounds.length) return null;
+    return {
+      initialOutput,
+      rounds,
+    };
   }
 
   function setSubcategoryViewMode(mode) {
@@ -2995,6 +3116,7 @@ function createTaskController({
     syncFlowModeUi,
     openLibraryEntry,
     openHistoryEntry,
+    getResultFollowupRawTranscript,
   };
 }
 

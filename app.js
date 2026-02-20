@@ -488,6 +488,7 @@ function getIntroductionSteps() {
       anchorHint: 'Bei zugewiesenem System-Key: Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.',
       autoAction: true,
       action: async () => {
+        if (state.settings?.hasSeenIntroduction === true) return;
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
           : { hasAnySystemKeyAccess: false };
@@ -495,20 +496,7 @@ function getIntroductionSteps() {
         introTourContext.providerCheckSummary = '';
         introTourContext.providerCheckCompleted = false;
         introTourContext.providerCheckResults = [];
-
-        const providers = Array.isArray(state.providers) ? state.providers : [];
-        const nonSystemProvider = providers.find((entry) => !entry.systemKeyId);
-        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
-        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
-        if (nonSystemProvider && (metaProvider?.systemKeyId || resultProvider?.systemKeyId)) {
-          if (metaProvider?.systemKeyId) {
-            await providerController.selectProviderForStage('metaprompt', nonSystemProvider.id, { silent: true });
-          }
-          if (resultProvider?.systemKeyId) {
-            await providerController.selectProviderForStage('result', nonSystemProvider.id, { silent: true });
-          }
-          providerController.renderProviders();
-        }
+        await providerController.removeSystemKeyProfiles({ silent: true });
       },
       hideActionButton: true,
       requireConditionForNext: () => {
@@ -867,6 +855,19 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
   }
 }
 
+async function ensureSystemKeyReadyAfterTourSkip() {
+  if (state.settings?.hasSeenIntroduction === true) return;
+  try {
+    await providerController.ensureAssignedSystemKeyProvider({
+      activateStages: true,
+      onlyWhenNoReady: true,
+      silent: true,
+    });
+  } catch (_error) {
+    // Skip must not hard-fail due to key bootstrap issues.
+  }
+}
+
 async function runIntroductionStepAction({ rerender = true } = {}) {
   const steps = getIntroductionSteps();
   const step = steps[introTourState.index];
@@ -1051,8 +1052,12 @@ function bindEvents() {
   if (el('onboarding-welcome-later')) {
     el('onboarding-welcome-later').addEventListener('click', () => {
       sessionStorage.setItem('eduprompt_intro_skip_session', '1');
-      hideOnboardingWelcomeModal();
-      notify('Tour vorerst übersprungen. Du kannst sie jederzeit über „Tour starten“ auf der Hauptseite starten.', { type: 'info' });
+      ensureSystemKeyReadyAfterTourSkip()
+        .finally(() => {
+          hideOnboardingWelcomeModal();
+          notify('Tour vorerst übersprungen. Du kannst sie jederzeit über „Tour starten“ auf der Hauptseite starten.', { type: 'info' });
+        })
+        .catch((error) => notifyError(error));
     });
   }
   el('btn-library').addEventListener('click', async () => {
@@ -1216,7 +1221,9 @@ function bindEvents() {
       'Tour wirklich überspringen?\n\nDu kannst sie auf der Seite „Neue Aufgabe“ jederzeit über „Tour starten“ erneut starten.'
     );
     if (!confirmed) return;
-    finishIntroductionTour({ markSeen: true, skipSession: true }).catch((error) => notifyError(error));
+    ensureSystemKeyReadyAfterTourSkip()
+      .finally(() => finishIntroductionTour({ markSeen: true, skipSession: true }))
+      .catch((error) => notifyError(error));
   });
 
 }

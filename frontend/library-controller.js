@@ -185,6 +185,42 @@ function createLibraryController({
     return String(item.descriptionText || '').trim() || 'Keine Beschreibung hinterlegt.';
   }
 
+  function readFollowupRawSnapshot(item = {}) {
+    const snapshot = item?.formSnapshot;
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    const raw = snapshot.__followupRaw;
+    if (!raw || typeof raw !== 'object') return null;
+    const initialOutput = String(raw.initialOutput || '').trim();
+    const rounds = Array.isArray(raw.rounds)
+      ? raw.rounds
+        .map((entry) => ({
+          action: String(entry?.action || 'ask').trim().toLowerCase() === 'final' ? 'final' : 'ask',
+          round: Number(entry?.round) || 0,
+          rawOutput: String(entry?.rawOutput || '').trim(),
+          capturedAt: String(entry?.capturedAt || '').trim(),
+        }))
+        .filter((entry) => entry.rawOutput)
+      : [];
+    if (!initialOutput && !rounds.length) return null;
+    return { initialOutput, rounds };
+  }
+
+  function formatFollowupRawSnapshot(raw = null) {
+    if (!raw) return '';
+    const lines = [];
+    if (raw.initialOutput) {
+      lines.push('Initiale Ausgabe');
+      lines.push(raw.initialOutput);
+      lines.push('');
+    }
+    (raw.rounds || []).forEach((entry, index) => {
+      lines.push(`Runde ${entry.round || index + 1} (${entry.action === 'final' ? 'final' : 'ask'})${entry.capturedAt ? ` – ${entry.capturedAt}` : ''}`);
+      lines.push(entry.rawOutput);
+      lines.push('');
+    });
+    return lines.join('\n').trim();
+  }
+
   function findLibraryEntry(libraryId) {
     return getActiveItems().find((entry) => String(entry.id) === String(libraryId)) || null;
   }
@@ -223,6 +259,16 @@ function createLibraryController({
     ].filter(Boolean).join(' | ');
     const showResultTab = entry.hasResult ? '' : 'is-hidden';
     const publicToggleLabel = entry.isPublic ? 'Privat setzen' : 'Public setzen';
+    const followupRaw = readFollowupRawSnapshot(entry);
+    const followupRawText = formatFollowupRawSnapshot(followupRaw);
+    const followupRawMarkup = followupRawText
+      ? `
+        <details class="top-space tw-library-debug-details">
+          <summary>Technikdetails (Rückfragen-Rohdaten)</summary>
+          <pre class="library-text top-space">${escapeHtml(followupRawText)}</pre>
+        </details>
+      `
+      : '';
 
     return `
       <div class="panel tw-library-detail-card" data-library-detail-id="${entry.id}">
@@ -253,6 +299,7 @@ function createLibraryController({
         </div>
 
         <pre class="library-text top-space tw-library-detail-text">${escapeHtml(content)}</pre>
+        ${followupRawMarkup}
 
         <div class="inline-actions top-space tw-library-detail-actions">
           <button type="button" data-detail-action="reuse">Wiederverwenden</button>
@@ -564,6 +611,28 @@ function createLibraryController({
     if (!state.generatedPrompt || !state.lastPromptContext) return;
     const provider = resolveLastGenerationProvider();
     const generationMode = state.lastGenerationPayload?.mode === 'result' ? 'result' : 'prompt';
+    const formSnapshot = (() => {
+      const snapshot = state.lastGenerationFormSnapshot && typeof state.lastGenerationFormSnapshot === 'object'
+        ? JSON.parse(JSON.stringify(state.lastGenerationFormSnapshot))
+        : {};
+      if (generationMode !== 'result') return snapshot;
+      const raw = state.resultFollowup?.rawTranscript;
+      if (!raw || typeof raw !== 'object') return snapshot;
+      const initialOutput = String(raw.initialOutput || '').trim();
+      const rounds = Array.isArray(raw.rounds)
+        ? raw.rounds
+          .map((entry) => ({
+            action: String(entry?.action || 'ask').trim().toLowerCase() === 'final' ? 'final' : 'ask',
+            round: Number(entry?.round) || 0,
+            rawOutput: String(entry?.rawOutput || '').trim(),
+            capturedAt: String(entry?.capturedAt || '').trim(),
+          }))
+          .filter((entry) => entry.rawOutput)
+        : [];
+      if (!initialOutput && !rounds.length) return snapshot;
+      snapshot.__followupRaw = { initialOutput, rounds };
+      return snapshot;
+    })();
     const payload = {
       title: el('library-title').value.trim() || `${state.lastPromptContext.unterkategorie} - ${state.lastPromptContext.fach}`,
       descriptionText: '',
@@ -577,7 +646,7 @@ function createLibraryController({
       providerKind: provider?.kind || null,
       providerModel: provider?.model || null,
       generationMode,
-      formSnapshot: state.lastGenerationFormSnapshot || {},
+      formSnapshot,
       metapromptText: state.generatedMetaPrompt || state.generatedPrompt,
       resultText: state.generatedResult || '',
       hasResult: Boolean(state.generatedResult),

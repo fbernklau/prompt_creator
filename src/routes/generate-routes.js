@@ -1670,6 +1670,7 @@ function createGenerateRouter() {
           mode: 'final',
           round: normalizedRound,
           maxRounds: followupMaxRounds,
+          rawOutput: resultOutput,
           resultOutput,
           provider: {
             id: provider.provider_id,
@@ -1692,6 +1693,7 @@ function createGenerateRouter() {
         mode: 'questions',
         round: Math.min(normalizedRound + 1, followupMaxRounds),
         maxRounds: followupMaxRounds,
+        rawOutput: String(providerCall.text || '').trim(),
         questions: parsed.questions,
         note: parsed.note || (parsed.questions.length
           ? 'Rückfragen erstellt. Bitte beantworten und anschließend Ergebnis anfordern.'
