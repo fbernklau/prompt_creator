@@ -34,6 +34,8 @@ const state = {
   libraryOwn: [],
   libraryPublic: [],
   editProviderId: null,
+  introTourActive: false,
+  tourPreferredSystemKeyId: '',
 };
 
 const INTRO_TOUR_VERSION = 1;
@@ -52,7 +54,9 @@ const introTourContext = {
   providerCheckSummary: '',
   providerCheckCompleted: false,
   providerCheckResults: [],
+  providerCheckHasReady: false,
   clarifyingQuestionsTourEnabled: false,
+  preferredSystemKeyId: '',
 };
 
 function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
@@ -334,11 +338,41 @@ function isResultReadyForTour() {
   return String(banner.textContent || '').trim().length > 0;
 }
 
+function normalizeTourSelectorList(rawSelectors) {
+  if (typeof rawSelectors === 'string') {
+    return [rawSelectors].filter(Boolean);
+  }
+  if (Array.isArray(rawSelectors)) {
+    return rawSelectors.filter((selector) => typeof selector === 'string' && selector.trim());
+  }
+  return [];
+}
+
+function getStepAnchors(step) {
+  if (!step) return [];
+  if (typeof step.anchors === 'function') {
+    return normalizeTourSelectorList(step.anchors());
+  }
+  const anchors = normalizeTourSelectorList(step.anchors);
+  if (anchors.length) return anchors;
+  if (typeof step.anchor === 'function') {
+    return normalizeTourSelectorList(step.anchor());
+  }
+  return normalizeTourSelectorList(step.anchor);
+}
+
+function getStepAdvanceSelectors(step, fallback = []) {
+  if (!step) return fallback;
+  if (typeof step.anchorsAdvanceSelectors === 'function') {
+    const selectors = normalizeTourSelectorList(step.anchorsAdvanceSelectors());
+    return selectors.length ? selectors : fallback;
+  }
+  const selectors = normalizeTourSelectorList(step.anchorsAdvanceSelectors);
+  return selectors.length ? selectors : fallback;
+}
+
 function resolveIntroductionAnchor(step) {
-  if (!step) return null;
-  const selectors = Array.isArray(step.anchors)
-    ? step.anchors
-    : [step.anchor].filter(Boolean);
+  const selectors = getStepAnchors(step);
   for (const selector of selectors) {
     const node = document.querySelector(selector);
     if (!node) continue;
@@ -346,6 +380,43 @@ function resolveIntroductionAnchor(step) {
     return { node, selector };
   }
   return null;
+}
+
+function escapeCssAttrValue(rawValue = '') {
+  const value = String(rawValue || '');
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function pickPreferredSystemKeyIdForTour() {
+  const assignedKeys = Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [];
+  if (!assignedKeys.length) return '';
+
+  const currentPreferred = String(introTourContext.preferredSystemKeyId || '').trim();
+  if (currentPreferred && assignedKeys.some((entry) => entry.systemKeyId === currentPreferred)) {
+    return currentPreferred;
+  }
+
+  const activeMeta = (Array.isArray(state.providers) ? state.providers : [])
+    .find((entry) => entry.id === state.settings?.metapromptProviderId);
+  if (activeMeta?.systemKeyId && assignedKeys.some((entry) => entry.systemKeyId === activeMeta.systemKeyId)) {
+    return activeMeta.systemKeyId;
+  }
+
+  const activeResult = (Array.isArray(state.providers) ? state.providers : [])
+    .find((entry) => entry.id === state.settings?.resultProviderId);
+  if (activeResult?.systemKeyId && assignedKeys.some((entry) => entry.systemKeyId === activeResult.systemKeyId)) {
+    return activeResult.systemKeyId;
+  }
+
+  return String(assignedKeys[0]?.systemKeyId || '').trim();
+}
+
+function getPreferredSystemKeyNameForTour() {
+  const preferredId = String(introTourContext.preferredSystemKeyId || '').trim();
+  if (!preferredId) return '';
+  const assignedKeys = Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [];
+  const entry = assignedKeys.find((row) => row.systemKeyId === preferredId);
+  return String(entry?.name || '').trim();
 }
 
 function getIntroductionSteps() {
@@ -463,29 +534,53 @@ function getIntroductionSteps() {
         if (!summary.hasAnySystemKeyAccess) {
           return 'Für dein Konto sind aktuell keine System-Keys zugewiesen. Im nächsten Schritt geht es mit persönlichem Key weiter.';
         }
+        const preferredId = pickPreferredSystemKeyIdForTour();
+        if (preferredId && !introTourContext.preferredSystemKeyId) {
+          introTourContext.preferredSystemKeyId = preferredId;
+        }
+        const preferredName = getPreferredSystemKeyNameForTour();
         const providers = Array.isArray(state.providers) ? state.providers : [];
         const systemProfiles = providers.filter((entry) => !!entry.systemKeyId);
+        const preferredProfile = providers.find((entry) => entry.systemKeyId === introTourContext.preferredSystemKeyId)
+          || systemProfiles[0]
+          || null;
         const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
         const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
-        const hasSystemStage = Boolean(metaProvider?.systemKeyId) || Boolean(resultProvider?.systemKeyId);
-        if (!systemProfiles.length) {
-          return 'Ein systemweiter Key ist für dich verfügbar. Er wird zentral verwaltet und weist dir ein Budget zu. Lass uns diesen Key aktivieren: Klicke auf „Als Profil hinzufügen“.';
+        const hasPreferredStage = preferredProfile
+          ? (metaProvider?.id === preferredProfile.id || resultProvider?.id === preferredProfile.id)
+          : false;
+        if (!preferredProfile) {
+          return preferredName
+            ? `Ein systemweiter Key ist für dich verfügbar (${preferredName}). Er wird zentral verwaltet und weist dir ein Budget zu. Klicke jetzt auf „Als Profil hinzufügen“.`
+            : 'Ein systemweiter Key ist für dich verfügbar. Er wird zentral verwaltet und weist dir ein Budget zu. Klicke jetzt auf „Als Profil hinzufügen“.';
         }
-        if (!hasSystemStage) {
-          return 'Der systemweite Key ist als Profil vorhanden, aber noch keiner Stage zugewiesen. Aktiviere ihn jetzt für Metaprompt oder Result und prüfe danach den Status erneut.';
+        if (!hasPreferredStage) {
+          return 'Der ausgewählte System-Key ist als Profil vorhanden, aber noch keiner Stage zugewiesen. Aktiviere ihn jetzt für Metaprompt oder Result und prüfe danach den Status erneut.';
         }
         if (!introTourContext.providerCheckCompleted) {
           return 'System-Key ist aktiv. Führe jetzt erneut „API-Key Status prüfen“ aus, damit wir die Stage-Verbindung bestätigen.';
         }
-        const results = Array.isArray(introTourContext.providerCheckResults) ? introTourContext.providerCheckResults : [];
-        const hasAnyReady = results.some((entry) => entry?.ok);
+        const hasAnyReady = Boolean(introTourContext.providerCheckHasReady);
         if (hasAnyReady) {
           return 'Super! System-Key erfolgreich aktiviert. Du kannst jetzt mit „Weiter“ fortfahren.';
         }
-        return 'System-Key ist gesetzt, aber die Prüfung war noch nicht erfolgreich. Prüfe den Status erneut und fahre dann mit „Weiter“ fort.';
+        return 'Die Prüfung war für diesen Key nicht erfolgreich. Du kannst trotzdem fortfahren und später auf einen funktionierenden Key wechseln.';
       },
-      anchors: ['#provider-list [data-add-assigned-key]', '#provider-list'],
-      anchorHint: 'Bei zugewiesenem System-Key: Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.',
+      anchors: () => {
+        const preferredId = introTourContext.preferredSystemKeyId || pickPreferredSystemKeyIdForTour();
+        const selectors = [];
+        if (preferredId) {
+          selectors.push(`#provider-list [data-add-assigned-key="${escapeCssAttrValue(preferredId)}"]`);
+        }
+        selectors.push('#provider-list [data-add-assigned-key]', '#provider-list');
+        return selectors;
+      },
+      anchorHint: () => {
+        const preferredName = getPreferredSystemKeyNameForTour();
+        return preferredName
+          ? `Bei zugewiesenem System-Key (${preferredName}): Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.`
+          : 'Bei zugewiesenem System-Key: Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.';
+      },
       autoAction: true,
       action: async () => {
         if (state.settings?.hasSeenIntroduction === true) return;
@@ -493,10 +588,16 @@ function getIntroductionSteps() {
           ? providerController.getProviderAvailabilitySummary()
           : { hasAnySystemKeyAccess: false };
         if (!summary.hasAnySystemKeyAccess) return;
+        introTourContext.preferredSystemKeyId = pickPreferredSystemKeyIdForTour();
+        state.tourPreferredSystemKeyId = introTourContext.preferredSystemKeyId || '';
         introTourContext.providerCheckSummary = '';
         introTourContext.providerCheckCompleted = false;
         introTourContext.providerCheckResults = [];
+        introTourContext.providerCheckHasReady = false;
         await providerController.removeSystemKeyProfiles({ silent: true });
+        if (typeof providerController.renderProviders === 'function') {
+          providerController.renderProviders();
+        }
       },
       hideActionButton: true,
       requireConditionForNext: () => {
@@ -505,21 +606,24 @@ function getIntroductionSteps() {
           : { hasReadyProvider: false, hasAnySystemKeyAccess: false };
         if (!summary.hasAnySystemKeyAccess) return true;
         const providers = Array.isArray(state.providers) ? state.providers : [];
-        const hasSystemProfile = providers.some((entry) => !!entry.systemKeyId);
-        if (!hasSystemProfile) return false;
-        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
-        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
-        const hasSystemStage = Boolean(metaProvider?.systemKeyId) || Boolean(resultProvider?.systemKeyId);
-        if (!hasSystemStage) return false;
+        const preferredId = introTourContext.preferredSystemKeyId || pickPreferredSystemKeyIdForTour();
+        const preferredProfile = providers.find((entry) => entry.systemKeyId === preferredId)
+          || providers.find((entry) => Boolean(entry.systemKeyId))
+          || null;
+        if (!preferredProfile) return false;
         return Boolean(introTourContext.providerCheckCompleted);
       },
-      requireConditionHint: 'Bitte System-Key als Profil hinzufügen, Stage aktivieren und Status erneut prüfen.',
+      requireConditionHint: () => {
+        const preferredName = getPreferredSystemKeyNameForTour();
+        return preferredName
+          ? `Bitte zuerst den System-Key „${preferredName}“ als Profil hinzufügen, einer Stage zuweisen und den Status prüfen.`
+          : 'Bitte zuerst System-Key als Profil hinzufügen, einer Stage zuweisen und den Status prüfen.';
+      },
       requireConditionReadyHint: () => {
-        const results = Array.isArray(introTourContext.providerCheckResults) ? introTourContext.providerCheckResults : [];
-        const hasAnyReady = results.some((entry) => entry?.ok);
+        const hasAnyReady = Boolean(introTourContext.providerCheckHasReady);
         return hasAnyReady
           ? 'Super! System-Key ist aktiv und geprüft. Du kannst jetzt mit „Weiter“ fortfahren.'
-          : 'System-Key ist aktiv, aber die Prüfung war noch nicht erfolgreich. Du kannst trotzdem mit „Weiter“ fortfahren.';
+          : 'Statusprüfung abgeschlossen. Du kannst jetzt mit „Weiter“ fortfahren.';
       },
     },
     {
@@ -724,12 +828,8 @@ function renderIntroductionStep(index) {
   if (step.waitForAnchorClick) {
     next.classList.add('is-hidden');
     finish.classList.toggle('is-hidden', true);
-    const fallbackSelectors = Array.isArray(step.anchors) && step.anchors.length
-      ? step.anchors
-      : [step.anchor].filter(Boolean);
-    const clickableSelectors = Array.isArray(step.anchorsAdvanceSelectors) && step.anchorsAdvanceSelectors.length
-      ? step.anchorsAdvanceSelectors
-      : fallbackSelectors;
+    const fallbackSelectors = getStepAnchors(step);
+    const clickableSelectors = getStepAdvanceSelectors(step, fallbackSelectors);
     const onAnchorClick = (event) => {
       if (!introTourState.active) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -828,11 +928,18 @@ function showIntroductionTour() {
   introTourContext.providerCheckSummary = '';
   introTourContext.providerCheckCompleted = false;
   introTourContext.providerCheckResults = [];
+  introTourContext.providerCheckHasReady = false;
   introTourContext.clarifyingQuestionsTourEnabled = false;
+  introTourContext.preferredSystemKeyId = '';
+  state.introTourActive = true;
+  state.tourPreferredSystemKeyId = '';
   introTourState.autoActionStep = -1;
   introTourState.active = true;
   el('intro-tour-modal').classList.remove('is-hidden');
   el('intro-tour-modal').classList.add('tour-no-spotlight');
+  if (typeof providerController.renderProviders === 'function') {
+    providerController.renderProviders();
+  }
   renderIntroductionStep(0);
 }
 
@@ -840,7 +947,13 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
   clearIntroductionHighlight();
   introTourState.autoActionStep = -1;
   introTourState.active = false;
+  state.introTourActive = false;
+  state.tourPreferredSystemKeyId = '';
+  introTourContext.preferredSystemKeyId = '';
   el('intro-tour-modal').classList.add('is-hidden');
+  if (typeof providerController.renderProviders === 'function') {
+    providerController.renderProviders();
+  }
   if (skipSession) {
     sessionStorage.setItem('eduprompt_intro_skip_session', '1');
   } else {
@@ -997,12 +1110,14 @@ function bindEvents() {
       introTourContext.providerCheckCompleted = false;
       introTourContext.providerCheckSummary = 'Statusprüfung läuft …';
       introTourContext.providerCheckResults = [];
+      introTourContext.providerCheckHasReady = false;
       if (introTourState.active) renderIntroductionStep(introTourState.index);
       try {
         const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: true });
         introTourContext.providerCheckResults = Array.isArray(check?.results) ? check.results : [];
         const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
         const result = check.results.find((entry) => entry.stage === 'result');
+        introTourContext.providerCheckHasReady = Boolean(metaprompt?.ok || result?.ok);
         const metaText = metaprompt?.ok
           ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
           : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
@@ -1051,6 +1166,10 @@ function bindEvents() {
   }
   if (el('onboarding-welcome-later')) {
     el('onboarding-welcome-later').addEventListener('click', () => {
+      const confirmed = window.confirm(
+        'Tour jetzt überspringen?\n\nDu kannst sie später auf „Neue Aufgabe“ jederzeit über „Tour starten“ erneut aufrufen.'
+      );
+      if (!confirmed) return;
       sessionStorage.setItem('eduprompt_intro_skip_session', '1');
       ensureSystemKeyReadyAfterTourSkip()
         .finally(() => {

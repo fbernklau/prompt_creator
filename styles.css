@@ -2228,6 +2228,20 @@ button.is-active,
   width: min(620px, calc(100vw - 26px));
 }
 
+.onboarding-welcome-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.intro-tour-actions {
+  align-items: center;
+}
+
+.intro-tour-skip-btn {
+  margin-left: auto;
+  order: 99;
+}
+
 #intro-tour-modal {
   z-index: 12000;
   pointer-events: none;

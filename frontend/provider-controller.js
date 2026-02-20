@@ -782,8 +782,17 @@ function createProviderController({
     const personalProviders = allProviders.filter((provider) => !provider.systemKeyId);
     const assignedProviders = allProviders.filter((provider) => !!provider.systemKeyId);
     const configuredSystemKeyIds = new Set(assignedProviders.map((provider) => provider.systemKeyId).filter(Boolean));
-    const availableAssignedKeys = (Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [])
+    const preferredTourSystemKeyId = String(state.tourPreferredSystemKeyId || '').trim();
+    const showPreferredTourSystemKeyOnly = Boolean(state.introTourActive && preferredTourSystemKeyId);
+    const availableAssignedKeysAll = (Array.isArray(state.assignedSystemKeys) ? state.assignedSystemKeys : [])
       .filter((entry) => !configuredSystemKeyIds.has(entry.systemKeyId));
+    let availableAssignedKeys = availableAssignedKeysAll;
+    if (showPreferredTourSystemKeyOnly) {
+      const preferredOnly = availableAssignedKeysAll.filter((entry) => entry.systemKeyId === preferredTourSystemKeyId);
+      if (preferredOnly.length) {
+        availableAssignedKeys = preferredOnly;
+      }
+    }
 
     const renderProviderRow = (provider) => {
       const metaActive = provider.id === getAssignedProviderId('metaprompt');
@@ -868,7 +877,12 @@ function createProviderController({
                   </div>
                 </div>
                 <div class="provider-stage-row-right">
-                  <button type="button" class="secondary small" data-add-assigned-key="${entry.systemKeyId}">Als Profil hinzufügen</button>
+                  <button
+                    type="button"
+                    class="secondary small"
+                    data-add-assigned-key="${entry.systemKeyId}"
+                    data-tour-preferred="${entry.systemKeyId === preferredTourSystemKeyId ? '1' : '0'}"
+                  >Als Profil hinzufügen</button>
                 </div>
               </li>
             `).join('')}
@@ -916,7 +930,11 @@ function createProviderController({
       };
     });
     list.querySelectorAll('[data-add-assigned-key]').forEach((button) => {
-      button.onclick = () => addAssignedKeyAsProvider(button.dataset.addAssignedKey).catch((error) => emitNotice(error.message, 'error'));
+      button.onclick = () => {
+        const assignStages = button.dataset.tourPreferred === '1';
+        addAssignedKeyAsProvider(button.dataset.addAssignedKey, { assignStages })
+          .catch((error) => emitNotice(error.message, 'error'));
+      };
     });
 
     renderStageSummary();
