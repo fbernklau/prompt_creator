@@ -646,6 +646,7 @@ function createAdminController({
                       <span class="inline-actions">
                         <button type="button" class="secondary small" data-toggle-system-key-details="${escapeHtml(keyId)}">${keyEditOpen ? 'Editor schließen' : 'Edit key'}</button>
                         <button type="button" class="secondary small" data-save-system-key-row="${escapeHtml(keyId)}">Speichern</button>
+                        <button type="button" class="secondary small" data-delete-system-key="${escapeHtml(keyId)}">Löschen</button>
                       </span>
                     </div>
                   </div>
@@ -907,6 +908,10 @@ function createAdminController({
 
     container.querySelectorAll('[data-save-system-key-row]').forEach((button) => {
       button.onclick = () => saveSystemKeyRow(button.dataset.saveSystemKeyRow).catch((error) => alert(error.message));
+    });
+
+    container.querySelectorAll('[data-delete-system-key]').forEach((button) => {
+      button.onclick = () => removeSystemKey(button.dataset.deleteSystemKey).catch((error) => alert(error.message));
     });
 
     container.querySelectorAll('[data-toggle-system-key-details]').forEach((button) => {
@@ -1609,6 +1614,23 @@ function createAdminController({
       body: JSON.stringify(payload),
     });
     if (rowStatus) rowStatus.textContent = 'Gespeichert.';
+    await loadAdminData();
+  }
+
+  async function removeSystemKey(systemKeyId) {
+    const keyId = String(systemKeyId || '').trim();
+    if (!keyId) return;
+    const keyLabel = (adminState.systemKeys || []).find((entry) => String(entry.systemKeyId || '').trim() === keyId)?.name || keyId;
+    const confirmed = window.confirm(
+      `System-Key "${keyLabel}" wirklich löschen?\n\n` +
+      'Das entfernt auch alle zugehörigen Zuweisungen. Zugewiesene Provider-Profile werden vom System-Key getrennt und deaktiviert.'
+    );
+    if (!confirmed) return;
+    const response = await api(`/api/admin/system-provider-keys/${encodeURIComponent(keyId)}`, {
+      method: 'DELETE',
+    });
+    const detachedCount = Number(response?.detachedProviders || 0);
+    setStatus(`System-Key ${keyId} gelöscht. ${detachedCount} Provider-Profil(e) wurden getrennt.`, { systemKey: true });
     await loadAdminData();
   }
 

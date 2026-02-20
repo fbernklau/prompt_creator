@@ -1106,17 +1106,40 @@ function createAdminRouter() {
   router.delete('/admin/system-provider-keys/:systemKeyId', ...systemKeyGuard, asyncHandler(async (req, res) => {
     const systemKeyId = normalizeSystemKeyId(req.params.systemKeyId || '');
     if (!systemKeyId) return res.status(400).json({ error: 'Invalid system key id.' });
-    const result = await pool.query(
-      `UPDATE system_provider_keys
-       SET is_active = FALSE,
-           updated_by = $1,
-           updated_at = NOW()
-       WHERE system_key_id = $2
-       RETURNING id`,
-      [req.userId, systemKeyId]
-    );
-    if (!result.rowCount) return res.status(404).json({ error: 'System key not found.' });
-    res.json({ ok: true });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const detachedProviders = await client.query(
+        `UPDATE providers
+         SET system_key_id = NULL,
+             active_meta = FALSE,
+             active_result = FALSE,
+             updated_at = NOW()
+         WHERE system_key_id = $1
+         RETURNING provider_id`,
+        [systemKeyId]
+      );
+      const result = await client.query(
+        `DELETE FROM system_provider_keys
+         WHERE system_key_id = $1
+         RETURNING id`,
+        [systemKeyId]
+      );
+      if (!result.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'System key not found.' });
+      }
+      await client.query('COMMIT');
+      res.json({
+        ok: true,
+        detachedProviders: Number(detachedProviders.rowCount || 0),
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }));
 
   router.post('/admin/system-provider-keys/:systemKeyId/assignments', ...systemKeyGuard, asyncHandler(async (req, res) => {
