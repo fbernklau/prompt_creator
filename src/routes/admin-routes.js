@@ -1112,8 +1112,6 @@ function createAdminRouter() {
       const detachedProviders = await client.query(
         `UPDATE providers
          SET system_key_id = NULL,
-             active_meta = FALSE,
-             active_result = FALSE,
              updated_at = NOW()
          WHERE system_key_id = $1
          RETURNING provider_id`,
