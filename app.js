@@ -195,6 +195,26 @@ function shouldShowIntroductionTour() {
   return !hasSeen || version < INTRO_TOUR_VERSION;
 }
 
+function shouldShowOnboardingWelcomeModal() {
+  return state.settings?.hasSeenIntroduction !== true;
+}
+
+function showOnboardingWelcomeModal() {
+  const modal = el('onboarding-welcome-modal');
+  if (!modal) return;
+  const username = String(state.currentUser || '').trim();
+  if (el('onboarding-welcome-user')) {
+    el('onboarding-welcome-user').textContent = username || 'Lehrkraft';
+  }
+  modal.classList.remove('is-hidden');
+}
+
+function hideOnboardingWelcomeModal() {
+  const modal = el('onboarding-welcome-modal');
+  if (!modal) return;
+  modal.classList.add('is-hidden');
+}
+
 function clearIntroductionHighlight() {
   if (typeof introTourState.anchorClickCleanup === 'function') {
     introTourState.anchorClickCleanup();
@@ -813,6 +833,10 @@ async function runIntroductionStepAction({ rerender = true } = {}) {
 
 async function runStartupOnboarding() {
   if (shouldShowIntroductionTour()) {
+    if (shouldShowOnboardingWelcomeModal()) {
+      showOnboardingWelcomeModal();
+      return true;
+    }
     showIntroductionTour();
     return true;
   }
@@ -953,8 +977,23 @@ function bindEvents() {
   if (el('btn-start-tour')) {
     el('btn-start-tour').addEventListener('click', () => {
       sessionStorage.removeItem('eduprompt_intro_skip_session');
+      hideOnboardingWelcomeModal();
       uiShell.showScreen('home');
       showIntroductionTour();
+    });
+  }
+  if (el('onboarding-welcome-start')) {
+    el('onboarding-welcome-start').addEventListener('click', () => {
+      sessionStorage.removeItem('eduprompt_intro_skip_session');
+      hideOnboardingWelcomeModal();
+      showIntroductionTour();
+    });
+  }
+  if (el('onboarding-welcome-later')) {
+    el('onboarding-welcome-later').addEventListener('click', () => {
+      sessionStorage.setItem('eduprompt_intro_skip_session', '1');
+      hideOnboardingWelcomeModal();
+      notify('Tour vorerst übersprungen. Du kannst sie jederzeit über „Tour starten“ auf der Hauptseite starten.', { type: 'info' });
     });
   }
   el('btn-library').addEventListener('click', async () => {

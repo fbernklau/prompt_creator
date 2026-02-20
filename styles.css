@@ -2224,6 +2224,10 @@ button.is-active,
   width: min(620px, calc(100vw - 26px));
 }
 
+.onboarding-welcome-card {
+  width: min(620px, calc(100vw - 26px));
+}
+
 #intro-tour-modal {
   z-index: 12000;
   pointer-events: none;
