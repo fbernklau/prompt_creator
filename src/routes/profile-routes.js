@@ -34,21 +34,26 @@ function buildFallbackLogoutUrl(req, originOverride = '') {
   return `${origin}/outpost.goauthentik.io/sign_out?rd=${encodeURIComponent(`${origin}/`)}`;
 }
 
+function ensureLogoutRedirectParam(url = '', req = null) {
+  const raw = String(url || '').trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  if (!lower.includes('/outpost.goauthentik.io/sign_out')) return raw;
+  if (lower.includes('?rd=')) return raw;
+  const origin = req ? requestOrigin(req) : '';
+  const redirectTarget = origin ? `${origin}/` : '/';
+  return `${raw}${raw.includes('?') ? '&' : '?'}rd=${encodeURIComponent(redirectTarget)}`;
+}
+
 function resolveLogoutUrl(rawUrl = '', req = null) {
   const raw = String(rawUrl || '').trim();
   if (!raw) return req ? buildFallbackLogoutUrl(req) : '/outpost.goauthentik.io/sign_out';
   const lower = raw.toLowerCase();
   // Backchannel endpoints are not interactive logout targets in browser UI.
   if (lower.includes('backchannel-logout')) {
-    try {
-      const parsed = new URL(raw);
-      if (req) return buildFallbackLogoutUrl(req, parsed.origin);
-      return `${parsed.origin}/outpost.goauthentik.io/sign_out`;
-    } catch (_error) {
-      return req ? buildFallbackLogoutUrl(req) : '/outpost.goauthentik.io/sign_out';
-    }
+    return req ? buildFallbackLogoutUrl(req) : '/outpost.goauthentik.io/sign_out';
   }
-  return raw;
+  return ensureLogoutRedirectParam(raw, req);
 }
 
 function createProfileRouter() {

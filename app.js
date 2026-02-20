@@ -42,6 +42,7 @@ const INTRO_TOUR_VERSION = 1;
 const introTourState = {
   active: false,
   index: 0,
+  renderToken: 0,
   highlightedSelector: '',
   highlightedNode: null,
   highlightedClass: '',
@@ -794,7 +795,7 @@ function getIntroductionSteps() {
     {
       title: 'Direktes Ergebnis aktivieren',
       text: 'Schalte jetzt auf „Direktes Ergebnis“ um.',
-      anchors: ['#run-mode-toggle-group', '#run-mode-result-toggle'],
+      anchors: ['#screen-form .tw-run-mode-switch-wrap', '#run-mode-toggle-group', '#run-mode-result-toggle'],
       anchorHint: 'Dieser Lauf erzeugt Metaprompt plus direktes Ergebnis.',
       waitForCondition: () => Boolean(el('run-mode-result-toggle')?.checked),
       waitForHint: 'Aktiviere den Toggle „Direktes Ergebnis“.',
@@ -881,6 +882,8 @@ function renderIntroductionStep(index) {
     introTourState.autoActionStep = -1;
   }
   introTourState.index = boundedIndex;
+  const renderToken = Number(introTourState.renderToken || 0) + 1;
+  introTourState.renderToken = renderToken;
 
   el('intro-tour-progress').textContent = `Schritt ${boundedIndex + 1} von ${total}`;
   el('intro-tour-title').textContent = step.title;
@@ -927,6 +930,7 @@ function renderIntroductionStep(index) {
     const clickableSelectors = getStepAdvanceSelectors(step, fallbackSelectors);
     const onAnchorClick = (event) => {
       if (!introTourState.active) return;
+      if (introTourState.renderToken !== renderToken) return;
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
       const matched = clickableSelectors.some((selector) => target.closest(selector));
@@ -946,8 +950,13 @@ function renderIntroductionStep(index) {
   if (typeof step.requireConditionForNext === 'function') {
     const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
 
+    let timer = null;
     const evaluate = () => {
       if (!introTourState.active) return;
+      if (introTourState.renderToken !== renderToken) {
+        if (timer !== null) window.clearInterval(timer);
+        return;
+      }
       let fulfilled = false;
       try {
         fulfilled = !!step.requireConditionForNext();
@@ -967,9 +976,9 @@ function renderIntroductionStep(index) {
       el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}${fulfilled ? readyHint : waitingHint}`.trim();
     };
 
-    const timer = window.setInterval(evaluate, 280);
+    timer = window.setInterval(evaluate, 280);
     introTourState.waitConditionCleanup = () => {
-      window.clearInterval(timer);
+      if (timer !== null) window.clearInterval(timer);
       next.disabled = false;
       finish.disabled = false;
     };
@@ -984,8 +993,13 @@ function renderIntroductionStep(index) {
     el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}${conditionHint}`.trim();
 
     let handled = false;
+    let timer = null;
     const evaluate = () => {
       if (handled || !introTourState.active) return;
+      if (introTourState.renderToken !== renderToken) {
+        if (timer !== null) window.clearInterval(timer);
+        return;
+      }
       let fulfilled = false;
       try {
         fulfilled = !!step.waitForCondition();
@@ -1002,9 +1016,9 @@ function renderIntroductionStep(index) {
         renderIntroductionStep(introTourState.index + 1);
       }, 220);
     };
-    const timer = window.setInterval(evaluate, 300);
+    timer = window.setInterval(evaluate, 300);
     introTourState.waitConditionCleanup = () => {
-      window.clearInterval(timer);
+      if (timer !== null) window.clearInterval(timer);
     };
     evaluate();
   }
@@ -1256,8 +1270,9 @@ function bindEvents() {
   el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
   if (el('btn-logout')) {
     el('btn-logout').addEventListener('click', () => {
-      const target = resolveLogoutTarget(state.logoutUrl || '') || '/api/logout';
-      window.location.assign(target);
+      // Always route through backend logout endpoint so misconfigured raw URLs
+      // (e.g. backchannel endpoints) can be normalized server-side.
+      window.location.assign('/api/logout');
     });
   }
   if (el('btn-start-tour')) {
