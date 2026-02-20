@@ -787,8 +787,6 @@ function getIntroductionSteps() {
           toggle.dispatchEvent(new Event('change', { bubbles: true }));
         }
       },
-      waitForCondition: () => Boolean(el('rueckfragen')) && !Boolean(el('rueckfragen')?.checked),
-      waitForHint: 'Deaktiviere „Klärende Rückfragen“, dann geht es automatisch weiter.',
       requireConditionForNext: () => Boolean(el('rueckfragen')) && !Boolean(el('rueckfragen')?.checked),
       requireConditionHint: 'Bitte „Klärende Rückfragen“ deaktivieren.',
       requireConditionReadyHint: 'Rückfragen sind deaktiviert. Du kannst fortfahren.',
@@ -796,7 +794,7 @@ function getIntroductionSteps() {
     {
       title: 'Direktes Ergebnis aktivieren',
       text: 'Schalte jetzt auf „Direktes Ergebnis“ um.',
-      anchor: '#run-mode-result-toggle',
+      anchors: ['#run-mode-toggle-group', '#run-mode-result-toggle'],
       anchorHint: 'Dieser Lauf erzeugt Metaprompt plus direktes Ergebnis.',
       waitForCondition: () => Boolean(el('run-mode-result-toggle')?.checked),
       waitForHint: 'Aktiviere den Toggle „Direktes Ergebnis“.',

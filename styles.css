@@ -3616,8 +3616,9 @@ button.is-active,
 #screen-form.tw-form .tw-form-submit-row {
   position: static;
   bottom: auto;
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
   gap: 6px;
   background: #eef2fb;
@@ -3663,7 +3664,17 @@ button.is-active,
 }
 
 #screen-form.tw-form .tw-run-mode-toggle {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   gap: 10px;
+  border: 1px solid #d7e0f2;
+  border-radius: 12px;
+  background: #f5f8ff;
+  padding: 7px 10px;
 }
 
 #screen-form.tw-form .tw-run-mode-option {
@@ -4617,6 +4628,11 @@ button.is-active,
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-run-mode-option {
   color: #e1eafe;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .tw-run-mode-toggle {
+  border-color: #355184;
+  background: #152743;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-form.tw-form .field-option-help {
