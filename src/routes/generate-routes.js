@@ -1358,6 +1358,60 @@ ${formatFollowupQaBlock(qaPairs)}
 `;
 }
 
+function extractQuestionsFromPlainText(rawOutput = '') {
+  const text = String(rawOutput || '').trim();
+  if (!text) return [];
+  const lines = text.split(/\r?\n/).map((line) => String(line || '').trim()).filter(Boolean);
+  const markerPattern = /^\s*(?:[-*•]\s+|(?:\d{1,2}|[A-Za-z])[.):-]\s+)(.+)$/u;
+  const chunks = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    const question = String(current || '').replace(/\s+/g, ' ').trim();
+    if (!question || question.length < 6) return;
+    if (lineContainsSensitiveDataRequest(question)) return;
+    chunks.push(question);
+  };
+
+  lines.forEach((line) => {
+    const markerMatch = line.match(markerPattern);
+    if (markerMatch) {
+      pushCurrent();
+      current = String(markerMatch[1] || '').trim();
+      return;
+    }
+    if (!current) return;
+    if (/^(?:#{1,6}\s+|[-=]{2,})/u.test(line)) return;
+    current = `${current} ${line}`.replace(/\s+/g, ' ').trim();
+  });
+  pushCurrent();
+
+  if (!chunks.length) {
+    const sentenceMatches = text.match(/[^?\n]{8,}\?/g) || [];
+    sentenceMatches.forEach((sentence) => {
+      const normalized = String(sentence || '').replace(/\s+/g, ' ').trim();
+      if (!normalized || normalized.length < 8) return;
+      if (lineContainsSensitiveDataRequest(normalized)) return;
+      chunks.push(normalized);
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  chunks.forEach((question) => {
+    const key = normalizeForMatch(question);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(question);
+  });
+
+  return deduped.slice(0, 7).map((question, index) => ({
+    id: `q${index + 1}`,
+    question,
+    placeholder: `Antwort zu Frage ${index + 1}`,
+  }));
+}
+
 function parseStructuredQuestions(rawOutput = '') {
   const text = String(rawOutput || '').trim();
   if (!text) return { questions: [], note: '' };
@@ -1382,6 +1436,13 @@ function parseStructuredQuestions(rawOutput = '') {
   }
 
   if (!payload || typeof payload !== 'object') {
+    const fallbackQuestions = extractQuestionsFromPlainText(text);
+    if (fallbackQuestions.length) {
+      return {
+        questions: fallbackQuestions,
+        note: 'Rückfragen wurden aus Freitext erkannt. Bitte beantworten und dann Ergebnis anfordern.',
+      };
+    }
     return {
       questions: [],
       note: 'Antwort konnte nicht strukturiert gelesen werden. Bitte direkt Ergebnis anfordern oder erneut versuchen.',
@@ -1426,11 +1487,14 @@ function parseStructuredQuestions(rawOutput = '') {
     deduped.push(entry);
   });
 
-  const questions = deduped.slice(0, 7).map((entry, index) => ({
+  let questions = deduped.slice(0, 7).map((entry, index) => ({
     id: `q${index + 1}`,
     question: entry.question,
     placeholder: entry.placeholder,
   }));
+  if (!questions.length) {
+    questions = extractQuestionsFromPlainText(text);
+  }
   const note = String(payload.note || payload.summary || '').replace(/\s+/g, ' ').trim();
 
   return { questions, note };

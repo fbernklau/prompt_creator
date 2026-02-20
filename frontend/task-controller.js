@@ -818,6 +818,49 @@ function createTaskController({
     return `result-followup-answer-${index + 1}`;
   }
 
+  function parseFollowupQuestionsFromText(rawText = '') {
+    const text = String(rawText || '').trim();
+    if (!text) return [];
+    const markerPattern = /^\s*(?:[-*•]\s+|(?:\d{1,2}|[A-Za-z])[.):-]\s+)(.+)$/u;
+    const lines = text.split(/\r?\n/).map((line) => String(line || '').trim()).filter(Boolean);
+    const chunks = [];
+    let current = '';
+
+    const pushCurrent = () => {
+      const question = String(current || '').replace(/\s+/g, ' ').trim();
+      if (!question || question.length < 6) return;
+      chunks.push(question);
+    };
+
+    lines.forEach((line) => {
+      const markerMatch = line.match(markerPattern);
+      if (markerMatch) {
+        pushCurrent();
+        current = String(markerMatch[1] || '').trim();
+        return;
+      }
+      if (!current) return;
+      if (/^(?:#{1,6}\s+|[-=]{2,})/u.test(line)) return;
+      current = `${current} ${line}`.replace(/\s+/g, ' ').trim();
+    });
+    pushCurrent();
+
+    if (!chunks.length) {
+      const sentenceMatches = text.match(/[^?\n]{8,}\?/g) || [];
+      sentenceMatches.forEach((sentence) => {
+        const normalized = String(sentence || '').replace(/\s+/g, ' ').trim();
+        if (normalized.length >= 8) chunks.push(normalized);
+      });
+    }
+
+    const deduped = dedupeDisplayOptions(chunks).slice(0, 7);
+    return deduped.map((question, index) => ({
+      id: `q${index + 1}`,
+      question,
+      placeholder: `Antwort zu Frage ${index + 1}`,
+    }));
+  }
+
   function syncResultFollowupAnswersFromUi() {
     const followup = state.resultFollowup || {};
     const answers = { ...(followup.answers || {}) };
@@ -887,7 +930,7 @@ function createTaskController({
     const remainingRounds = Math.max(maxRounds - currentRound, 0);
     summaryNode.textContent = remainingRounds > 0
       ? `Du kannst noch ${remainingRounds} Rückfragen-Runde(n) anfordern.`
-      : 'Maximale Rückfragen-Runden erreicht. Du kannst direkt das Ergebnis anfordern.';
+      : 'Bitte beantworte die offenen Fragen und fordere dann direkt das Ergebnis an.';
 
     const questions = Array.isArray(followup.questions) ? followup.questions : [];
     if (!questions.length) {
@@ -915,6 +958,7 @@ function createTaskController({
       });
     }
 
+    askButton.classList.toggle('is-hidden', remainingRounds <= 0);
     askButton.disabled = remainingRounds <= 0;
     finalButton.disabled = false;
   }
@@ -932,20 +976,24 @@ function createTaskController({
       || state.settings?.metapromptProviderId
       || ''
     ).trim();
+    const parsedInitialQuestions = parseFollowupQuestionsFromText(String(generation?.resultOutput || ''));
+    const initialRound = parsedInitialQuestions.length ? 1 : 0;
     state.resultFollowup = {
       enabled: true,
       maxRounds: 2,
-      round: 0,
+      round: initialRound,
       providerId: resultProviderId,
       templateId: String(generation?.templateId || '').trim(),
       handoffPrompt: String(generation?.handoffPrompt || generation?.output || '').trim(),
       latestResultOutput: String(generation?.resultOutput || '').trim(),
-      questions: [],
+      questions: parsedInitialQuestions,
       answers: {},
       qaHistory: [],
     };
     if (el('result-followup-status')) {
-      el('result-followup-status').textContent = 'Optional: Du kannst strukturierte Rückfragen anfordern oder direkt das Ergebnis finalisieren.';
+      el('result-followup-status').textContent = parsedInitialQuestions.length
+        ? 'Rückfragen erkannt. Bitte beantworte sie oder fordere eine weitere Runde an.'
+        : 'Optional: Du kannst strukturierte Rückfragen anfordern oder direkt das Ergebnis finalisieren.';
       el('result-followup-status').dataset.type = 'info';
     }
     renderResultFollowupPanel();

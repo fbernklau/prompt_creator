@@ -367,14 +367,14 @@ function getIntroductionSteps() {
     },
     {
       title: 'Optionen öffnen',
-      text: 'Für diese Tour setzen wir kurz empfohlene Werte: Light Mode, Schrittweise Ansicht, Prompt-only. Du kannst danach alles wieder ändern.',
+      text: 'Für diese Tour setzen wir kurz empfohlene Werte: Schrittweise Ansicht und Prompt-only. Das Theme bleibt auf deiner Einstellung (Standard: System).',
       anchors: ['#dashboard-options-host', '#btn-options'],
       anchorHint: 'Optionen sind pro Nutzerprofil gespeichert.',
       autoAction: true,
       action: async () => {
         await dashboardController.openDashboard('options');
         await queueSettingsSave(
-          { theme: 'light', flowMode: 'step', resultModeEnabled: false },
+          { flowMode: 'step', resultModeEnabled: false },
           { refreshCatalog: false, showStatus: false }
         );
         introTourContext.providerCheckSummary = '';
@@ -382,13 +382,13 @@ function getIntroductionSteps() {
         introTourContext.providerCheckResults = [];
         introTourContext.clarifyingQuestionsTourEnabled = true;
       },
-      actionLabel: 'Optionen anzeigen',
+      hideActionButton: true,
     },
     {
       title: 'Option: Theme',
-      text: 'Theme steuert nur die Darstellung. Für die Tour ist „Light“ gesetzt. Später kannst du jederzeit auf „Dark“ oder „System“ wechseln.',
+      text: 'Theme steuert nur die Darstellung. Empfehlung: „System“, damit die App deinem Gerät folgt. Du kannst jederzeit auf „Light“ oder „Dark“ wechseln.',
       anchor: '#option-panel-theme',
-      anchorHint: 'Aktueller Tour-Wert: Light.',
+      anchorHint: 'Für neue Nutzer startet die App mit „System“.',
     },
     {
       title: 'Option: Flow-Modus',
@@ -398,7 +398,7 @@ function getIntroductionSteps() {
     },
     {
       title: 'Option: Generierungsmodus',
-      text: 'Global steht die App auf Prompt-only. Für einzelne Läufe kannst du später auf der Template-Seite auf „Direktes Ergebnis“ umschalten.',
+      text: 'Prompt-only erzeugt den Handoff-Prompt zur Weitergabe an ein KI-Modell. Direktes Ergebnis führt den Handoff-Prompt sofort aus und liefert ein Endergebnis im selben Lauf.',
       anchor: '#option-panel-generation',
       anchorHint: 'Tour-Standard: Prompt-only.',
     },
@@ -430,17 +430,23 @@ function getIntroductionSteps() {
     },
     {
       title: 'Aktive Stages',
-      text: 'Oben siehst du die aktuell aktiven Keys für Metaprompt und Result. Diese Zuordnung wird beim Generieren verwendet.',
+      text: 'Metaprompt liefert dir eine Anweisung, die du selbst an ein KI-Modell weitergibst. Result ist für die direkte Weiterverarbeitung zuständig, um dir dein Ergebnis sofort anschließend zu liefern. Pro Stage kann genau ein Key aktiv sein.',
       anchor: '#provider-stage-summary',
       anchorHint: 'Zwei Stages, zwei aktive Zuordnungen.',
     },
     {
       title: 'API-Key Verfügbarkeit prüfen',
       text: () => {
-        const checkText = introTourContext.providerCheckSummary
-          ? ` ${introTourContext.providerCheckSummary}`
-          : ' Führe jetzt „API-Key Status prüfen“ im markierten Bereich aus.';
-        return `Statusprüfung zeigt dir direkt, welcher Key je Stage funktioniert.${checkText}`;
+        if (!introTourContext.providerCheckCompleted) {
+          return 'Statusprüfung zeigt dir direkt, welcher Key je Stage funktioniert. Führe jetzt „API-Key Status prüfen“ im markierten Bereich aus.';
+        }
+        const results = Array.isArray(introTourContext.providerCheckResults) ? introTourContext.providerCheckResults : [];
+        const metaprompt = results.find((entry) => entry.stage === 'metaprompt');
+        const result = results.find((entry) => entry.stage === 'result');
+        if (metaprompt?.ok && result?.ok) {
+          return 'Super! Du bist bereit, deine erste Vorlage zu verwenden. Du kannst jetzt mit „Weiter“ fortfahren.';
+        }
+        return 'Oje, das hat nicht geklappt, lass uns gleich deine Konfiguration überprüfen. Du kannst jetzt mit „Weiter“ fortfahren.';
       },
       anchor: '#provider-check-stages',
       anchorHint: 'Nutze den Button „API-Key Status prüfen“. Danach ist „Weiter“ aktiv.',
@@ -454,26 +460,79 @@ function getIntroductionSteps() {
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
           : { hasReadyProvider: false, hasAnySystemKeyAccess: false };
-        if (summary.hasReadyProvider) {
-          return 'Es ist bereits ein funktionierender Key aktiv. Wenn nötig, kannst du trotzdem später jederzeit einen zugewiesenen System-Key als Profil hinzufügen.';
+        if (!summary.hasAnySystemKeyAccess) {
+          return 'Für dein Konto sind aktuell keine System-Keys zugewiesen. Im nächsten Schritt geht es mit persönlichem Key weiter.';
         }
-        if (summary.hasAnySystemKeyAccess) {
-          return 'Für dein Konto sind System-Keys zugewiesen. Füge bei Bedarf einen zugewiesenen Key als Profil hinzu und aktiviere ihn für Metaprompt/Result.';
+        const providers = Array.isArray(state.providers) ? state.providers : [];
+        const systemProfiles = providers.filter((entry) => !!entry.systemKeyId);
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        const hasSystemStage = Boolean(metaProvider?.systemKeyId) || Boolean(resultProvider?.systemKeyId);
+        if (!systemProfiles.length) {
+          return 'Ein systemweiter Key ist für dich verfügbar. Er wird zentral verwaltet und weist dir ein Budget zu. Lass uns diesen Key aktivieren: Klicke auf „Als Profil hinzufügen“.';
         }
-        return 'Für dein Konto sind aktuell keine System-Keys zugewiesen. Im nächsten Schritt legst du bei Bedarf einen persönlichen API-Key an.';
+        if (!hasSystemStage) {
+          return 'Der systemweite Key ist als Profil vorhanden, aber noch keiner Stage zugewiesen. Aktiviere ihn jetzt für Metaprompt oder Result und prüfe danach den Status erneut.';
+        }
+        if (!introTourContext.providerCheckCompleted) {
+          return 'System-Key ist aktiv. Führe jetzt erneut „API-Key Status prüfen“ aus, damit wir die Stage-Verbindung bestätigen.';
+        }
+        const results = Array.isArray(introTourContext.providerCheckResults) ? introTourContext.providerCheckResults : [];
+        const hasAnyReady = results.some((entry) => entry?.ok);
+        if (hasAnyReady) {
+          return 'Super! System-Key erfolgreich aktiviert. Du kannst jetzt mit „Weiter“ fortfahren.';
+        }
+        return 'System-Key ist gesetzt, aber die Prüfung war noch nicht erfolgreich. Prüfe den Status erneut und fahre dann mit „Weiter“ fort.';
       },
       anchors: ['#provider-list [data-add-assigned-key]', '#provider-list'],
-      anchorHint: 'Nur wenn System-Keys zugewiesen sind: „Als Profil hinzufügen“, dann Stage-Toggle setzen und Status erneut prüfen.',
+      anchorHint: 'Bei zugewiesenem System-Key: Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.',
+      autoAction: true,
+      action: async () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasAnySystemKeyAccess: false };
+        if (!summary.hasAnySystemKeyAccess) return;
+        introTourContext.providerCheckSummary = '';
+        introTourContext.providerCheckCompleted = false;
+        introTourContext.providerCheckResults = [];
+
+        const providers = Array.isArray(state.providers) ? state.providers : [];
+        const nonSystemProvider = providers.find((entry) => !entry.systemKeyId);
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        if (nonSystemProvider && (metaProvider?.systemKeyId || resultProvider?.systemKeyId)) {
+          if (metaProvider?.systemKeyId) {
+            await providerController.selectProviderForStage('metaprompt', nonSystemProvider.id, { silent: true });
+          }
+          if (resultProvider?.systemKeyId) {
+            await providerController.selectProviderForStage('result', nonSystemProvider.id, { silent: true });
+          }
+          providerController.renderProviders();
+        }
+      },
+      hideActionButton: true,
       requireConditionForNext: () => {
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
           : { hasReadyProvider: false, hasAnySystemKeyAccess: false };
-        if (summary.hasReadyProvider) return true;
-        if (summary.hasAnySystemKeyAccess) return false;
-        return true;
+        if (!summary.hasAnySystemKeyAccess) return true;
+        const providers = Array.isArray(state.providers) ? state.providers : [];
+        const hasSystemProfile = providers.some((entry) => !!entry.systemKeyId);
+        if (!hasSystemProfile) return false;
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        const hasSystemStage = Boolean(metaProvider?.systemKeyId) || Boolean(resultProvider?.systemKeyId);
+        if (!hasSystemStage) return false;
+        return Boolean(introTourContext.providerCheckCompleted);
       },
-      requireConditionHint: 'Falls zugewiesene System-Keys vorhanden sind: Key als Profil hinzufügen und aktivieren.',
-      requireConditionReadyHint: 'System-/Provider-Key ist einsatzbereit.',
+      requireConditionHint: 'Bitte System-Key als Profil hinzufügen, Stage aktivieren und Status erneut prüfen.',
+      requireConditionReadyHint: () => {
+        const results = Array.isArray(introTourContext.providerCheckResults) ? introTourContext.providerCheckResults : [];
+        const hasAnyReady = results.some((entry) => entry?.ok);
+        return hasAnyReady
+          ? 'Super! System-Key ist aktiv und geprüft. Du kannst jetzt mit „Weiter“ fortfahren.'
+          : 'System-Key ist aktiv, aber die Prüfung war noch nicht erfolgreich. Du kannst trotzdem mit „Weiter“ fortfahren.';
+      },
     },
     {
       title: 'API-Key anlegen (falls nötig)',
@@ -481,17 +540,10 @@ function getIntroductionSteps() {
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
           : { hasReadyProvider: false };
-        if (summary.hasReadyProvider && introTourContext.providerCheckResults.length) {
-          const working = introTourContext.providerCheckResults
-            .filter((entry) => entry?.ok)
-            .map((entry) => `${entry.stage === 'result' ? 'Result' : 'Metaprompt'}: ${entry.providerLabel}`)
-            .join(' | ');
-          return `Es ist bereits ein nutzbarer Key vorhanden (${working}). Falls du später einen eigenen Key verwenden möchtest, kannst du ihn hier anlegen.`;
-        }
         if (summary.hasReadyProvider) {
-          return 'Es ist bereits mindestens ein nutzbarer Key vorhanden. Falls das später nicht der Fall ist, kannst du hier jederzeit einen persönlichen API-Key anlegen.';
+          return 'Du kannst später deinen eigenen API-Key für dein favorisiertes Modell hinzufügen. Lass uns nun den ersten Arbeitsablauf starten. Fahre mit „Weiter“ fort.';
         }
-        return 'Wenn kein funktionierender Key vorhanden ist, legst du hier einen persönlichen API-Key an.';
+        return 'Wenn noch kein funktionierender Key vorhanden ist, kannst du hier einen persönlichen API-Key anlegen.';
       },
       anchors: ['#provider-list [data-open-provider-editor]', '#provider-form-modal', '#provider-form'],
       anchorHint: 'Falls nötig: „API-Key hinzufügen“ öffnen, speichern und erneut prüfen.',
@@ -546,7 +598,7 @@ function getIntroductionSteps() {
       action: async () => {
         const toggle = el('rueckfragen');
         if (!toggle) return;
-        if (introTourContext.clarifyingQuestionsTourEnabled && !toggle.checked) {
+        if (!toggle.checked) {
           toggle.checked = true;
           toggle.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -653,10 +705,11 @@ function renderIntroductionStep(index) {
   const next = el('intro-tour-next');
   const finish = el('intro-tour-finish');
   const action = el('intro-tour-open');
+  const showActionButton = Boolean(step.action) && !Boolean(step.hideActionButton);
   prev.disabled = boundedIndex === 0;
   next.classList.toggle('is-hidden', boundedIndex >= total - 1);
   finish.classList.toggle('is-hidden', boundedIndex < total - 1);
-  action.classList.toggle('is-hidden', !step.action);
+  action.classList.toggle('is-hidden', !showActionButton);
   action.textContent = step.actionLabel || 'Bereich öffnen';
 
   clearIntroductionHighlight();
@@ -709,8 +762,6 @@ function renderIntroductionStep(index) {
 
   if (typeof step.requireConditionForNext === 'function') {
     const baseHint = typeof step.anchorHint === 'function' ? step.anchorHint() : (step.anchorHint || '');
-    const waitingHint = String(step.requireConditionHint || 'Bitte zuerst die markierte Aktion abschließen.').trim();
-    const readyHint = String(step.requireConditionReadyHint || 'Aktion abgeschlossen. Du kannst jetzt fortfahren.').trim();
 
     const evaluate = () => {
       if (!introTourState.active) return;
@@ -720,6 +771,14 @@ function renderIntroductionStep(index) {
       } catch (_error) {
         fulfilled = false;
       }
+      const waitingHintRaw = typeof step.requireConditionHint === 'function'
+        ? step.requireConditionHint()
+        : step.requireConditionHint;
+      const readyHintRaw = typeof step.requireConditionReadyHint === 'function'
+        ? step.requireConditionReadyHint()
+        : step.requireConditionReadyHint;
+      const waitingHint = String(waitingHintRaw || 'Bitte zuerst die markierte Aktion abschließen.').trim();
+      const readyHint = String(readyHintRaw || 'Aktion abgeschlossen. Du kannst jetzt fortfahren.').trim();
       next.disabled = !fulfilled;
       finish.disabled = !fulfilled;
       el('intro-tour-anchor').textContent = `${baseHint}${baseHint ? ' ' : ''}${fulfilled ? readyHint : waitingHint}`.trim();
