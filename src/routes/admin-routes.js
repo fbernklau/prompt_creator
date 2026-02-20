@@ -605,6 +605,97 @@ function createAdminRouter() {
     });
   }));
 
+  router.put('/admin/users/:userId/full-reset', ...guard, asyncHandler(async (req, res) => {
+    const targetUserId = String(req.params.userId || '').trim();
+    if (!targetUserId) return res.status(400).json({ error: 'Invalid user id.' });
+
+    const defaults = {
+      ...config.settingsDefaults,
+      hasSeenIntroduction: false,
+      introTourVersion: 0,
+    };
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO user_settings (user_id, settings_json)
+         VALUES ($1,$2::jsonb)
+         ON CONFLICT (user_id)
+         DO UPDATE SET settings_json = EXCLUDED.settings_json, updated_at = NOW()`,
+        [targetUserId, JSON.stringify(defaults)]
+      );
+
+      const deletedProviders = await client.query(
+        `DELETE FROM providers
+         WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const deletedHistory = await client.query(
+        `DELETE FROM prompt_history
+         WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const deletedRatings = await client.query(
+        `DELETE FROM prompt_library_ratings
+         WHERE user_id = $1
+            OR library_id IN (SELECT id FROM prompt_library WHERE user_id = $1)`,
+        [targetUserId]
+      );
+      const deletedFavorites = await client.query(
+        `DELETE FROM prompt_library_favorites
+         WHERE user_id = $1
+            OR library_id IN (SELECT id FROM prompt_library WHERE user_id = $1)`,
+        [targetUserId]
+      );
+      const deletedLibrary = await client.query(
+        `DELETE FROM prompt_library
+         WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const deletedEvents = await client.query(
+        `DELETE FROM provider_generation_events
+         WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const deletedUsageAudit = await client.query(
+        `DELETE FROM provider_usage_audit
+         WHERE user_id = $1`,
+        [targetUserId]
+      );
+      const disabledBudgets = await client.query(
+        `UPDATE budget_policies
+         SET is_active = FALSE,
+             updated_by = $2,
+             updated_at = NOW()
+         WHERE owner_user_id = $1`,
+        [targetUserId, req.userId]
+      );
+
+      await client.query('COMMIT');
+      res.json({
+        ok: true,
+        userId: targetUserId,
+        summary: {
+          providersDeleted: Number(deletedProviders.rowCount || 0),
+          historyDeleted: Number(deletedHistory.rowCount || 0),
+          libraryEntriesDeleted: Number(deletedLibrary.rowCount || 0),
+          ratingRowsDeleted: Number(deletedRatings.rowCount || 0),
+          favoriteRowsDeleted: Number(deletedFavorites.rowCount || 0),
+          generationEventsDeleted: Number(deletedEvents.rowCount || 0),
+          usageAuditRowsDeleted: Number(deletedUsageAudit.rowCount || 0),
+          budgetsDisabled: Number(disabledBudgets.rowCount || 0),
+        },
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }));
+
   router.get('/admin/model-pricing', ...pricingGuard, asyncHandler(async (_req, res) => {
     const result = await pool.query(
       `SELECT id, provider_kind, model, input_price_per_million, output_price_per_million, currency, is_active, updated_at

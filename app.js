@@ -193,14 +193,40 @@ const libraryController = createLibraryController({
 
 function shouldShowIntroductionTour() {
   if (state.welcomeFlowEnabled === false) return false;
-  if (sessionStorage.getItem('eduprompt_intro_skip_session') === '1') return false;
   const hasSeen = state.settings?.hasSeenIntroduction === true;
   const version = Number(state.settings?.introTourVersion || 0);
-  return !hasSeen || version < INTRO_TOUR_VERSION;
+  const needsTour = !hasSeen || version < INTRO_TOUR_VERSION;
+  if (!needsTour) return false;
+  if (!hasSeen) return true;
+  if (hasIntroSkipSessionFlag()) return false;
+  return true;
 }
 
 function shouldShowOnboardingWelcomeModal() {
   return state.settings?.hasSeenIntroduction !== true;
+}
+
+function getIntroSkipSessionStorageKey(userId = '') {
+  const normalizedUserId = String(userId || state.currentUser || '').trim().toLowerCase();
+  if (!normalizedUserId) return 'eduprompt_intro_skip_session';
+  return `eduprompt_intro_skip_session:${normalizedUserId}`;
+}
+
+function hasIntroSkipSessionFlag(userId = '') {
+  return sessionStorage.getItem(getIntroSkipSessionStorageKey(userId)) === '1';
+}
+
+function setIntroSkipSessionFlag(enabled, userId = '') {
+  const key = getIntroSkipSessionStorageKey(userId);
+  if (enabled) {
+    sessionStorage.setItem(key, '1');
+    return;
+  }
+  sessionStorage.removeItem(key);
+}
+
+function clearLegacyIntroSkipSessionFlag() {
+  sessionStorage.removeItem('eduprompt_intro_skip_session');
 }
 
 function showOnboardingWelcomeModal() {
@@ -955,9 +981,9 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
     providerController.renderProviders();
   }
   if (skipSession) {
-    sessionStorage.setItem('eduprompt_intro_skip_session', '1');
+    setIntroSkipSessionFlag(true);
   } else {
-    sessionStorage.removeItem('eduprompt_intro_skip_session');
+    setIntroSkipSessionFlag(false);
   }
 
   if (markSeen) {
@@ -1019,6 +1045,7 @@ async function runStartupOnboarding() {
 async function loadServerData() {
   const me = await api('/api/me');
   state.currentUser = me.userId;
+  clearLegacyIntroSkipSessionFlag();
   state.logoutUrl = resolveLogoutTarget(me.logoutUrl || '');
   state.welcomeFlowEnabled = me.welcomeFlowEnabled !== false;
   state.access = {
@@ -1151,7 +1178,7 @@ function bindEvents() {
   }
   if (el('btn-start-tour')) {
     el('btn-start-tour').addEventListener('click', () => {
-      sessionStorage.removeItem('eduprompt_intro_skip_session');
+      setIntroSkipSessionFlag(false);
       hideOnboardingWelcomeModal();
       uiShell.showScreen('home');
       showIntroductionTour();
@@ -1159,7 +1186,7 @@ function bindEvents() {
   }
   if (el('onboarding-welcome-start')) {
     el('onboarding-welcome-start').addEventListener('click', () => {
-      sessionStorage.removeItem('eduprompt_intro_skip_session');
+      setIntroSkipSessionFlag(false);
       hideOnboardingWelcomeModal();
       showIntroductionTour();
     });
@@ -1170,7 +1197,7 @@ function bindEvents() {
         'Tour jetzt überspringen?\n\nDu kannst sie später auf „Neue Aufgabe“ jederzeit über „Tour starten“ erneut aufrufen.'
       );
       if (!confirmed) return;
-      sessionStorage.setItem('eduprompt_intro_skip_session', '1');
+      setIntroSkipSessionFlag(true);
       ensureSystemKeyReadyAfterTourSkip()
         .finally(() => {
           hideOnboardingWelcomeModal();

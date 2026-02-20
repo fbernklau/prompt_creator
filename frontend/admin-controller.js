@@ -1180,6 +1180,7 @@ function createAdminController({
                       <button type="button" class="secondary small" data-admin-user-intro-reset="${escapeHtml(entry.userId)}">Intro reset</button>
                       <button type="button" class="secondary small" data-admin-user-settings-reset="${escapeHtml(entry.userId)}">Settings reset</button>
                       <button type="button" class="secondary small" data-admin-user-revoke-keys="${escapeHtml(entry.userId)}">Keys widerrufen</button>
+                      <button type="button" class="secondary small" data-admin-user-full-reset="${escapeHtml(entry.userId)}">Vollreset</button>
                     </div>
                   </td>
                 </tr>
@@ -1211,6 +1212,13 @@ function createAdminController({
         revokeUserPersonalKeys(userId).catch((error) => alert(error.message));
       });
     });
+    container.querySelectorAll('[data-admin-user-full-reset]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const userId = String(button.dataset.adminUserFullReset || '').trim();
+        if (!userId) return;
+        fullResetUser(userId).catch((error) => alert(error.message));
+      });
+    });
   }
 
   async function refreshUserList() {
@@ -1233,6 +1241,22 @@ function createAdminController({
   async function revokeUserPersonalKeys(userId) {
     const result = await api(`/api/admin/users/${encodeURIComponent(userId)}/revoke-personal-keys`, { method: 'PUT' });
     setStatus(`Persönliche API-Keys für ${userId} widerrufen (${Number(result.updatedProviders || 0)} Provider).`, { user: true });
+    await refreshUserList();
+  }
+
+  async function fullResetUser(userId) {
+    const confirmed = window.confirm(
+      `Nutzer ${userId} wirklich vollständig zurücksetzen?\n\n` +
+      'Das setzt Einstellungen zurück, entfernt Provider-Profile, Verlauf und Bibliothekseinträge des Users.\n' +
+      'Beim nächsten Login startet wieder Welcome + Tour und die System-Key-Zuweisung.'
+    );
+    if (!confirmed) return;
+    const result = await api(`/api/admin/users/${encodeURIComponent(userId)}/full-reset`, { method: 'PUT' });
+    const summary = result?.summary || {};
+    setStatus(
+      `Vollreset für ${userId} abgeschlossen (Provider: ${Number(summary.providersDeleted || 0)}, Verlauf: ${Number(summary.historyDeleted || 0)}, Bibliothek: ${Number(summary.libraryEntriesDeleted || 0)}).`,
+      { user: true }
+    );
     await refreshUserList();
   }
 
