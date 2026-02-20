@@ -245,6 +245,22 @@ function hideOnboardingWelcomeModal() {
   modal.classList.add('is-hidden');
 }
 
+function showTourCompletionModal() {
+  const modal = el('tour-complete-modal');
+  if (!modal) return;
+  const username = String(state.currentUser || '').trim();
+  if (el('tour-complete-user')) {
+    el('tour-complete-user').textContent = username || 'Lehrkraft';
+  }
+  modal.classList.remove('is-hidden');
+}
+
+function hideTourCompletionModal() {
+  const modal = el('tour-complete-modal');
+  if (!modal) return;
+  modal.classList.add('is-hidden');
+}
+
 function clearIntroductionHighlight() {
   if (typeof introTourState.anchorClickCleanup === 'function') {
     introTourState.anchorClickCleanup();
@@ -395,6 +411,20 @@ function getStepAdvanceSelectors(step, fallback = []) {
   }
   const selectors = normalizeTourSelectorList(step.anchorsAdvanceSelectors);
   return selectors.length ? selectors : fallback;
+}
+
+function resolveStepOption(step, key, fallbackValue) {
+  if (!step || !key) return fallbackValue;
+  const raw = step[key];
+  if (raw === undefined) return fallbackValue;
+  if (typeof raw === 'function') {
+    try {
+      return raw();
+    } catch (_error) {
+      return fallbackValue;
+    }
+  }
+  return raw;
 }
 
 function resolveIntroductionAnchor(step) {
@@ -593,9 +623,19 @@ function getIntroductionSteps() {
         return 'Die Prüfung war für diesen Key nicht erfolgreich. Du kannst trotzdem fortfahren und später auf einen funktionierenden Key wechseln.';
       },
       anchors: () => {
+        const providers = Array.isArray(state.providers) ? state.providers : [];
         const preferredId = introTourContext.preferredSystemKeyId || pickPreferredSystemKeyIdForTour();
+        const preferredProfile = providers.find((entry) => entry.systemKeyId === preferredId) || null;
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        const hasPreferredStage = preferredProfile
+          ? (metaProvider?.id === preferredProfile.id || resultProvider?.id === preferredProfile.id)
+          : false;
+        if (preferredProfile && hasPreferredStage && !introTourContext.providerCheckCompleted) {
+          return ['#provider-check-stages', '#provider-stage-health', '#provider-list'];
+        }
         const selectors = [];
-        if (preferredId) {
+        if (preferredId && !preferredProfile) {
           selectors.push(`#provider-list [data-add-assigned-key="${escapeCssAttrValue(preferredId)}"]`);
         }
         selectors.push('#provider-list [data-add-assigned-key]', '#provider-list');
@@ -603,29 +643,55 @@ function getIntroductionSteps() {
       },
       anchorHint: () => {
         const preferredName = getPreferredSystemKeyNameForTour();
+        const providers = Array.isArray(state.providers) ? state.providers : [];
+        const preferredId = introTourContext.preferredSystemKeyId || pickPreferredSystemKeyIdForTour();
+        const preferredProfile = providers.find((entry) => entry.systemKeyId === preferredId) || null;
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        const hasPreferredStage = preferredProfile
+          ? (metaProvider?.id === preferredProfile.id || resultProvider?.id === preferredProfile.id)
+          : false;
+        if (preferredProfile && hasPreferredStage && !introTourContext.providerCheckCompleted) {
+          return 'System-Key ist zugewiesen. Führe jetzt „API-Key Status prüfen“ aus.';
+        }
         return preferredName
           ? `Bei zugewiesenem System-Key (${preferredName}): Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.`
           : 'Bei zugewiesenem System-Key: Als Profil hinzufügen → Stage aktivieren → Status erneut prüfen.';
       },
       autoAction: true,
-      action: async () => {
-        if (state.settings?.hasSeenIntroduction === true) return;
-        const summary = providerController.getProviderAvailabilitySummary
-          ? providerController.getProviderAvailabilitySummary()
-          : { hasAnySystemKeyAccess: false };
-        if (!summary.hasAnySystemKeyAccess) return;
-        introTourContext.preferredSystemKeyId = pickPreferredSystemKeyIdForTour();
-        state.tourPreferredSystemKeyId = introTourContext.preferredSystemKeyId || '';
-        introTourContext.providerCheckSummary = '';
-        introTourContext.providerCheckCompleted = false;
-        introTourContext.providerCheckResults = [];
-        introTourContext.providerCheckHasReady = false;
-        await providerController.removeSystemKeyProfiles({ silent: true });
-        if (typeof providerController.renderProviders === 'function') {
-          providerController.renderProviders();
+      action: async ({ source = 'manual' } = {}) => {
+        if (source === 'auto') {
+          if (state.settings?.hasSeenIntroduction === true) return;
+          const summary = providerController.getProviderAvailabilitySummary
+            ? providerController.getProviderAvailabilitySummary()
+            : { hasAnySystemKeyAccess: false };
+          if (!summary.hasAnySystemKeyAccess) return;
+          introTourContext.preferredSystemKeyId = pickPreferredSystemKeyIdForTour();
+          state.tourPreferredSystemKeyId = introTourContext.preferredSystemKeyId || '';
+          introTourContext.providerCheckSummary = '';
+          introTourContext.providerCheckCompleted = false;
+          introTourContext.providerCheckResults = [];
+          introTourContext.providerCheckHasReady = false;
+          await providerController.removeSystemKeyProfiles({ silent: true });
+          if (typeof providerController.renderProviders === 'function') {
+            providerController.renderProviders();
+          }
+          return;
         }
+        await runProviderStageCheck();
       },
-      hideActionButton: true,
+      actionLabel: 'Status prüfen',
+      hideActionButton: () => {
+        const providers = Array.isArray(state.providers) ? state.providers : [];
+        const preferredId = introTourContext.preferredSystemKeyId || pickPreferredSystemKeyIdForTour();
+        const preferredProfile = providers.find((entry) => entry.systemKeyId === preferredId) || null;
+        const metaProvider = providers.find((entry) => entry.id === state.settings?.metapromptProviderId);
+        const resultProvider = providers.find((entry) => entry.id === state.settings?.resultProviderId);
+        const hasPreferredStage = preferredProfile
+          ? (metaProvider?.id === preferredProfile.id || resultProvider?.id === preferredProfile.id)
+          : false;
+        return !(preferredProfile && hasPreferredStage && !introTourContext.providerCheckCompleted);
+      },
       requireConditionForNext: () => {
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
@@ -723,6 +789,9 @@ function getIntroductionSteps() {
       },
       waitForCondition: () => Boolean(el('rueckfragen')) && !Boolean(el('rueckfragen')?.checked),
       waitForHint: 'Deaktiviere „Klärende Rückfragen“, dann geht es automatisch weiter.',
+      requireConditionForNext: () => Boolean(el('rueckfragen')) && !Boolean(el('rueckfragen')?.checked),
+      requireConditionHint: 'Bitte „Klärende Rückfragen“ deaktivieren.',
+      requireConditionReadyHint: 'Rückfragen sind deaktiviert. Du kannst fortfahren.',
     },
     {
       title: 'Direktes Ergebnis aktivieren',
@@ -798,6 +867,7 @@ function getIntroductionSteps() {
         uiShell.showScreen('library');
         await libraryController.refreshLibrary();
       },
+      completeAfterAction: true,
     },
   ];
 }
@@ -823,12 +893,13 @@ function renderIntroductionStep(index) {
   const next = el('intro-tour-next');
   const finish = el('intro-tour-finish');
   const action = el('intro-tour-open');
-  const showActionButton = Boolean(step.action) && !Boolean(step.hideActionButton);
+  const hideActionButton = Boolean(resolveStepOption(step, 'hideActionButton', false));
+  const showActionButton = Boolean(step.action) && !hideActionButton;
   prev.disabled = boundedIndex === 0;
   next.classList.toggle('is-hidden', boundedIndex >= total - 1);
   finish.classList.toggle('is-hidden', boundedIndex < total - 1);
   action.classList.toggle('is-hidden', !showActionButton);
-  action.textContent = step.actionLabel || 'Bereich öffnen';
+  action.textContent = String(resolveStepOption(step, 'actionLabel', 'Bereich öffnen') || 'Bereich öffnen');
 
   clearIntroductionHighlight();
   const anchor = resolveIntroductionAnchor(step);
@@ -943,10 +1014,10 @@ function renderIntroductionStep(index) {
   if (step.autoAction && step.action && introTourState.autoActionStep !== boundedIndex) {
     introTourState.autoActionStep = boundedIndex;
     window.setTimeout(() => {
-      runIntroductionStepAction({ rerender: true }).catch((error) => {
-        notifyError(error, 'Tour-Aktion fehlgeschlagen');
-      });
-    }, 120);
+    runIntroductionStepAction({ rerender: true, source: 'auto' }).catch((error) => {
+      notifyError(error, 'Tour-Aktion fehlgeschlagen');
+    });
+  }, 120);
   }
 }
 
@@ -969,7 +1040,7 @@ function showIntroductionTour() {
   renderIntroductionStep(0);
 }
 
-async function finishIntroductionTour({ markSeen = true, skipSession = false } = {}) {
+async function finishIntroductionTour({ markSeen = true, skipSession = false, showCompletion = false } = {}) {
   clearIntroductionHighlight();
   introTourState.autoActionStep = -1;
   introTourState.active = false;
@@ -992,6 +1063,9 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
       { refreshCatalog: false, showStatus: false }
     );
   }
+  if (showCompletion) {
+    showTourCompletionModal();
+  }
 }
 
 async function ensureSystemKeyReadyAfterTourSkip() {
@@ -1007,7 +1081,7 @@ async function ensureSystemKeyReadyAfterTourSkip() {
   }
 }
 
-async function runIntroductionStepAction({ rerender = true } = {}) {
+async function runIntroductionStepAction({ rerender = true, source = 'manual' } = {}) {
   const steps = getIntroductionSteps();
   const step = steps[introTourState.index];
   if (!step?.action) return;
@@ -1018,7 +1092,11 @@ async function runIntroductionStepAction({ rerender = true } = {}) {
     actionButton.textContent = 'Bitte warten …';
   }
   try {
-    await step.action();
+    await step.action({ source });
+    if (step.completeAfterAction) {
+      await finishIntroductionTour({ markSeen: true, showCompletion: true });
+      return;
+    }
     if (rerender) {
       renderIntroductionStep(introTourState.index);
     }
@@ -1082,6 +1160,42 @@ function setSettingsStatus(text = '') {
   }, 1400);
 }
 
+async function runProviderStageCheck() {
+  introTourContext.providerCheckCompleted = false;
+  introTourContext.providerCheckSummary = 'Statusprüfung läuft …';
+  introTourContext.providerCheckResults = [];
+  introTourContext.providerCheckHasReady = false;
+  if (introTourState.active) renderIntroductionStep(introTourState.index);
+  try {
+    const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: true });
+    introTourContext.providerCheckResults = Array.isArray(check?.results) ? check.results : [];
+    const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
+    const result = check.results.find((entry) => entry.stage === 'result');
+    introTourContext.providerCheckHasReady = Boolean(metaprompt?.ok || result?.ok);
+    const metaText = metaprompt?.ok
+      ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
+      : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
+    const resultText = result?.ok
+      ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
+      : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
+    introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}`;
+    introTourContext.providerCheckCompleted = true;
+    if (metaprompt?.ok && result?.ok) {
+      notify('Verbindung geprüft: Metaprompt und Result sind bereit.', { type: 'ok' });
+    } else if (metaprompt?.ok || result?.ok) {
+      notify('Verbindung teilweise bereit. Nicht funktionierende Stage wurde auf den funktionierenden Key umgestellt (falls möglich).', { type: 'warn' });
+    } else {
+      notify('Verbindung fehlgeschlagen. Bitte Key/Modell prüfen.', { type: 'error' });
+    }
+  } catch (error) {
+    introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
+    introTourContext.providerCheckCompleted = true;
+    notifyError(error, 'Stage-Status konnte nicht geprüft werden');
+  } finally {
+    if (introTourState.active) renderIntroductionStep(introTourState.index);
+  }
+}
+
 let settingsSaveChain = Promise.resolve();
 function queueSettingsSave(partial, { refreshCatalog = false, showStatus = true } = {}) {
   settingsSaveChain = settingsSaveChain
@@ -1134,41 +1248,13 @@ function bindEvents() {
   });
   if (el('provider-check-stages')) {
     el('provider-check-stages').addEventListener('click', async () => {
-      introTourContext.providerCheckCompleted = false;
-      introTourContext.providerCheckSummary = 'Statusprüfung läuft …';
-      introTourContext.providerCheckResults = [];
-      introTourContext.providerCheckHasReady = false;
-      if (introTourState.active) renderIntroductionStep(introTourState.index);
-      try {
-        const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: true });
-        introTourContext.providerCheckResults = Array.isArray(check?.results) ? check.results : [];
-        const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
-        const result = check.results.find((entry) => entry.stage === 'result');
-        introTourContext.providerCheckHasReady = Boolean(metaprompt?.ok || result?.ok);
-        const metaText = metaprompt?.ok
-          ? `Metaprompt: bereit (${metaprompt.providerLabel || 'Key unbekannt'})`
-          : `Metaprompt: Fehler (${metaprompt?.providerLabel || 'nicht gesetzt'})`;
-        const resultText = result?.ok
-          ? `Result: bereit (${result.providerLabel || 'Key unbekannt'})`
-          : `Result: Fehler (${result?.providerLabel || 'nicht gesetzt'})`;
-        introTourContext.providerCheckSummary = `Statuscheck: ${metaText}, ${resultText}`;
-        introTourContext.providerCheckCompleted = true;
-        if (metaprompt?.ok && result?.ok) {
-          notify('Verbindung geprüft: Metaprompt und Result sind bereit.', { type: 'ok' });
-        } else if (metaprompt?.ok || result?.ok) {
-          notify('Verbindung teilweise bereit. Nicht funktionierende Stage wurde auf den funktionierenden Key umgestellt (falls möglich).', { type: 'warn' });
-        } else {
-          notify('Verbindung fehlgeschlagen. Bitte Key/Modell prüfen.', { type: 'error' });
-        }
-      } catch (error) {
-        introTourContext.providerCheckSummary = `Statuscheck fehlgeschlagen: ${error.message}`;
-        introTourContext.providerCheckCompleted = true;
-        notifyError(error, 'Stage-Status konnte nicht geprüft werden');
-      } finally {
-        if (introTourState.active) renderIntroductionStep(introTourState.index);
-      }
+      await runProviderStageCheck();
     });
   }
+  window.addEventListener('eduprompt:providers-updated', () => {
+    if (!introTourState.active) return;
+    renderIntroductionStep(introTourState.index);
+  });
   el('btn-options').addEventListener('click', () => dashboardController.openDashboard('options').catch((error) => notifyError(error)));
   if (el('btn-logout')) {
     el('btn-logout').addEventListener('click', () => {
@@ -1188,6 +1274,7 @@ function bindEvents() {
     el('onboarding-welcome-start').addEventListener('click', () => {
       setIntroSkipSessionFlag(false);
       hideOnboardingWelcomeModal();
+      hideTourCompletionModal();
       showIntroductionTour();
     });
   }
@@ -1360,7 +1447,7 @@ function bindEvents() {
     runIntroductionStepAction().catch((error) => notifyError(error, 'Tour-Aktion fehlgeschlagen'));
   });
   el('intro-tour-finish').addEventListener('click', () => {
-    finishIntroductionTour({ markSeen: true }).catch((error) => notifyError(error));
+    finishIntroductionTour({ markSeen: true, showCompletion: true }).catch((error) => notifyError(error));
   });
   el('intro-tour-skip').addEventListener('click', () => {
     const confirmed = window.confirm(
@@ -1371,6 +1458,19 @@ function bindEvents() {
       .finally(() => finishIntroductionTour({ markSeen: true, skipSession: true }))
       .catch((error) => notifyError(error));
   });
+  if (el('tour-complete-close')) {
+    el('tour-complete-close').addEventListener('click', () => {
+      hideTourCompletionModal();
+    });
+  }
+  if (el('tour-complete-restart')) {
+    el('tour-complete-restart').addEventListener('click', () => {
+      hideTourCompletionModal();
+      setIntroSkipSessionFlag(false);
+      uiShell.showScreen('home');
+      showIntroductionTour();
+    });
+  }
 
 }
 

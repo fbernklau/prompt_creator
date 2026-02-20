@@ -942,6 +942,7 @@ function createProviderController({
     if (healthNode && !String(healthNode.textContent || '').trim()) {
       setProviderStageHealth('Tipp: Prüfe die aktive Stage-Zuordnung, um Metaprompt und Result sicher zu nutzen.', 'info');
     }
+    window.dispatchEvent(new CustomEvent('eduprompt:providers-updated'));
   }
 
   async function addAssignedKeyAsProvider(systemKeyId, { silent = false, assignStages = false } = {}) {

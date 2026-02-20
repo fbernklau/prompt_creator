@@ -1043,9 +1043,9 @@ function createTaskController({
     finalButton.disabled = false;
   }
 
-  function initResultFollowupFromGeneration(generation = {}) {
+  function initResultFollowupFromGeneration(generation = {}, { clarifyingQuestionsEnabled = false } = {}) {
     const mode = String(generation?.mode || '').trim();
-    if (mode !== 'result') {
+    if (mode !== 'result' || !clarifyingQuestionsEnabled) {
       resetResultFollowupState();
       return;
     }
@@ -2634,7 +2634,9 @@ function createTaskController({
     if (el('result-direct-meta')) el('result-direct-meta').textContent = resultMeta;
     setUsageSummary('result-direct', generation?.usageStages?.result || null);
     setCostSummary('result-direct', generation?.costStages?.result || null);
-    initResultFollowupFromGeneration(generation);
+    initResultFollowupFromGeneration(generation, {
+      clarifyingQuestionsEnabled: Boolean(context?.baseFields?.rueckfragen),
+    });
     if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = normalizeUiText(context.baseFields.handlungsfeld || '-');
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = normalizeUiText(context.baseFields.unterkategorie || '-');
     if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';

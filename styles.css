@@ -2228,6 +2228,10 @@ button.is-active,
   width: min(620px, calc(100vw - 26px));
 }
 
+.tour-complete-card {
+  width: min(620px, calc(100vw - 26px));
+}
+
 .onboarding-welcome-actions {
   justify-content: flex-end;
   gap: 10px;
