@@ -267,21 +267,35 @@ function createProviderController({
     }
 
     let switched = false;
+    let effectiveResults = results.map((entry) => ({ ...entry }));
     if (autoSwitchOnSingleSuccess) {
-      const okResult = results.find((entry) => entry.ok && entry.providerId);
+      const okResult = effectiveResults.find((entry) => entry.ok && entry.providerId);
       if (okResult) {
-        const failed = results.filter((entry) => !entry.ok && entry.providerId && entry.providerId !== okResult.providerId);
+        const failed = effectiveResults.filter((entry) => !entry.ok && entry.providerId && entry.providerId !== okResult.providerId);
         for (const failedEntry of failed) {
           await selectProviderForStage(failedEntry.stage, okResult.providerId, { silent: true });
           switched = true;
+          effectiveResults = effectiveResults.map((entry) => {
+            if (entry.stage !== failedEntry.stage) return entry;
+            return {
+              ...entry,
+              ok: true,
+              providerId: okResult.providerId,
+              providerLabel: okResult.providerLabel,
+              switchedFromProviderId: failedEntry.providerId,
+              switchedFromProviderLabel: failedEntry.providerLabel,
+              error: '',
+            };
+          });
         }
       }
     }
 
-    const metaResult = results.find((entry) => entry.stage === 'metaprompt');
-    const resultResult = results.find((entry) => entry.stage === 'result');
+    const metaResult = effectiveResults.find((entry) => entry.stage === 'metaprompt');
+    const resultResult = effectiveResults.find((entry) => entry.stage === 'result');
     if (metaResult?.ok && resultResult?.ok) {
-      setProviderStageHealth('Verbindung geprüft: Metaprompt und Result sind bereit.', 'ok');
+      const switchHint = switched ? ' Nicht verfügbare Stage wurde auf den funktionierenden Key umgestellt.' : '';
+      setProviderStageHealth(`Verbindung geprüft: Metaprompt und Result sind bereit.${switchHint}`, 'ok');
     } else if (metaResult?.ok || resultResult?.ok) {
       const workingStage = metaResult?.ok ? 'Metaprompt' : 'Result';
       const failingStage = metaResult?.ok ? 'Result' : 'Metaprompt';
@@ -291,7 +305,7 @@ function createProviderController({
       setProviderStageHealth('Verbindung fehlgeschlagen: Bitte Key/Modell prüfen.', 'error');
     }
 
-    return { results, switched };
+    return { results: effectiveResults, switched, rawResults: results };
   }
 
   async function syncStageAssignmentsWithProviderList({ persist = false } = {}) {

@@ -51,6 +51,7 @@ const introTourState = {
 const introTourContext = {
   providerCheckSummary: '',
   providerCheckCompleted: false,
+  providerCheckResults: [],
   clarifyingQuestionsTourEnabled: false,
 };
 
@@ -185,21 +186,6 @@ const libraryController = createLibraryController({
   showScreen: uiShell.showScreen,
   onOpenTemplateFromLibrary: (entry) => taskController.openLibraryEntry(entry),
 });
-
-function hideSetupWizard() {
-  el('setup-wizard-modal').classList.add('is-hidden');
-}
-
-function showSetupWizard() {
-  el('setup-wizard-modal').classList.remove('is-hidden');
-}
-
-function shouldShowSetupWizard() {
-  if (sessionStorage.getItem('eduprompt_setup_skip_session') === '1') return false;
-  const setupDone = localStorage.getItem('eduprompt_setup_done') === '1';
-  if (!setupDone) return true;
-  return state.providers.length === 0;
-}
 
 function shouldShowIntroductionTour() {
   if (state.welcomeFlowEnabled === false) return false;
@@ -351,12 +337,6 @@ function getIntroductionSteps() {
       anchorHint: 'Startpunkt: Home-Übersicht.',
     },
     {
-      title: 'Hauptseite',
-      text: 'Suche nach Templates, kombiniere Tags und starte über die Handlungsfelder direkt in den passenden Flow.',
-      anchor: '#screen-home .tw-home-search-card',
-      anchorHint: 'Hier startest du typischerweise jeden Lauf.',
-    },
-    {
       title: 'Navigation',
       text: 'Navigation: Neue Aufgabe, Bibliothek, Dashboard, API-Provider und Optionen. Die wichtigsten Einstellungen liegen im Dashboard.',
       anchors: ['#btn-options', '#mb-options'],
@@ -379,6 +359,7 @@ function getIntroductionSteps() {
         );
         introTourContext.providerCheckSummary = '';
         introTourContext.providerCheckCompleted = false;
+        introTourContext.providerCheckResults = [];
         introTourContext.clarifyingQuestionsTourEnabled = true;
       },
       actionLabel: 'Optionen anzeigen',
@@ -448,11 +429,45 @@ function getIntroductionSteps() {
       requireConditionReadyHint: 'Status geprüft. Du kannst jetzt mit „Weiter“ fortfahren.',
     },
     {
+      title: 'System-Key verwenden (falls zugewiesen)',
+      text: () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false, hasAnySystemKeyAccess: false };
+        if (summary.hasReadyProvider) {
+          return 'Es ist bereits ein funktionierender Key aktiv. Wenn nötig, kannst du trotzdem später jederzeit einen zugewiesenen System-Key als Profil hinzufügen.';
+        }
+        if (summary.hasAnySystemKeyAccess) {
+          return 'Für dein Konto sind System-Keys zugewiesen. Füge bei Bedarf einen zugewiesenen Key als Profil hinzu und aktiviere ihn für Metaprompt/Result.';
+        }
+        return 'Für dein Konto sind aktuell keine System-Keys zugewiesen. Im nächsten Schritt legst du bei Bedarf einen persönlichen API-Key an.';
+      },
+      anchors: ['#provider-list [data-add-assigned-key]', '#provider-list'],
+      anchorHint: 'Nur wenn System-Keys zugewiesen sind: „Als Profil hinzufügen“, dann Stage-Toggle setzen und Status erneut prüfen.',
+      requireConditionForNext: () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false, hasAnySystemKeyAccess: false };
+        if (summary.hasReadyProvider) return true;
+        if (summary.hasAnySystemKeyAccess) return false;
+        return true;
+      },
+      requireConditionHint: 'Falls zugewiesene System-Keys vorhanden sind: Key als Profil hinzufügen und aktivieren.',
+      requireConditionReadyHint: 'System-/Provider-Key ist einsatzbereit.',
+    },
+    {
       title: 'API-Key anlegen (falls nötig)',
       text: () => {
         const summary = providerController.getProviderAvailabilitySummary
           ? providerController.getProviderAvailabilitySummary()
           : { hasReadyProvider: false };
+        if (summary.hasReadyProvider && introTourContext.providerCheckResults.length) {
+          const working = introTourContext.providerCheckResults
+            .filter((entry) => entry?.ok)
+            .map((entry) => `${entry.stage === 'result' ? 'Result' : 'Metaprompt'}: ${entry.providerLabel}`)
+            .join(' | ');
+          return `Es ist bereits ein nutzbarer Key vorhanden (${working}). Falls du später einen eigenen Key verwenden möchtest, kannst du ihn hier anlegen.`;
+        }
         if (summary.hasReadyProvider) {
           return 'Es ist bereits mindestens ein nutzbarer Key vorhanden. Falls das später nicht der Fall ist, kannst du hier jederzeit einen persönlichen API-Key anlegen.';
         }
@@ -460,6 +475,14 @@ function getIntroductionSteps() {
       },
       anchors: ['#provider-list [data-open-provider-editor]', '#provider-form-modal', '#provider-form'],
       anchorHint: 'Falls nötig: „API-Key hinzufügen“ öffnen, speichern und erneut prüfen.',
+      requireConditionForNext: () => {
+        const summary = providerController.getProviderAvailabilitySummary
+          ? providerController.getProviderAvailabilitySummary()
+          : { hasReadyProvider: false };
+        return Boolean(summary.hasReadyProvider);
+      },
+      requireConditionHint: 'Bitte zuerst einen funktionierenden Key einrichten und Stage zuordnen.',
+      requireConditionReadyHint: 'Mindestens ein funktionierender Key ist vorhanden.',
     },
     {
       title: 'Zurück zur Hauptseite',
@@ -735,9 +758,9 @@ function renderIntroductionStep(index) {
 }
 
 function showIntroductionTour() {
-  hideSetupWizard();
   introTourContext.providerCheckSummary = '';
   introTourContext.providerCheckCompleted = false;
+  introTourContext.providerCheckResults = [];
   introTourContext.clarifyingQuestionsTourEnabled = false;
   introTourState.autoActionStep = -1;
   introTourState.active = true;
@@ -762,10 +785,6 @@ async function finishIntroductionTour({ markSeen = true, skipSession = false } =
       { hasSeenIntroduction: true, introTourVersion: INTRO_TOUR_VERSION },
       { refreshCatalog: false, showStatus: false }
     );
-  }
-
-  if (shouldShowSetupWizard()) {
-    showSetupWizard();
   }
 }
 
@@ -795,11 +814,9 @@ async function runIntroductionStepAction({ rerender = true } = {}) {
 async function runStartupOnboarding() {
   if (shouldShowIntroductionTour()) {
     showIntroductionTour();
-    return;
+    return true;
   }
-  if (shouldShowSetupWizard()) {
-    showSetupWizard();
-  }
+  return false;
 }
 
 async function loadServerData() {
@@ -895,9 +912,11 @@ function bindEvents() {
     el('provider-check-stages').addEventListener('click', async () => {
       introTourContext.providerCheckCompleted = false;
       introTourContext.providerCheckSummary = 'Statusprüfung läuft …';
+      introTourContext.providerCheckResults = [];
       if (introTourState.active) renderIntroductionStep(introTourState.index);
       try {
-        const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: false });
+        const check = await providerController.checkStageConnectivity({ autoSwitchOnSingleSuccess: true });
+        introTourContext.providerCheckResults = Array.isArray(check?.results) ? check.results : [];
         const metaprompt = check.results.find((entry) => entry.stage === 'metaprompt');
         const result = check.results.find((entry) => entry.stage === 'result');
         const metaText = metaprompt?.ok
@@ -911,7 +930,7 @@ function bindEvents() {
         if (metaprompt?.ok && result?.ok) {
           notify('Verbindung geprüft: Metaprompt und Result sind bereit.', { type: 'ok' });
         } else if (metaprompt?.ok || result?.ok) {
-          notify('Verbindung teilweise bereit. Eine Stage ist aktuell nicht verfügbar.', { type: 'warn' });
+          notify('Verbindung teilweise bereit. Nicht funktionierende Stage wurde auf den funktionierenden Key umgestellt (falls möglich).', { type: 'warn' });
         } else {
           notify('Verbindung fehlgeschlagen. Bitte Key/Modell prüfen.', { type: 'error' });
         }
@@ -1080,19 +1099,6 @@ function bindEvents() {
     );
   });
 
-  el('choose-flow-step').addEventListener('click', async () => {
-    await settingsController.saveSettings({ flowMode: 'step' }, false);
-    taskController.syncFlowModeUi();
-    el('flow-choice-modal').classList.add('is-hidden');
-    await runStartupOnboarding();
-  });
-  el('choose-flow-single').addEventListener('click', async () => {
-    await settingsController.saveSettings({ flowMode: 'single' }, false);
-    taskController.syncFlowModeUi();
-    el('flow-choice-modal').classList.add('is-hidden');
-    await runStartupOnboarding();
-  });
-
   el('intro-tour-prev').addEventListener('click', () => {
     if (!introTourState.active) return;
     renderIntroductionStep(introTourState.index - 1);
@@ -1115,28 +1121,6 @@ function bindEvents() {
     finishIntroductionTour({ markSeen: true, skipSession: true }).catch((error) => notifyError(error));
   });
 
-  el('wizard-open-provider').addEventListener('click', () => {
-    dashboardController.openDashboard('providers').catch((error) => notifyError(error));
-    el('wizard-status').textContent = 'Dashboard geöffnet. Bitte Modell, Key und Base URL setzen.';
-  });
-  el('wizard-test-provider').addEventListener('click', async () => {
-    el('wizard-status').textContent = 'Teste aktiven Provider...';
-    try {
-      const result = await providerController.testProviderConnection({ preferActive: true });
-      el('wizard-status').textContent = `Test erfolgreich (${result.latencyMs} ms).`;
-    } catch (error) {
-      el('wizard-status').textContent = `Test fehlgeschlagen: ${error.message}`;
-    }
-  });
-  el('wizard-complete').addEventListener('click', () => {
-    localStorage.setItem('eduprompt_setup_done', '1');
-    sessionStorage.removeItem('eduprompt_setup_skip_session');
-    hideSetupWizard();
-  });
-  el('wizard-skip').addEventListener('click', () => {
-    sessionStorage.setItem('eduprompt_setup_skip_session', '1');
-    hideSetupWizard();
-  });
 }
 
 async function init() {
@@ -1167,7 +1151,6 @@ async function init() {
       await settingsController.saveSettings({ flowMode: 'step' }, false);
       taskController.syncFlowModeUi();
     }
-    el('flow-choice-modal').classList.add('is-hidden');
     await runStartupOnboarding();
   } catch (error) {
     notifyError(error, 'Fehler beim Laden der Anwendungsdaten');

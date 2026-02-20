@@ -2163,7 +2163,7 @@ button.is-active,
 }
 
 #intro-tour-modal {
-  z-index: 5000;
+  z-index: 12000;
   pointer-events: none;
   place-items: end;
   padding: 14px;
@@ -2190,8 +2190,10 @@ button.is-active,
 
 #intro-tour-modal .intro-tour-card {
   pointer-events: auto;
-  position: relative;
-  z-index: 90;
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 12020;
 }
 
 .tour-highlight {
@@ -3857,6 +3859,42 @@ button.is-active,
   resize: vertical;
 }
 
+#screen-result.tw-result .result-followup-panel {
+  border: 1px dashed #c7d4ef;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+#screen-result.tw-result .result-followup-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#screen-result.tw-result .result-followup-questions {
+  display: grid;
+  gap: 8px;
+}
+
+#screen-result.tw-result .result-followup-question {
+  display: grid;
+  gap: 5px;
+}
+
+#screen-result.tw-result .result-followup-question strong {
+  font-size: 13px;
+  color: #1e293b;
+}
+
+#screen-result.tw-result .result-followup-question textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
 #screen-result.tw-result #result,
 #screen-result.tw-result #result-direct-output {
   min-height: 320px;
@@ -4565,6 +4603,15 @@ button.is-active,
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-metadata-panel {
   background: #111d34;
   border-color: #2d426f;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-followup-panel {
+  background: #0f1b31;
+  border-color: #2f4776;
+}
+
+:is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-followup-question strong {
+  color: #d8e4ff;
 }
 
 :is(body[data-theme='dark'], html.dark body) #screen-result.tw-result .result-progress-bar-track {

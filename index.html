@@ -481,6 +481,19 @@
               <div class="result-prompt-box top-space">
                 <textarea id="result-direct-output" rows="16" readonly></textarea>
               </div>
+              <div id="result-followup-panel" class="result-followup-panel top-space is-hidden">
+                <div class="result-followup-head">
+                  <strong>Rückfragen-Flow (Direktes Ergebnis)</strong>
+                  <small id="result-followup-round" class="hint">Runde 0/2</small>
+                </div>
+                <small id="result-followup-summary" class="hint">Du kannst maximal zwei Rückfragen-Runden durchführen.</small>
+                <div id="result-followup-questions" class="result-followup-questions top-space"></div>
+                <small id="result-followup-status" class="hint top-space"></small>
+                <div class="inline-actions top-space">
+                  <button id="result-followup-ask" type="button" class="secondary">Um weitere Rückfragen bitten</button>
+                  <button id="result-followup-request" type="button">Ergebnis anfordern</button>
+                </div>
+              </div>
             </div>
 
             <div class="panel top-space">
@@ -1373,17 +1386,6 @@
       </div>
     </aside>
 
-    <div id="flow-choice-modal" class="modal is-hidden">
-      <div class="modal-card">
-        <h2>Ansicht w&auml;hlen</h2>
-        <p class="subline">Du kannst das spaeter jederzeit unter Optionen aendern.</p>
-        <div class="inline-actions top-space">
-          <button id="choose-flow-step" type="button">Schrittweise Ansicht</button>
-          <button id="choose-flow-single" type="button" class="secondary">Kompaktansicht</button>
-        </div>
-      </div>
-    </div>
-
     <div id="intro-tour-modal" class="modal is-hidden">
       <div id="intro-tour-spotlight" class="tour-spotlight is-hidden" aria-hidden="true"></div>
       <div class="modal-card intro-tour-card">
@@ -1398,25 +1400,6 @@
           <button id="intro-tour-finish" type="button" class="secondary is-hidden">Tour abschließen</button>
           <button id="intro-tour-skip" type="button" class="text-btn">&Uuml;berspringen</button>
         </div>
-      </div>
-    </div>
-
-    <div id="setup-wizard-modal" class="modal is-hidden">
-      <div class="modal-card">
-        <h2>Schnellstart</h2>
-        <p class="subline">In 3 Schritten bist du startklar:</p>
-        <ol class="wizard-list top-space">
-          <li>Provider einrichten (API-Provider).</li>
-          <li>Verbindung testen (inkl. Modell + API-Key).</li>
-          <li>Ersten Prompt generieren.</li>
-        </ol>
-        <div class="inline-actions top-space">
-          <button id="wizard-open-provider" type="button">Provider einrichten</button>
-          <button id="wizard-test-provider" type="button" class="secondary">Aktiven Provider testen</button>
-          <button id="wizard-complete" type="button" class="secondary">Setup abgeschlossen</button>
-          <button id="wizard-skip" type="button" class="text-btn">Sp&auml;ter</button>
-        </div>
-        <small id="wizard-status" class="hint top-space"></small>
       </div>
     </div>
 

@@ -1263,6 +1263,179 @@ Führe den erhaltenen Prompt direkt aus und liefere ausschließlich das angeford
 Stelle keine Rückfragen und keine Meta-Erklärungen, außer der Prompt fordert dies explizit.
 Achte auf korrekte Orthografie und saubere Leerzeichen zwischen Wörtern.`;
 
+function normalizeFollowupAction(value = '') {
+  return String(value || '').trim().toLowerCase() === 'final' ? 'final' : 'ask';
+}
+
+function normalizeFollowupRound(value, maxRounds = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return Math.max(0, Math.min(Math.floor(numeric), Math.max(0, Number(maxRounds) || 0)));
+}
+
+function normalizeFollowupQaPairs(entries = []) {
+  if (!Array.isArray(entries)) return [];
+  const pairs = entries
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const question = String(entry.question || '').replace(/\s+/g, ' ').trim();
+      const answer = String(entry.answer || '').trim();
+      if (!question) return null;
+      return { question, answer };
+    })
+    .filter(Boolean);
+  return pairs.slice(0, 24);
+}
+
+function formatFollowupQaBlock(qaPairs = []) {
+  if (!qaPairs.length) return '- (noch keine Antworten vorhanden)';
+  return qaPairs
+    .map((entry, index) => `${index + 1}. Frage: ${entry.question}\n   Antwort: ${entry.answer || '(noch offen)'}`)
+    .join('\n');
+}
+
+function buildFollowupQuestionPrompt({
+  handoffPrompt = '',
+  currentOutput = '',
+  qaPairs = [],
+  round = 0,
+  maxRounds = 2,
+}) {
+  return `Du bist ein strukturierter Rückfragen-Assistent für Lehrkräfte.
+Ziel: Erzeuge NUR die fehlenden Rückfragen, damit ein direktes Endergebnis erstellt werden kann.
+
+Regeln:
+- Liefere ausschließlich JSON (kein Markdown, kein Fließtext außerhalb JSON).
+- Maximal 7 Rückfragen.
+- Jede Rückfrage muss klar, kurz und umsetzbar sein.
+- Frage niemals nach personenbezogenen oder sensiblen Daten (Name, Adresse, Kontaktdaten, ID, Gesundheitsdaten usw.).
+- Falls bereits genug Kontext vorhanden ist, gib "questions": [] zurück.
+
+Ausgabeformat (streng):
+{
+  "questions": [
+    { "id": "q1", "question": "..." , "placeholder": "Kurze Antwort..." }
+  ],
+  "note": "Kurzhinweis"
+}
+
+Runden-Info:
+- Aktuelle Runde: ${round}
+- Maximal erlaubt: ${maxRounds}
+
+Handoff-Prompt:
+${String(handoffPrompt || '').trim() || '(leer)'}
+
+Bisherige Ausgabe:
+${String(currentOutput || '').trim() || '(leer)'}
+
+Bisherige Frage/Antworten:
+${formatFollowupQaBlock(qaPairs)}
+`;
+}
+
+function buildFollowupFinalPrompt({
+  handoffPrompt = '',
+  currentOutput = '',
+  qaPairs = [],
+}) {
+  return `Nutze den folgenden Handoff-Prompt und die ergänzten Antworten, um jetzt ein vollständiges Endergebnis zu liefern.
+
+Anweisungen:
+- Gib nur das Endergebnis aus (kein JSON, keine Rückfragen, keine Meta-Kommentare).
+- Frage nicht erneut nach weiteren Informationen.
+- Wenn Angaben fehlen, nutze klare, neutrale Annahmen.
+- Fordere keine personenbezogenen oder sensiblen Daten an.
+
+Handoff-Prompt:
+${String(handoffPrompt || '').trim() || '(leer)'}
+
+Bisherige Ausgabe:
+${String(currentOutput || '').trim() || '(leer)'}
+
+Ergänzende Antworten:
+${formatFollowupQaBlock(qaPairs)}
+`;
+}
+
+function parseStructuredQuestions(rawOutput = '') {
+  const text = String(rawOutput || '').trim();
+  if (!text) return { questions: [], note: '' };
+
+  const parseCandidate = (candidate) => {
+    const parsed = tryParseJson(candidate);
+    if (parsed && typeof parsed === 'object') return parsed;
+    return null;
+  };
+
+  let payload = parseCandidate(text);
+  if (!payload) {
+    payload = parseCandidate(stripCodeFence(text));
+  }
+  if (!payload) {
+    const stripped = stripCodeFence(text);
+    const start = stripped.indexOf('{');
+    const end = stripped.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      payload = parseCandidate(stripped.slice(start, end + 1));
+    }
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return {
+      questions: [],
+      note: 'Antwort konnte nicht strukturiert gelesen werden. Bitte direkt Ergebnis anfordern oder erneut versuchen.',
+    };
+  }
+
+  const source = Array.isArray(payload.questions) ? payload.questions : [];
+  const normalized = source
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return {
+          question: String(entry || '').replace(/\s+/g, ' ').trim(),
+          placeholder: 'Kurze Antwort eingeben',
+        };
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const questionText = String(entry.question || entry.text || entry.prompt || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!questionText) return null;
+      const placeholderText = String(entry.placeholder || '').replace(/\s+/g, ' ').trim();
+      return {
+        question: questionText,
+        placeholder: placeholderText || 'Kurze Antwort eingeben',
+      };
+    })
+    .filter(Boolean)
+    .map((entry) => ({
+      question: String(entry.question || '')
+        .replace(/^\s*(?:[-*]|\d+[.)])\s*/u, '')
+        .trim(),
+      placeholder: String(entry.placeholder || '').trim() || 'Kurze Antwort eingeben',
+    }))
+    .filter((entry) => entry.question && !lineContainsSensitiveDataRequest(entry.question));
+
+  const deduped = [];
+  const seen = new Set();
+  normalized.forEach((entry) => {
+    const key = normalizeForMatch(entry.question);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    deduped.push(entry);
+  });
+
+  const questions = deduped.slice(0, 7).map((entry, index) => ({
+    id: `q${index + 1}`,
+    question: entry.question,
+    placeholder: entry.placeholder,
+  }));
+  const note = String(payload.note || payload.summary || '').replace(/\s+/g, ' ').trim();
+
+  return { questions, note };
+}
+
 function normalizeGenerationMode(value) {
   return String(value || '').trim().toLowerCase() === 'result' ? 'result' : 'prompt';
 }
@@ -1301,6 +1474,204 @@ function createGenerateRouter() {
         requiredFields: context.template.requiredFields,
       },
     });
+  }));
+
+  router.post('/generate/result-followup', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {
+    const {
+      providerId,
+      templateId,
+      handoffPrompt,
+      currentOutput,
+      action,
+      round,
+      qaPairs,
+    } = req.body || {};
+
+    if (!providerId) {
+      return res.status(400).json({ error: 'providerId ist erforderlich.' });
+    }
+    const normalizedHandoffPrompt = String(handoffPrompt || '').trim();
+    if (!normalizedHandoffPrompt) {
+      return res.status(400).json({ error: 'handoffPrompt ist erforderlich.' });
+    }
+
+    const followupMaxRounds = 2;
+    const normalizedAction = normalizeFollowupAction(action);
+    const normalizedRound = normalizeFollowupRound(round, followupMaxRounds);
+    if (normalizedAction === 'ask' && normalizedRound >= followupMaxRounds) {
+      return res.status(400).json({ error: `Maximale Rückfragen-Runden erreicht (${followupMaxRounds}). Bitte direktes Ergebnis anfordern.` });
+    }
+
+    const provider = await getProviderForUser(req, providerId);
+    if (!provider) {
+      return res.status(404).json({ error: 'Result-Provider nicht gefunden.' });
+    }
+
+    const normalizedQaPairs = normalizeFollowupQaPairs(qaPairs);
+    const stageLabel = normalizedAction === 'final' ? 'Direktes Ergebnis Finalisierung' : 'Direktes Ergebnis Rückfragen';
+    const startedAt = Date.now();
+    let keyFingerprint = null;
+    let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    let costSummary = calculateUsageCost(usage, null);
+    let credential = null;
+    const budgetWarnings = [];
+
+    try {
+      credential = await resolveProviderCredential(req, provider);
+      const pricing = await resolvePricingForProvider(provider);
+      keyFingerprint = buildKeyFingerprint(credential.apiKey);
+      costSummary = calculateUsageCost(usage, pricing);
+
+      const followupPrompt = normalizedAction === 'final'
+        ? buildFollowupFinalPrompt({
+          handoffPrompt: normalizedHandoffPrompt,
+          currentOutput: String(currentOutput || '').trim(),
+          qaPairs: normalizedQaPairs,
+        })
+        : buildFollowupQuestionPrompt({
+          handoffPrompt: normalizedHandoffPrompt,
+          currentOutput: String(currentOutput || '').trim(),
+          qaPairs: normalizedQaPairs,
+          round: normalizedRound,
+          maxRounds: followupMaxRounds,
+        });
+
+      const estimated = await estimateProjectedUsageAndCost({
+        userId: req.userId,
+        provider,
+        pricing,
+        promptText: followupPrompt,
+      });
+      budgetWarnings.push(...await enforceSystemAssignmentBudget({
+        req,
+        systemKey: credential?.systemKey || null,
+        estimatedIncrementUsd: estimated.projectedCostUsd,
+        phaseLabel: stageLabel,
+      }));
+      budgetWarnings.push(...await enforceSystemGlobalBudget({
+        req,
+        effectiveKeyType: credential?.effectiveKeyType,
+        estimatedIncrementUsd: estimated.projectedCostUsd,
+        reservedIncrementUsd: 0,
+        phaseLabel: stageLabel,
+      }));
+      budgetWarnings.push(...await enforceBudgetPolicies({
+        req,
+        keyFingerprint,
+        estimatedIncrementUsd: estimated.projectedCostUsd,
+        phaseLabel: stageLabel,
+      }));
+
+      const providerCall = await callProviderDetailed({
+        kind: provider.kind,
+        baseUrl: credential.baseUrl,
+        model: provider.model,
+        apiKey: credential.apiKey,
+        metaprompt: followupPrompt,
+        timeoutMs: config.providerRequestTimeoutMs,
+        systemInstruction: normalizedAction === 'final' ? RESULT_EXECUTION_SYSTEM_INSTRUCTION : undefined,
+      });
+
+      usage = mergeUsage(usage, providerCall.usage || {}, {
+        promptFallback: followupPrompt,
+        completionFallback: providerCall.text,
+      });
+      costSummary = calculateUsageCost(usage, pricing);
+
+      await pool.query(
+        `INSERT INTO provider_usage_audit (user_id, provider_id, provider_kind, key_source, template_id)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [req.userId, provider.provider_id, provider.kind, credential.keySource, String(templateId || '').trim() || null]
+      );
+
+      await logGenerationEvent({
+        userId: req.userId,
+        userGroups: req.userGroups || [],
+        userRoles: req.access?.roles || [],
+        provider,
+        templateId: String(templateId || '').trim() || null,
+        success: true,
+        latencyMs: Date.now() - startedAt,
+        errorType: null,
+        effectiveKeyType: credential?.effectiveKeyType,
+        effectiveKeyId: credential?.effectiveKeyId,
+        keyFingerprint,
+        usage,
+        costSummary,
+      });
+
+      if (normalizedAction === 'final') {
+        const resultOutput = String(providerCall.text || '').trim();
+        return res.json({
+          mode: 'final',
+          round: normalizedRound,
+          maxRounds: followupMaxRounds,
+          resultOutput,
+          provider: {
+            id: provider.provider_id,
+            name: provider.name,
+            kind: provider.kind,
+            model: provider.model,
+            keySource: credential.keySource,
+          },
+          usage,
+          cost: costSummary,
+          budget: {
+            mode: 'hybrid',
+            warnings: budgetWarnings,
+          },
+        });
+      }
+
+      const parsed = parseStructuredQuestions(String(providerCall.text || ''));
+      return res.json({
+        mode: 'questions',
+        round: Math.min(normalizedRound + 1, followupMaxRounds),
+        maxRounds: followupMaxRounds,
+        questions: parsed.questions,
+        note: parsed.note || (parsed.questions.length
+          ? 'Rückfragen erstellt. Bitte beantworten und anschließend Ergebnis anfordern.'
+          : 'Keine weiteren Rückfragen nötig. Du kannst direkt das Ergebnis anfordern.'),
+        provider: {
+          id: provider.provider_id,
+          name: provider.name,
+          kind: provider.kind,
+          model: provider.model,
+          keySource: credential.keySource,
+        },
+        usage,
+        cost: costSummary,
+        budget: {
+          mode: 'hybrid',
+          warnings: budgetWarnings,
+        },
+      });
+    } catch (error) {
+      const safeErrorMessage = sanitizeExternalErrorMessage(error?.message || '', { fallback: 'Rückfragen-Flow fehlgeschlagen.' });
+      const finalError = isOverloadedProviderError(error)
+        ? httpError(503, 'Das gewählte Modell ist derzeit überlastet. Bitte in wenigen Sekunden erneut versuchen oder ein anderes Modell wählen.')
+        : httpError(Number(error?.status) || 502, safeErrorMessage);
+      try {
+        await logGenerationEvent({
+          userId: req.userId,
+          userGroups: req.userGroups || [],
+          userRoles: req.access?.roles || [],
+          provider,
+          templateId: String(templateId || '').trim() || null,
+          success: false,
+          latencyMs: Date.now() - startedAt,
+          errorType: finalError?.message || safeErrorMessage || 'result_followup_failed',
+          effectiveKeyType: credential?.effectiveKeyType,
+          effectiveKeyId: credential?.effectiveKeyId,
+          keyFingerprint,
+          usage,
+          costSummary,
+        });
+      } catch (_logError) {
+        // Do not override original provider error path.
+      }
+      throw finalError;
+    }
   }));
 
   router.post('/generate', authMiddleware, accessMiddleware, requirePermission('prompts.generate'), asyncHandler(async (req, res) => {

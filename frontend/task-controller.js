@@ -64,6 +64,23 @@ function createTaskController({
   state.generatedMetaDetails = state.generatedMetaDetails || null;
   state.lastGenerationPayload = state.lastGenerationPayload || null;
   state.lastGenerationFormSnapshot = state.lastGenerationFormSnapshot || null;
+  function createEmptyResultFollowupState() {
+    return {
+      enabled: false,
+      maxRounds: 2,
+      round: 0,
+      providerId: '',
+      templateId: '',
+      handoffPrompt: '',
+      latestResultOutput: '',
+      questions: [],
+      answers: {},
+      qaHistory: [],
+    };
+  }
+  state.resultFollowup = state.resultFollowup && typeof state.resultFollowup === 'object'
+    ? { ...createEmptyResultFollowupState(), ...state.resultFollowup }
+    : createEmptyResultFollowupState();
   state.compactFlow = state.compactFlow || {
     editingCategory: false,
     editingTemplate: false,
@@ -756,6 +773,262 @@ function createTaskController({
 
   function setResultCostSummary(cost = null) {
     setCostSummary('result', cost);
+  }
+
+  function formatFollowupCostSummary(cost = null, usage = null) {
+    const input = Number(cost?.inputCostUsd);
+    const output = Number(cost?.outputCostUsd);
+    const total = Number(cost?.totalCostUsd);
+    const promptTokens = Number(usage?.promptTokens);
+    const completionTokens = Number(usage?.completionTokens);
+    const totalTokens = Number(usage?.totalTokens);
+    const costText = Number.isFinite(total)
+      ? `Kosten ${formatCost(input)} / ${formatCost(output)} / ${formatCost(total)}`
+      : 'Kosten nicht verfügbar';
+    const tokenText = Number.isFinite(totalTokens)
+      ? `Tokens ${formatTokenCount(promptTokens)} / ${formatTokenCount(completionTokens)} / ${formatTokenCount(totalTokens)}`
+      : 'Tokens nicht verfügbar';
+    return `${tokenText} • ${costText}`;
+  }
+
+  function resetResultFollowupState() {
+    state.resultFollowup = {
+      enabled: false,
+      maxRounds: 2,
+      round: 0,
+      providerId: '',
+      templateId: '',
+      handoffPrompt: '',
+      latestResultOutput: '',
+      questions: [],
+      answers: {},
+      qaHistory: [],
+    };
+    const panel = el('result-followup-panel');
+    if (panel) panel.classList.add('is-hidden');
+    if (el('result-followup-questions')) el('result-followup-questions').innerHTML = '';
+    if (el('result-followup-status')) el('result-followup-status').textContent = '';
+    if (el('result-followup-round')) el('result-followup-round').textContent = 'Runde 0/2';
+    if (el('result-followup-summary')) {
+      el('result-followup-summary').textContent = 'Du kannst maximal zwei Rückfragen-Runden durchführen.';
+    }
+  }
+
+  function getFollowupQuestionInputId(index) {
+    return `result-followup-answer-${index + 1}`;
+  }
+
+  function syncResultFollowupAnswersFromUi() {
+    const followup = state.resultFollowup || {};
+    const answers = { ...(followup.answers || {}) };
+    (followup.questions || []).forEach((question, index) => {
+      const node = el(getFollowupQuestionInputId(index));
+      if (!node) return;
+      answers[question.id] = String(node.value || '').trim();
+    });
+    state.resultFollowup.answers = answers;
+    return answers;
+  }
+
+  function getResultFollowupHistoryPairs() {
+    const followup = state.resultFollowup || {};
+    return Array.isArray(followup.qaHistory)
+      ? followup.qaHistory
+        .map((entry) => ({
+          question: String(entry?.question || '').trim(),
+          answer: String(entry?.answer || '').trim(),
+        }))
+        .filter((entry) => entry.question)
+      : [];
+  }
+
+  function persistResultFollowupCurrentRoundToHistory() {
+    const followup = state.resultFollowup || {};
+    const answers = syncResultFollowupAnswersFromUi();
+    const currentRoundPairs = (followup.questions || [])
+      .map((question) => ({
+        question: String(question.question || '').trim(),
+        answer: String(answers[question.id] || '').trim(),
+        round: Number(followup.round) || 0,
+      }))
+      .filter((entry) => entry.question);
+    if (!currentRoundPairs.length) return;
+    const merged = [...(Array.isArray(followup.qaHistory) ? followup.qaHistory : [])];
+    currentRoundPairs.forEach((pair) => {
+      const key = normalizeOptionDisplayKey(pair.question);
+      const existingIndex = merged.findIndex((entry) => normalizeOptionDisplayKey(entry.question) === key);
+      if (existingIndex >= 0) merged[existingIndex] = pair;
+      else merged.push(pair);
+    });
+    state.resultFollowup.qaHistory = merged;
+  }
+
+  function renderResultFollowupPanel() {
+    const panel = el('result-followup-panel');
+    const roundNode = el('result-followup-round');
+    const summaryNode = el('result-followup-summary');
+    const questionWrap = el('result-followup-questions');
+    const statusNode = el('result-followup-status');
+    const askButton = el('result-followup-ask');
+    const finalButton = el('result-followup-request');
+    if (!panel || !roundNode || !summaryNode || !questionWrap || !statusNode || !askButton || !finalButton) return;
+
+    const followup = state.resultFollowup || {};
+    panel.classList.toggle('is-hidden', !followup.enabled);
+    if (!followup.enabled) {
+      questionWrap.innerHTML = '';
+      statusNode.textContent = '';
+      return;
+    }
+
+    const maxRounds = Number(followup.maxRounds) || 2;
+    const currentRound = Number(followup.round) || 0;
+    roundNode.textContent = `Runde ${currentRound}/${maxRounds}`;
+    const remainingRounds = Math.max(maxRounds - currentRound, 0);
+    summaryNode.textContent = remainingRounds > 0
+      ? `Du kannst noch ${remainingRounds} Rückfragen-Runde(n) anfordern.`
+      : 'Maximale Rückfragen-Runden erreicht. Du kannst direkt das Ergebnis anfordern.';
+
+    const questions = Array.isArray(followup.questions) ? followup.questions : [];
+    if (!questions.length) {
+      questionWrap.innerHTML = '<small class="hint">Noch keine strukturierten Rückfragen geladen.</small>';
+    } else {
+      const answerMap = followup.answers || {};
+      questionWrap.innerHTML = questions
+        .map((entry, index) => `
+          <label class="result-followup-question">
+            <strong>${escapeHtml(entry.question || `Rückfrage ${index + 1}`)}</strong>
+            <textarea
+              id="${getFollowupQuestionInputId(index)}"
+              rows="2"
+              placeholder="${escapeHtml(entry.placeholder || 'Kurze Antwort eingeben')}"
+            >${escapeHtml(String(answerMap[entry.id] || ''))}</textarea>
+          </label>
+        `)
+        .join('');
+      questions.forEach((entry, index) => {
+        const node = el(getFollowupQuestionInputId(index));
+        if (!node) return;
+        node.addEventListener('input', () => {
+          state.resultFollowup.answers[entry.id] = String(node.value || '').trim();
+        });
+      });
+    }
+
+    askButton.disabled = remainingRounds <= 0;
+    finalButton.disabled = false;
+  }
+
+  function initResultFollowupFromGeneration(generation = {}) {
+    const mode = String(generation?.mode || '').trim();
+    if (mode !== 'result') {
+      resetResultFollowupState();
+      return;
+    }
+    const resultProviderId = String(
+      generation?.providers?.result?.id
+      || generation?.provider?.id
+      || state.settings?.resultProviderId
+      || state.settings?.metapromptProviderId
+      || ''
+    ).trim();
+    state.resultFollowup = {
+      enabled: true,
+      maxRounds: 2,
+      round: 0,
+      providerId: resultProviderId,
+      templateId: String(generation?.templateId || '').trim(),
+      handoffPrompt: String(generation?.handoffPrompt || generation?.output || '').trim(),
+      latestResultOutput: String(generation?.resultOutput || '').trim(),
+      questions: [],
+      answers: {},
+      qaHistory: [],
+    };
+    if (el('result-followup-status')) {
+      el('result-followup-status').textContent = 'Optional: Du kannst strukturierte Rückfragen anfordern oder direkt das Ergebnis finalisieren.';
+      el('result-followup-status').dataset.type = 'info';
+    }
+    renderResultFollowupPanel();
+  }
+
+  async function runResultFollowupAction(action = 'ask') {
+    const followup = state.resultFollowup || {};
+    if (!followup.enabled) return;
+    if (!String(followup.providerId || '').trim()) {
+      emitNotice('Kein aktiver Result-Provider verfügbar.', 'error');
+      return;
+    }
+    const normalizedAction = String(action || '').trim().toLowerCase() === 'final' ? 'final' : 'ask';
+    const statusNode = el('result-followup-status');
+    const askButton = el('result-followup-ask');
+    const finalButton = el('result-followup-request');
+    if (statusNode) {
+      statusNode.textContent = normalizedAction === 'final'
+        ? 'Finalisiere direktes Ergebnis...'
+        : 'Erzeuge strukturierte Rückfragen...';
+      statusNode.dataset.type = 'info';
+    }
+    if (askButton) askButton.disabled = true;
+    if (finalButton) finalButton.disabled = true;
+
+    persistResultFollowupCurrentRoundToHistory();
+    const qaPairs = getResultFollowupHistoryPairs();
+
+    try {
+      const payload = await api('/api/generate/result-followup', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: followup.providerId,
+          templateId: followup.templateId,
+          handoffPrompt: followup.handoffPrompt || state.generatedPrompt || '',
+          currentOutput: String(el('result-direct-output')?.value || followup.latestResultOutput || ''),
+          round: followup.round || 0,
+          action: normalizedAction,
+          qaPairs,
+        }),
+      });
+
+      if (normalizedAction === 'final') {
+        const output = String(payload?.resultOutput || '').trim();
+        if (output) {
+          state.generatedResult = output;
+          state.resultFollowup.latestResultOutput = output;
+          if (el('result-direct-output')) el('result-direct-output').value = output;
+        }
+        setUsageSummary('result-direct', payload?.usage || null);
+        setCostSummary('result-direct', payload?.cost || null);
+        if (statusNode) {
+          statusNode.textContent = `Finales Ergebnis aktualisiert. ${formatFollowupCostSummary(payload?.cost, payload?.usage)}`;
+          statusNode.dataset.type = 'ok';
+        }
+      } else {
+        const questions = Array.isArray(payload?.questions) ? payload.questions : [];
+        state.resultFollowup.round = Number(payload?.round) || (Number(followup.round) + 1);
+        state.resultFollowup.maxRounds = Number(payload?.maxRounds) || followup.maxRounds || 2;
+        state.resultFollowup.questions = questions.map((entry, index) => ({
+          id: String(entry?.id || `q${index + 1}`).trim() || `q${index + 1}`,
+          question: String(entry?.question || '').trim(),
+          placeholder: String(entry?.placeholder || 'Kurze Antwort eingeben').trim(),
+        })).filter((entry) => entry.question);
+        state.resultFollowup.answers = {};
+        if (statusNode) {
+          const baseNote = String(payload?.note || '').trim();
+          const usageNote = formatFollowupCostSummary(payload?.cost, payload?.usage);
+          statusNode.textContent = `${baseNote || 'Rückfragen aktualisiert.'} ${usageNote}`;
+          statusNode.dataset.type = 'ok';
+        }
+      }
+
+      renderResultFollowupPanel();
+    } catch (error) {
+      if (statusNode) {
+        statusNode.textContent = `Fehler: ${error.message}`;
+        statusNode.dataset.type = 'error';
+      }
+      emitNotice(error.message, 'error');
+    } finally {
+      renderResultFollowupPanel();
+    }
   }
 
   function setPreviewStatus(text = '', type = 'info') {
@@ -1899,6 +2172,7 @@ function createTaskController({
     state.generatedMetaDetails = null;
     state.lastGenerationPayload = null;
     state.lastGenerationFormSnapshot = null;
+    resetResultFollowupState();
     setResultUsageSummary(null);
     setResultCostSummary(null);
     setUsageSummary('result-direct', null);
@@ -2191,6 +2465,7 @@ function createTaskController({
     if (el('result-direct-meta')) el('result-direct-meta').textContent = resultMeta;
     setUsageSummary('result-direct', generation?.usageStages?.result || null);
     setCostSummary('result-direct', generation?.costStages?.result || null);
+    initResultFollowupFromGeneration(generation);
     if (el('result-detail-handlungsfeld')) el('result-detail-handlungsfeld').textContent = normalizeUiText(context.baseFields.handlungsfeld || '-');
     if (el('result-detail-unterkategorie')) el('result-detail-unterkategorie').textContent = normalizeUiText(context.baseFields.unterkategorie || '-');
     if (el('result-detail-fach')) el('result-detail-fach').textContent = context.baseFields.fach || '-';
@@ -2223,6 +2498,7 @@ function createTaskController({
   async function generatePromptLegacy(context, activeProvider, formSnapshot = null) {
     const priorPrompt = state.generatedPrompt || '';
     const runMode = getRunGenerationMode();
+    resetResultFollowupState();
     let stage = 'metaprompt';
     resetResultProgress(runMode);
     setGenerating(
@@ -2301,6 +2577,7 @@ function createTaskController({
     }
 
     const priorPrompt = state.generatedPrompt || '';
+    resetResultFollowupState();
     let streamError = null;
     let stage = 'metaprompt';
     let streamDonePayload = null;
@@ -2602,6 +2879,16 @@ function createTaskController({
     if (el('copy-result-direct')) {
       el('copy-result-direct').addEventListener('click', copyDirectResult);
     }
+    if (el('result-followup-ask')) {
+      el('result-followup-ask').addEventListener('click', () => {
+        runResultFollowupAction('ask').catch((error) => emitNotice(error.message, 'error'));
+      });
+    }
+    if (el('result-followup-request')) {
+      el('result-followup-request').addEventListener('click', () => {
+        runResultFollowupAction('final').catch((error) => emitNotice(error.message, 'error'));
+      });
+    }
     el('btn-compare-last').addEventListener('click', toggleComparePanel);
 
     el('home-template-search-btn').addEventListener('click', () => {
@@ -2641,6 +2928,7 @@ function createTaskController({
     syncFlowModeUi();
     applySubcategoryViewMode();
     resetRunModeOverride();
+    resetResultFollowupState();
   }
 
   return {
