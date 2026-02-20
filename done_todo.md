@@ -1,6 +1,6 @@
 # Prompt Creator - Done / TODO Tracker
 
-Last updated: 2026-02-16
+Last updated: 2026-02-19
 Owner: Team + Codex
 
 ## Purpose
@@ -193,6 +193,10 @@ Owner: Team + Codex
 - [ ] Add image-description prompt workflow (text-only prompt generation for image tasks).
 - [ ] Plan future feature: optional image generation result mode (provider/model constraints, moderation, cost controls).
 - [ ] Continue API-key management UX refactor: denser nested rows, clearer action buttons, and mockup parity in light/dark themes.
+
+## New Intake (2026-02-19)
+- [ ] Dropdown-Optionen final bereinigen: alte ASCII-Varianten (`Uebung`, `Problemlosen`, `waehlen`) und Umlaut-Varianten aus Legacy-Template-Versionen/DB zusammenführen, damit keine semantischen Duplikate mehr erscheinen.
+- [ ] Einmalige Datenbereinigung/Migration für bestehende Template-Versionen planen (nur Anzeige normalisieren reicht nicht, auch gespeicherte Optionen vereinheitlichen).
 
 ## Notes for Tomorrow
 - Current UX baseline is stable and much closer to mockups; remaining open work is template content quality + dark mode finish + wizard refinement.

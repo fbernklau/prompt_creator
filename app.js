@@ -51,6 +51,7 @@ const introTourState = {
 const introTourContext = {
   providerCheckSummary: '',
   providerCheckCompleted: false,
+  clarifyingQuestionsTourEnabled: false,
 };
 
 function notify(message, { type = 'info', timeoutMs = 3200 } = {}) {
@@ -378,6 +379,7 @@ function getIntroductionSteps() {
         );
         introTourContext.providerCheckSummary = '';
         introTourContext.providerCheckCompleted = false;
+        introTourContext.clarifyingQuestionsTourEnabled = true;
       },
       actionLabel: 'Optionen anzeigen',
     },
@@ -494,17 +496,20 @@ function getIntroductionSteps() {
     },
     {
       title: 'Klärende Rückfragen',
-      text: 'Lass „Klärende Rückfragen“ deaktiviert. Für direktes Ergebnis kann diese Option den Lauf sonst unterbrechen oder unvollständig machen.',
+      text: 'Deaktiviere jetzt „Klärende Rückfragen“. Für „Direktes Ergebnis“ liefert das Modell sonst oft zuerst Rückfragen statt sofort eines finalen Ergebnisses.',
       anchor: '#rueckfragen',
-      anchorHint: 'Für die Tour bleibt diese Option deaktiviert.',
+      anchorHint: 'Bitte den Schalter auf „aus“ stellen.',
       autoAction: true,
       action: async () => {
         const toggle = el('rueckfragen');
-        if (toggle && toggle.checked) {
-          toggle.checked = false;
+        if (!toggle) return;
+        if (introTourContext.clarifyingQuestionsTourEnabled && !toggle.checked) {
+          toggle.checked = true;
           toggle.dispatchEvent(new Event('change', { bubbles: true }));
         }
       },
+      waitForCondition: () => Boolean(el('rueckfragen')) && !Boolean(el('rueckfragen')?.checked),
+      waitForHint: 'Deaktiviere „Klärende Rückfragen“, dann geht es automatisch weiter.',
     },
     {
       title: 'Direktes Ergebnis aktivieren',
@@ -733,6 +738,7 @@ function showIntroductionTour() {
   hideSetupWizard();
   introTourContext.providerCheckSummary = '';
   introTourContext.providerCheckCompleted = false;
+  introTourContext.clarifyingQuestionsTourEnabled = false;
   introTourState.autoActionStep = -1;
   introTourState.active = true;
   el('intro-tour-modal').classList.remove('is-hidden');
@@ -1102,6 +1108,10 @@ function bindEvents() {
     finishIntroductionTour({ markSeen: true }).catch((error) => notifyError(error));
   });
   el('intro-tour-skip').addEventListener('click', () => {
+    const confirmed = window.confirm(
+      'Tour wirklich überspringen?\n\nDu kannst sie auf der Seite „Neue Aufgabe“ jederzeit über „Tour starten“ erneut starten.'
+    );
+    if (!confirmed) return;
     finishIntroductionTour({ markSeen: true, skipSession: true }).catch((error) => notifyError(error));
   });
 
@@ -1154,10 +1164,11 @@ async function init() {
     uiShell.showScreen('home');
 
     if (!state.settings.flowMode) {
-      el('flow-choice-modal').classList.remove('is-hidden');
-    } else {
-      await runStartupOnboarding();
+      await settingsController.saveSettings({ flowMode: 'step' }, false);
+      taskController.syncFlowModeUi();
     }
+    el('flow-choice-modal').classList.add('is-hidden');
+    await runStartupOnboarding();
   } catch (error) {
     notifyError(error, 'Fehler beim Laden der Anwendungsdaten');
   }
