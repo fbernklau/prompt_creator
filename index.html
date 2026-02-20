@@ -433,7 +433,15 @@
                   <div id="result-usage-summary" class="result-usage-summary is-hidden" aria-live="polite">
                     <span>Input: <strong id="result-usage-input">-</strong></span>
                     <span>Output: <strong id="result-usage-output">-</strong></span>
-                    <span>Total: <strong id="result-usage-total">-</strong></span>
+                    <span class="token-total-with-hint">
+                      Total: <strong id="result-usage-total">-</strong>
+                      <button
+                        type="button"
+                        class="token-total-info"
+                        aria-label="Hinweis zu Total Tokens"
+                        title="Hinweis: Total kann zusätzlich Thinking-/Reasoning-Tokens enthalten, die nicht direkt im sichtbaren Input oder Output erscheinen."
+                      >?</button>
+                    </span>
                   </div>
                   <div id="result-cost-summary" class="result-usage-summary result-cost-summary is-hidden" aria-live="polite">
                     <span>Input-Kosten: <strong id="result-cost-input">-</strong></span>
@@ -466,7 +474,15 @@
                   <div id="result-direct-usage-summary" class="result-usage-summary is-hidden" aria-live="polite">
                     <span>Input: <strong id="result-direct-usage-input">-</strong></span>
                     <span>Output: <strong id="result-direct-usage-output">-</strong></span>
-                    <span>Total: <strong id="result-direct-usage-total">-</strong></span>
+                    <span class="token-total-with-hint">
+                      Total: <strong id="result-direct-usage-total">-</strong>
+                      <button
+                        type="button"
+                        class="token-total-info"
+                        aria-label="Hinweis zu Total Tokens"
+                        title="Hinweis: Total kann zusätzlich Thinking-/Reasoning-Tokens enthalten, die nicht direkt im sichtbaren Input oder Output erscheinen."
+                      >?</button>
+                    </span>
                   </div>
                   <div id="result-direct-cost-summary" class="result-usage-summary result-cost-summary is-hidden" aria-live="polite">
                     <span>Input-Kosten: <strong id="result-direct-cost-input">-</strong></span>
@@ -664,7 +680,15 @@
           </div>
           <div class="grid-2 top-space">
             <div class="panel">
-              <h3>Tokens gesamt</h3>
+              <h3>
+                Tokens gesamt
+                <button
+                  type="button"
+                  class="token-total-info"
+                  aria-label="Hinweis zu Total Tokens"
+                  title="Hinweis: Total kann zusätzlich Thinking-/Reasoning-Tokens enthalten, die nicht direkt im sichtbaren Input oder Output erscheinen."
+                >?</button>
+              </h3>
               <p id="usage-total-tokens" class="metric">0</p>
             </div>
             <div class="panel">

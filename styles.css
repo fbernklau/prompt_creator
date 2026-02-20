@@ -138,6 +138,39 @@ textarea {
   font: inherit;
 }
 
+.token-total-with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-total-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+}
+
+.token-total-info:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.token-total-info:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
 button {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -179,6 +212,35 @@ button.text-btn {
 button.text-btn:hover {
   background: var(--surface-soft);
   color: var(--text);
+}
+
+button.token-total-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+  min-width: 18px;
+}
+
+button.token-total-info:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+button.token-total-info:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
 
 button.small {
